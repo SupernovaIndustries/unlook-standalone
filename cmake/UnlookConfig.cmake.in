@@ -1,0 +1,36 @@
+@PACKAGE_INIT@
+
+# Unlook 3D Scanner API CMake Configuration File
+
+set(UNLOOK_VERSION @PROJECT_VERSION@)
+
+# Find dependencies
+find_dependency(OpenCV 4.0 REQUIRED COMPONENTS core imgproc imgcodecs calib3d features2d)
+find_dependency(Threads REQUIRED)
+
+# Find OpenMP if available
+find_package(OpenMP QUIET)
+
+# Include targets
+if(NOT TARGET Unlook::unlook)
+    include("${CMAKE_CURRENT_LIST_DIR}/UnlookTargets.cmake")
+endif()
+
+# Set variables for backward compatibility
+set(UNLOOK_LIBRARIES Unlook::unlook)
+set(UNLOOK_INCLUDE_DIRS "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@")
+set(UNLOOK_FOUND TRUE)
+
+# Check required components
+check_required_components(Unlook)
+
+# Print status message
+if(NOT Unlook_FIND_QUIETLY)
+    message(STATUS "Found Unlook 3D Scanner API: ${UNLOOK_VERSION}")
+    message(STATUS "  Libraries: ${UNLOOK_LIBRARIES}")
+    message(STATUS "  Include dirs: ${UNLOOK_INCLUDE_DIRS}")
+endif()
+
+# Usage example:
+# find_package(Unlook REQUIRED)
+# target_link_libraries(your_target Unlook::unlook)

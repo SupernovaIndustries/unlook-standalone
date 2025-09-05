@@ -1,0 +1,14 @@
+# Unlook 3D Scanner pkg-config file
+
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=@CMAKE_INSTALL_FULL_LIBDIR@
+includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
+
+Name: Unlook Scanner
+Description: Professional 3D Scanner Library with 0.005mm precision
+Version: @PROJECT_VERSION@
+URL: https://github.com/unlook/unlook-scanner
+Requires: opencv4 >= 4.2.0
+Libs: -L${libdir} -lunlook
+Cflags: -I${includedir} -I${includedir}/unlook

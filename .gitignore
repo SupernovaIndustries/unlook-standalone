@@ -1,0 +1,109 @@
+# Build directories
+build/
+build-*/
+.build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+install_manifest.txt
+CTestTestfile.cmake
+Testing/
+
+# IDE files
+.vscode/
+.vs/
+.idea/
+*.swp
+*.swo
+*~
+
+# Qt files
+*.pro.user*
+*.qm
+ui_*.h
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+
+# Compiled object files
+*.o
+*.obj
+*.so
+*.so.*
+*.a
+*.lib
+*.dll
+*.dylib
+
+# Executables
+*.exe
+test_*
+!test_*.sh
+!test_*.cpp
+!test_*.h
+
+# Raw camera data and test images
+*.raw
+*.bin
+*.png
+*.jpg
+*.jpeg
+!resources/**/*.png
+!resources/**/*.jpg
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.log
+*.pid
+
+# Package files
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+
+# Python files (should not exist in this C++ project)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Calibration working files (but keep the main calibration)
+calibration/temp/
+calibration/working/
+calibration/*.backup
+
+# Third-party build artifacts (keep source)
+third-party/*/build/
+third-party/*/build-*/
+third-party/*/.build/
+
+# System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Hardware test outputs
+hardware_test_*.txt
+sync_test_*.log
+performance_*.csv
+
+# Documentation build
+docs/html/
+docs/latex/
+docs/xml/
+
+# Local configuration files
+local_config.yaml
+user_settings.yaml
+.env
+.local

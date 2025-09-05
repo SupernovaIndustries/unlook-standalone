@@ -1,0 +1,43 @@
+# Uninstall script for Unlook 3D Scanner
+
+if(NOT EXISTS "@CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt")
+    message(FATAL_ERROR "Cannot find install manifest: @CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt")
+endif()
+
+file(READ "@CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt" files)
+string(REGEX REPLACE "\n" ";" files "${files}")
+
+foreach(file ${files})
+    message(STATUS "Uninstalling $ENV{DESTDIR}${file}")
+    if(IS_SYMLINK "$ENV{DESTDIR}${file}" OR EXISTS "$ENV{DESTDIR}${file}")
+        exec_program(
+            "@CMAKE_COMMAND@" ARGS "-E remove \"$ENV{DESTDIR}${file}\""
+            OUTPUT_VARIABLE rm_out
+            RETURN_VALUE rm_retval
+        )
+        if(NOT "${rm_retval}" STREQUAL 0)
+            message(FATAL_ERROR "Problem when removing $ENV{DESTDIR}${file}")
+        endif()
+    else()
+        message(STATUS "File $ENV{DESTDIR}${file} does not exist.")
+    endif()
+endforeach()
+
+# Remove empty directories
+set(UNLOOK_INSTALL_DIRS
+    "@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_INCLUDEDIR@/unlook"
+    "@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_DATADIR@/unlook"
+    "@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_LIBDIR@/unlook"
+)
+
+foreach(dir ${UNLOOK_INSTALL_DIRS})
+    if(EXISTS "${dir}")
+        file(GLOB dir_contents "${dir}/*")
+        if(NOT dir_contents)
+            message(STATUS "Removing empty directory: ${dir}")
+            file(REMOVE_RECURSE "${dir}")
+        endif()
+    endif()
+endforeach()
+
+message(STATUS "Unlook 3D Scanner uninstall completed")

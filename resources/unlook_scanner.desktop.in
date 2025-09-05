@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Unlook 3D Scanner
+Comment=Professional 3D scanning system with touch interface
+Exec=@CMAKE_INSTALL_PREFIX@/bin/unlook_scanner_gui
+Icon=unlook_scanner
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+StartupNotify=true
+StartupWMClass=unlook_scanner_gui

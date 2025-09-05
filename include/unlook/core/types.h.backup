@@ -1,0 +1,140 @@
+#pragma once
+
+#include <cstdint>
+#include <string>
+#include <memory>
+#include <chrono>
+
+/**
+ * @file types.h
+ * @brief Core type definitions for the Unlook 3D Scanner API
+ */
+
+namespace unlook {
+namespace core {
+
+/// Version information
+struct Version {
+    uint8_t major;
+    uint8_t minor; 
+    uint8_t patch;
+    std::string build;
+    
+    std::string toString() const {
+        return std::to_string(major) + "." + 
+               std::to_string(minor) + "." + 
+               std::to_string(patch) + 
+               (build.empty() ? "" : "-" + build);
+    }
+};
+
+/// Current API version
+const Version API_VERSION{1, 0, 0, "dev"};
+
+/// Result codes for API operations
+enum class ResultCode : int32_t {
+    SUCCESS = 0,
+    ERROR_GENERIC = -1,
+    ERROR_INVALID_PARAMETER = -2,
+    ERROR_NOT_INITIALIZED = -3,
+    ERROR_ALREADY_INITIALIZED = -4,
+    ERROR_HARDWARE_FAILURE = -5,
+    ERROR_CALIBRATION_INVALID = -6,
+    ERROR_CAMERA_NOT_FOUND = -7,
+    ERROR_CAMERA_ACCESS_DENIED = -8,
+    ERROR_MEMORY_ALLOCATION = -9,
+    ERROR_FILE_NOT_FOUND = -10,
+    ERROR_FILE_IO = -11,
+    ERROR_TIMEOUT = -12,
+    ERROR_THREAD_FAILURE = -13,
+    ERROR_SYNC_FAILURE = -14
+};
+
+/// Scanner operation modes
+enum class ScannerMode {
+    STANDALONE,   ///< Direct GUI operation on Raspberry Pi
+    COMPANION     ///< External PC control via shared library API
+};
+
+/// Camera identifiers (from scanner perspective)
+enum class CameraId : uint8_t {
+    LEFT = 0,     ///< Camera 1 = LEFT/MASTER (/base/soc/i2c0mux/i2c@1/imx296@1a)
+    RIGHT = 1     ///< Camera 0 = RIGHT/SLAVE (/base/soc/i2c0mux/i2c@0/imx296@1a)
+};
+
+/// Hardware synchronization status
+enum class SyncStatus {
+    NOT_INITIALIZED,
+    SYNCHRONIZING,
+    SYNCHRONIZED,
+    SYNC_FAILED
+};
+
+/// Scanner status information
+struct ScannerStatus {
+    bool initialized;
+    ScannerMode mode;
+    SyncStatus sync_status;
+    bool calibration_loaded;
+    std::chrono::system_clock::time_point last_update;
+    std::string error_message;
+};
+
+/// Camera configuration parameters
+struct CameraConfig {
+    uint32_t width = 1456;      ///< Fixed to calibration resolution
+    uint32_t height = 1088;     ///< Fixed to calibration resolution
+    uint32_t exposure_us = 10000;  ///< Exposure time in microseconds
+    float gain = 1.0f;          ///< Camera gain
+    bool auto_exposure = false; ///< Auto exposure control
+    bool auto_gain = false;     ///< Auto gain control
+};
+
+/// Stereo matching parameters
+struct StereoParams {
+    int min_disparity = 0;
+    int num_disparities = 64;
+    int block_size = 21;
+    int p1 = 600;
+    int p2 = 2400;
+    int disp12_max_diff = 10;
+    int pre_filter_cap = 4;
+    int uniqueness_ratio = 5;
+    int speckle_window_size = 150;
+    int speckle_range = 2;
+    bool use_boofcv = true;     ///< Use BoofCV for high precision
+};
+
+/// Point cloud export formats
+enum class ExportFormat {
+    PLY_ASCII,
+    PLY_BINARY,
+    OBJ,
+    XYZ
+};
+
+/// Calibration quality metrics
+struct CalibrationQuality {
+    double rms_error;           ///< RMS reprojection error in pixels
+    double baseline_mm;         ///< Stereo baseline in millimeters
+    double precision_mm;        ///< Theoretical precision at 100mm
+    bool is_valid;              ///< Overall calibration validity
+};
+
+/// Forward declarations
+class Logger;
+class Config;
+class Exception;
+
+/// Smart pointer aliases
+template<typename T>
+using UniquePtr = std::unique_ptr<T>;
+
+template<typename T>
+using SharedPtr = std::shared_ptr<T>;
+
+template<typename T>
+using WeakPtr = std::weak_ptr<T>;
+
+} // namespace core
+} // namespace unlook

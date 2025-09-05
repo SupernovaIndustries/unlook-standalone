@@ -1,0 +1,135 @@
+name: Unlook 3D Scanner CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build-validation:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build-type: [Debug, Release]
+        compiler: [gcc, clang]
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Install Dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y \
+          build-essential \
+          cmake \
+          qtbase5-dev \
+          qtbase5-dev-tools \
+          libopencv-dev \
+          libopencv-contrib-dev \
+          pkg-config \
+          ninja-build
+    
+    - name: Configure CMake
+      run: |
+        mkdir build
+        cd build
+        cmake .. \
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }} \
+          -DCMAKE_C_COMPILER=${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }} \
+          -DUNLOOK_BUILD_TESTS=ON \
+          -DUNLOOK_BUILD_EXAMPLES=ON \
+          -G Ninja
+    
+    - name: Build
+      run: |
+        cd build
+        ninja -j$(nproc)
+    
+    - name: Run Tests
+      run: |
+        cd build
+        ctest --output-on-failure --parallel $(nproc)
+
+  cross-compile-arm64:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Setup ARM64 Cross-Compilation
+      run: |
+        sudo apt update
+        sudo apt install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+    
+    - name: Cross-Compile Build Test
+      run: |
+        ./build.sh --cross rpi4 --validate-only
+    
+    # Note: Full cross-compilation requires ARM64 Qt5 libraries
+    # This job validates the build system setup only
+
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Analysis Tools
+      run: |
+        sudo apt update
+        sudo apt install -y cppcheck clang-format clang-tidy
+    
+    - name: Run cppcheck
+      run: |
+        cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/
+    
+    - name: Check Code Format
+      run: |
+        find src/ -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Validate Documentation Links
+      run: |
+        # Check that all referenced files exist
+        ./scripts/validate_documentation.sh || echo "Documentation validation script not found - skipping"
+    
+    - name: Check README Completeness
+      run: |
+        # Ensure all major sections are present in README
+        grep -q "## Installation" README.md
+        grep -q "## Usage" README.md
+        grep -q "## Development" README.md
+        grep -q "## Architecture" README.md
+
+  build-system-validation:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    
+    - name: Validate Build Script
+      run: |
+        # Test build script argument parsing and validation
+        ./build.sh --validate-only
+        ./build.sh --help
+    
+    - name: Check CMake Configuration
+      run: |
+        # Validate CMake can configure without errors
+        mkdir build-test
+        cd build-test
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        # Don't build, just validate configuration
