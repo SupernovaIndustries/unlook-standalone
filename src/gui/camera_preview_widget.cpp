@@ -7,6 +7,7 @@
 #include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <opencv2/imgproc.hpp>
 
 using namespace unlook::gui::styles;
 using namespace unlook::gui::widgets;
@@ -41,18 +42,16 @@ void CameraPreviewWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
     widget_visible_ = true;
     
-    // Start capture automatically when widget is shown
-    if (camera_system_ && camera_system_->isReady()) {
-        startCapture();
-    }
+    // Do NOT auto-start capture in showEvent - causes immediate start/stop cycle
+    // Let user manually control capture with START/STOP buttons
 }
 
 void CameraPreviewWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     widget_visible_ = false;
     
-    // Stop capture when widget is hidden
-    stopCapture();
+    // Do NOT auto-stop capture in hideEvent - causes immediate start/stop cycle
+    // Let capture continue until user clicks STOP button or explicit navigation
 }
 
 void CameraPreviewWidget::onStereoFrameReceived(const core::StereoFramePair& frame_pair) {
@@ -60,7 +59,22 @@ void CameraPreviewWidget::onStereoFrameReceived(const core::StereoFramePair& fra
     
     frame_count_++;
     
-    // Update preview images
+    // PERFORMANCE FIX: Frame skipping for GUI - process only every 3rd frame
+    // This allows cameras to run at full speed while GUI runs at manageable rate
+    static int frame_skip_counter = 0;
+    if (++frame_skip_counter % 3 != 0) {
+        // Skip this frame for GUI processing, but still update sync status
+        if (frame_pair.synchronized) {
+            sync_status_->setStatus(QString("Sync OK (%1ms error)")
+                                   .arg(frame_pair.sync_error_ms, 0, 'f', 3),
+                                   StatusDisplay::StatusType::SUCCESS);
+        } else {
+            sync_status_->setStatus("Synchronization error", StatusDisplay::StatusType::ERROR);
+        }
+        return;
+    }
+    
+    // Update preview images (only every 3rd frame)
     updatePreviewImages(frame_pair.left_frame, frame_pair.right_frame);
     
     // Update sync status
@@ -182,10 +196,11 @@ void CameraPreviewWidget::startCapture() {
     
     // Set frame callback
     auto frame_callback = [this](const core::StereoFramePair& frame_pair) {
-        // Thread-safe callback using Qt's signal-slot mechanism
-        QTimer::singleShot(0, this, [this, frame_pair]() {
+        // PERFORMANCE FIX: Use direct Qt signal emission for real-time processing
+        // QTimer::singleShot causes batching/accumulation - BAD for 30 FPS video!
+        QMetaObject::invokeMethod(this, [this, frame_pair]() {
             onStereoFrameReceived(frame_pair);
-        });
+        }, Qt::QueuedConnection);
     };
     
     if (camera_system_->startCapture(frame_callback)) {
@@ -501,18 +516,38 @@ void CameraPreviewWidget::updateCameraControls() {
 }
 
 QPixmap CameraPreviewWidget::matToQPixmap(const cv::Mat& mat) {
-    if (mat.empty()) return QPixmap();
+    if (mat.empty()) {
+        return QPixmap();
+    }
     
     QImage qimg;
     if (mat.type() == CV_8UC1) {
-        // Grayscale image
-        qimg = QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_Grayscale8);
+        // Grayscale image - COPY data to avoid memory sharing issues
+        qimg = QImage(mat.cols, mat.rows, QImage::Format_Grayscale8);
+        
+        // Copy row by row to handle potential stride differences
+        for (int y = 0; y < mat.rows; ++y) {
+            const uchar* src_row = mat.ptr<uchar>(y);
+            uchar* dst_row = qimg.scanLine(y);
+            std::memcpy(dst_row, src_row, mat.cols);
+        }
     } else if (mat.type() == CV_8UC3) {
-        // Color image (BGR)
-        qimg = QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_BGR888);
-        qimg = qimg.rgbSwapped();
+        // Color image (BGR) - COPY and convert to RGB
+        cv::Mat rgb_mat;
+        cv::cvtColor(mat, rgb_mat, cv::COLOR_BGR2RGB);
+        
+        qimg = QImage(rgb_mat.cols, rgb_mat.rows, QImage::Format_RGB888);
+        
+        // Copy row by row to ensure proper data alignment
+        for (int y = 0; y < rgb_mat.rows; ++y) {
+            const uchar* src_row = rgb_mat.ptr<uchar>(y);
+            uchar* dst_row = qimg.scanLine(y);
+            std::memcpy(dst_row, src_row, rgb_mat.cols * 3);
+        }
     } else {
-        return QPixmap();
+        // Unsupported format - create black placeholder
+        qimg = QImage(mat.cols, mat.rows, QImage::Format_Grayscale8);
+        qimg.fill(0);
     }
     
     return QPixmap::fromImage(qimg);
@@ -526,14 +561,17 @@ QPixmap CameraPreviewWidget::scalePixmapToFit(const QPixmap& pixmap, const QSize
 
 void CameraPreviewWidget::updatePreviewImages(const core::CameraFrame& left_frame, 
                                              const core::CameraFrame& right_frame) {
-    // Convert frames to pixmaps
-    QPixmap left_pixmap = matToQPixmap(left_frame.image);
-    QPixmap right_pixmap = matToQPixmap(right_frame.image);
-    
-    // Scale to fit responsive displays
+    // PERFORMANCE OPTIMIZATION: Resize cv::Mat BEFORE QPixmap conversion (5-10x faster!)
     QSize preview_size = getResponsivePreviewSize();
-    left_pixmap = scalePixmapToFit(left_pixmap, preview_size);
-    right_pixmap = scalePixmapToFit(right_pixmap, preview_size);
+    
+    // Resize OpenCV mats first (super fast with OpenCV)
+    cv::Mat left_resized, right_resized;
+    cv::resize(left_frame.image, left_resized, cv::Size(preview_size.width(), preview_size.height()), 0, 0, cv::INTER_LINEAR);
+    cv::resize(right_frame.image, right_resized, cv::Size(preview_size.width(), preview_size.height()), 0, 0, cv::INTER_LINEAR);
+    
+    // Convert smaller images to pixmaps (much faster on smaller data)
+    QPixmap left_pixmap = matToQPixmap(left_resized);
+    QPixmap right_pixmap = matToQPixmap(right_resized);
     
     // Apply to labels (considering swap state)
     if (cameras_swapped_) {

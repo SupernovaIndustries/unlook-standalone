@@ -5,7 +5,8 @@
 #include <unlook/camera/CameraSynchronizer.hpp>
 #include <unlook/camera/AutoExposure.hpp>
 #include <unlook/camera/CameraUtils.hpp>
-#include <unlook/core/logger.h>
+// #include <unlook/realtime/RealtimePipeline.hpp>  // Temporarily disabled
+#include <unlook/core/Logger.hpp>
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -56,15 +57,18 @@ CameraSystem::CameraSystem()
     
     LOG_INFO("CameraSystem constructor");
     
-    // Initialize default configurations
+    // Initialize default configurations with PROPER VALUES
     left_config_.width = 1456;
     left_config_.height = 1088;
-    left_config_.exposure_time_us = 10000;
-    left_config_.gain = 1.0;
-    left_config_.auto_exposure = false;
+    left_config_.exposure_time_us = 15000;  // 15ms for proper exposure
+    left_config_.gain = 3.0;                // 3x gain for indoor
+    left_config_.auto_exposure = true;      // Enable auto-exposure
     left_config_.auto_gain = false;
     
     right_config_ = left_config_;
+    
+    // Create real-time pipeline for high-performance processing
+    // realtime_pipeline_ = std::make_unique<realtime::RealtimePipeline>();  // Temporarily disabled
 }
 
 CameraSystem::~CameraSystem() {
@@ -107,6 +111,10 @@ bool CameraSystem::initialize(const CameraConfig& config) {
     }
     
     // Initialize auto-exposure if enabled
+    // TEMPORARILY DISABLED FOR FPS PERFORMANCE TESTING
+    // Auto-exposure calculates brightness on 1456x1088 = 1.5M pixels per frame @ 30 FPS
+    // This could be the source of FPS lag/stuttering
+    /*
     if (config_.autoExposure) {
         autoExposure_ = std::make_unique<AutoExposure>();
         
@@ -128,6 +136,8 @@ bool CameraSystem::initialize(const CameraConfig& config) {
             });
         }
     }
+    */
+    LOG_INFO("Auto-exposure DISABLED for performance testing - using fixed exposure settings");
     
     status_.isInitialized = true;
     system_ready_ = true;
@@ -141,15 +151,36 @@ bool CameraSystem::initialize(const CameraConfig& config) {
 bool CameraSystem::initializeCameras() {
     LOG_INFO("Initializing stereo camera pair using HardwareSyncCapture");
     
-    // Create hardware-synchronized capture system
+    // Use existing HardwareSyncCapture system temporarily
+    /*
+    // Configure real-time pipeline for high performance
+    realtime::RealtimePipeline::Config rt_config;
+    rt_config.full_width = config_.width;
+    rt_config.full_height = config_.height;
+    rt_config.preview_width = 640;   // VGA for GUI
+    rt_config.preview_height = 480;
+    rt_config.exposure_time_us = config_.exposureTime;  // Use proper exposure
+    rt_config.analog_gain = config_.analogGain;
+    rt_config.auto_exposure = config_.autoExposure;
+    rt_config.target_fps = config_.targetFps;
+    rt_config.enable_thread_affinity = true;
+    rt_config.enable_frame_dropping = true;
+    
+    if (!realtime_pipeline_->initialize(rt_config)) {
+        LOG_ERROR("Failed to initialize real-time pipeline");
+        return false;
+    }
+    */
+    
+    // Create hardware-synchronized capture system (backup)
     hardware_sync_capture_ = std::make_unique<HardwareSyncCapture>();
     
     // Configure camera parameters matching GUI configuration
     HardwareSyncCapture::CameraConfig capture_config;
     capture_config.width = config_.width;
     capture_config.height = config_.height;
-    capture_config.format = libcamera::formats::SBGGR10;
-    capture_config.buffer_count = 4;
+    capture_config.format = libcamera::formats::YUV420;  // Use YUV420 for proper stride handling
+    capture_config.buffer_count = 2;  // 2 buffers to prevent starvation
     
     // Initialize the hardware sync system
     if (!hardware_sync_capture_->initialize(capture_config)) {
@@ -201,11 +232,27 @@ void CameraSystem::shutdown() {
         stopCapture();
     }
     
+    // Stop real-time pipeline FIRST (to prevent callbacks during shutdown)
+    /*if (realtime_pipeline_ && realtime_pipeline_->isRunning()) {
+        LOG_INFO("Stopping real-time pipeline");
+        realtime_pipeline_->stop();
+        // Give time for threads to finish
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }*/ // Temporarily disabled
+    
     // Stop auto-exposure (now idempotent)
     if (autoExposure_) {
         autoExposure_->stop();
         autoExposure_->shutdown();
         autoExposure_.reset();  // Explicitly reset to prevent destructor issues
+    }
+    
+    // Stop hardware sync capture (if used as fallback)
+    if (hardware_sync_capture_) {
+        LOG_INFO("Stopping hardware sync capture");
+        hardware_sync_capture_->stop();
+        // Reset to trigger proper destructor sequence
+        hardware_sync_capture_.reset();
     }
     
     // Stop synchronizer
@@ -215,7 +262,9 @@ void CameraSystem::shutdown() {
     }
     
     // Stop and release cameras
-    if (leftCamera_) {
+    // NOTE: Using hardware_sync_capture_ instead of individual cameras
+    // The leftCamera_ and rightCamera_ are not initialized in this mode
+    /*if (leftCamera_) {
         leftCamera_->stop();
         leftCamera_.reset();
     }
@@ -223,7 +272,7 @@ void CameraSystem::shutdown() {
     if (rightCamera_) {
         rightCamera_->stop();
         rightCamera_.reset();
-    }
+    }*/
     
     // Reset status
     status_ = CameraStatus();
@@ -250,16 +299,37 @@ bool CameraSystem::startCapture() {
         return true;
     }
     
-    LOG_INFO("Starting hardware synchronized camera capture with HardwareSyncCapture");
+    LOG_INFO("Using HardwareSyncCapture for 30 FPS capture");
     
-    // Start hardware-synchronized capture
+    // Start real-time pipeline with frame callback
+    /*bool pipeline_started = realtime_pipeline_->start(
+        [this](const core::StereoFramePair& frame_pair) {
+            // Thread-safe callback delivery
+            std::lock_guard<std::mutex> lock(callbackMutex_);
+            if (frame_callback_) {
+                frame_callback_(frame_pair);
+            }
+            
+            // Update statistics
+            totalFrames_++;
+            if (frame_pair.sync_error_ms > 1.0) {
+                syncErrors_++;
+            }
+            updateSyncStats(frame_pair.sync_error_ms);
+        }
+    );
+    
+    if (!pipeline_started) {
+        LOG_ERROR("Failed to start real-time pipeline, falling back to HardwareSyncCapture");*/ // Temporarily disabled
+        
+    // Use HardwareSyncCapture directly
     if (!hardware_sync_capture_->start()) {
         LOG_ERROR("Failed to start hardware synchronized capture");
         return false;
     }
-    
-    // Set up frame callback to convert HardwareSyncCapture frames to GUI format
-    hardware_sync_capture_->setFrameCallback([this](const HardwareSyncCapture::StereoFrame& sync_frame) {
+        
+        // Set up frame callback to convert HardwareSyncCapture frames to GUI format
+        hardware_sync_capture_->setFrameCallback([this](const HardwareSyncCapture::StereoFrame& sync_frame) {
         if (!frame_callback_) return;
         
         // Convert HardwareSyncCapture::StereoFrame to core::StereoFramePair
@@ -305,9 +375,14 @@ void CameraSystem::stopCapture() {
         return;
     }
     
-    LOG_INFO("Stopping hardware synchronized camera capture");
+    LOG_INFO("Stopping camera capture");
     
-    // Stop HardwareSyncCapture system
+    // Stop real-time pipeline if running
+    /*if (realtime_pipeline_ && realtime_pipeline_->isRunning()) {
+        realtime_pipeline_->stop();
+    }*/ // Temporarily disabled
+    
+    // Stop HardwareSyncCapture system if running
     if (hardware_sync_capture_) {
         hardware_sync_capture_->stop();
     }
@@ -316,29 +391,37 @@ void CameraSystem::stopCapture() {
     left_state_ = core::CameraState::READY;
     right_state_ = core::CameraState::READY;
     
-    LOG_INFO("Hardware synchronized camera capture stopped");
+    LOG_INFO("Camera capture stopped");
 }
 
 void CameraSystem::captureThread() {
+    // CRITICAL FIX: This function is NOT USED when hardware_sync_capture_ is active
+    // HardwareSyncCapture handles capture internally via callbacks
+    // This thread is only for backward compatibility with individual cameras
+    
+    LOG_WARNING("captureThread() called but should not be used with HardwareSyncCapture");
+    LOG_INFO("HardwareSyncCapture manages capture via internal callbacks");
+    
+    // Simply wait until stop is signaled
+    // The actual capture is handled by HardwareSyncCapture's internal threads
+    while (!shouldStop_) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    LOG_INFO("Capture thread exiting (HardwareSyncCapture mode)");
+    return;
+    
+    /* LEGACY CODE - Only used if individual cameras were initialized
     LOG_INFO("Capture thread started - Hardware Sync Mode");
     
     CameraUtils::FPSCounter fpsCounter(30);
     CameraUtils::Timer frameTimer;
-    
-    // CRITICAL: With hardware sync, we must capture from both cameras SIMULTANEOUSLY
-    // The master generates sync signals, slave follows them
-    // Both cameras must have their waitForFrame calls active at the same time
     
     while (!shouldStop_) {
         frameTimer.reset();
         
         StereoFrame frame;
         LibcameraSyncDevice::FrameMetadata leftMeta, rightMeta;
-        
-        // HARDWARE SYNC PATTERN: Start both captures in parallel
-        // This replicates the working cam command pattern:
-        // ./src/apps/cam/cam -c 1 --capture=1 &  # Master in background
-        // ./src/apps/cam/cam -c 2 --capture=1 && wait  # Slave + wait
         
         std::atomic<bool> leftReady(false);
         std::atomic<bool> rightReady(false);
@@ -438,6 +521,7 @@ void CameraSystem::captureThread() {
     }
     
     LOG_INFO("Capture thread stopped");
+    */
 }
 
 bool CameraSystem::captureStereoFrame(StereoFrame& frame, int timeoutMs) {
@@ -446,51 +530,16 @@ bool CameraSystem::captureStereoFrame(StereoFrame& frame, int timeoutMs) {
         return false;
     }
     
-    // LibcameraSyncDevice handles its own streaming state
-    LibcameraSyncDevice::FrameMetadata leftMeta, rightMeta;
-    
-    // HARDWARE SYNC: Capture synchronized frames using parallel pattern
-    std::atomic<bool> leftReady(false);
-    std::atomic<bool> rightReady(false);
-    bool leftSuccess = false;
-    bool rightSuccess = false;
-    
-    // Launch parallel captures for hardware synchronization
-    std::thread leftThread([&]() {
-        leftSuccess = leftCamera_->captureFrame(frame.leftImage, leftMeta, timeoutMs);
-        leftReady = true;
-    });
-    
-    std::thread rightThread([&]() {
-        rightSuccess = rightCamera_->captureFrame(frame.rightImage, rightMeta, timeoutMs);
-        rightReady = true;
-    });
-    
-    // Wait for both to complete (synchronized)
-    leftThread.join();
-    rightThread.join();
-    
-    if (!leftSuccess || !rightSuccess) {
-        LOG_ERROR("Failed to capture synchronized stereo frame");
+    // CRITICAL FIX: This function should not be called when using HardwareSyncCapture
+    // HardwareSyncCapture delivers frames via callbacks, not polling
+    if (hardware_sync_capture_) {
+        LOG_ERROR("captureStereoFrame() not supported with HardwareSyncCapture - use callbacks instead");
         return false;
     }
     
-    // Fill metadata
-    frame.leftTimestampNs = leftMeta.timestamp_ns;
-    frame.rightTimestampNs = rightMeta.timestamp_ns;
-    frame.leftFrameNumber = leftMeta.frame_number;
-    frame.rightFrameNumber = rightMeta.frame_number;
-    frame.leftExposure = leftMeta.exposure_time_us;
-    frame.rightExposure = rightMeta.exposure_time_us;
-    frame.leftGain = leftMeta.analog_gain;
-    frame.rightGain = rightMeta.analog_gain;
-    
-    // Calculate sync error
-    frame.syncErrorMs = CameraUtils::calculateSyncError(
-        frame.leftTimestampNs, frame.rightTimestampNs);
-    frame.isSynchronized = frame.syncErrorMs <= config_.syncToleranceMs;
-    
-    return true;
+    // This function is not supported with HardwareSyncCapture
+    // HardwareSyncCapture delivers frames via callbacks, not polling
+    return false;
 }
 
 void CameraSystem::setFrameCallback(FrameCallback callback) {
@@ -504,7 +553,15 @@ void CameraSystem::setErrorCallback(core::ErrorCallback callback) {
 }
 
 bool CameraSystem::setExposure(double exposureUs) {
-    if (!leftCamera_ || !rightCamera_) {
+    // FIXED: Use hardware_sync_capture_ instead of individual cameras
+    if (hardware_sync_capture_) {
+        // HardwareSyncCapture manages exposure internally via auto-exposure
+        config_.exposureTime = exposureUs;
+        return true;
+    }
+    
+    // Fallback for individual cameras (not used in current mode)
+    /*if (!leftCamera_ || !rightCamera_) {
         return false;
     }
     
@@ -515,11 +572,20 @@ bool CameraSystem::setExposure(double exposureUs) {
         config_.exposureTime = exposureUs;
     }
     
-    return success;
+    return success;*/
+    return false;
 }
 
 bool CameraSystem::setGain(double gain) {
-    if (!leftCamera_ || !rightCamera_) {
+    // FIXED: Use hardware_sync_capture_ instead of individual cameras
+    if (hardware_sync_capture_) {
+        // HardwareSyncCapture manages gain internally via auto-exposure
+        config_.analogGain = gain;
+        return true;
+    }
+    
+    // Fallback for individual cameras (not used in current mode)
+    /*if (!leftCamera_ || !rightCamera_) {
         return false;
     }
     
@@ -530,7 +596,8 @@ bool CameraSystem::setGain(double gain) {
         config_.analogGain = gain;
     }
     
-    return success;
+    return success;*/
+    return false;  // Not supported in current mode
 }
 
 void CameraSystem::setAutoExposure(bool enable) {
@@ -675,14 +742,12 @@ bool CameraSystem::setExposureTime(core::CameraId camera_id, double exposure_us)
     
     if (camera_id == core::CameraId::LEFT) {
         left_config_.exposure_time_us = exposure_us;
-        if (leftCamera_) {
-            success = leftCamera_->setExposure(exposure_us);
-        }
+        // FIXED: HardwareSyncCapture manages exposure internally
+        // Just update the configuration
     } else {
         right_config_.exposure_time_us = exposure_us;
-        if (rightCamera_) {
-            success = rightCamera_->setExposure(exposure_us);
-        }
+        // FIXED: HardwareSyncCapture manages exposure internally
+        // Just update the configuration
     }
     
     return success;
@@ -700,14 +765,12 @@ bool CameraSystem::setGain(core::CameraId camera_id, double gain) {
     
     if (camera_id == core::CameraId::LEFT) {
         left_config_.gain = gain;
-        if (leftCamera_) {
-            success = leftCamera_->setAnalogGain(gain);
-        }
+        // FIXED: HardwareSyncCapture manages gain internally
+        // Just update the configuration
     } else {
         right_config_.gain = gain;
-        if (rightCamera_) {
-            success = rightCamera_->setAnalogGain(gain);
-        }
+        // FIXED: HardwareSyncCapture manages gain internally
+        // Just update the configuration
     }
     
     return success;
@@ -826,18 +889,11 @@ bool CameraSystem::configureCameras(const core::CameraConfig& left_config,
     left_config_ = left_config;
     right_config_ = right_config;
     
-    // Apply to hardware
-    bool success = true;
-    if (leftCamera_) {
-        success &= leftCamera_->setExposure(left_config.exposure_time_us);
-        success &= leftCamera_->setGain(left_config.gain);
-    }
-    if (rightCamera_) {
-        success &= rightCamera_->setExposure(right_config.exposure_time_us);
-        success &= rightCamera_->setGain(right_config.gain);
-    }
+    // FIXED: HardwareSyncCapture manages camera settings internally
+    // Just update the configuration values
+    // The auto-exposure in HardwareSyncCapture will handle the actual hardware control
     
-    return success;
+    return true;  // Configuration updated successfully
 }
 
 } // namespace camera

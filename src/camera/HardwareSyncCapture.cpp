@@ -30,9 +30,63 @@ HardwareSyncCapture::HardwareSyncCapture() {
 }
 
 HardwareSyncCapture::~HardwareSyncCapture() {
-    if (running_) {
-        stop();
+    // CRITICAL: Proper shutdown sequence to prevent segmentation faults
+    std::cout << "[HardwareSync] Destructor called - initiating safe shutdown" << std::endl;
+    
+    // Signal shutdown to all threads
+    {
+        std::lock_guard<std::mutex> lock(running_mutex_);
+        if (running_) {
+            running_ = false;
+        }
     }
+    
+    // Wake up any waiting threads
+    frame_condition_.notify_all();
+    
+    // Disconnect signals first to stop new callbacks
+    if (master_camera_) {
+        master_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onMasterRequestComplete);
+    }
+    if (slave_camera_) {
+        slave_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onSlaveRequestComplete);
+    }
+    
+    // Now stop cameras
+    if (slave_camera_) {
+        try {
+            slave_camera_->stop();
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Exception stopping slave camera: " << e.what() << std::endl;
+        }
+    }
+    
+    if (master_camera_) {
+        try {
+            master_camera_->stop();
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Exception stopping master camera: " << e.what() << std::endl;
+        }
+    }
+    
+    // Clear requests and buffers
+    master_requests_.clear();
+    slave_requests_.clear();
+    
+    // Release cameras
+    if (slave_camera_) {
+        slave_camera_->release();
+    }
+    if (master_camera_) {
+        master_camera_->release();
+    }
+    
+    // Stop camera manager
+    if (camera_manager_) {
+        camera_manager_->stop();
+    }
+    
+    std::cout << "[HardwareSync] Safe shutdown completed" << std::endl;
 }
 
 bool HardwareSyncCapture::initialize(const CameraConfig& config) {
@@ -42,6 +96,10 @@ bool HardwareSyncCapture::initialize(const CameraConfig& config) {
     }
 
     std::cout << "[HardwareSync] Initializing synchronized camera system" << std::endl;
+
+    // CRITICAL: Export timeout.yaml for synchronized cameras BEFORE CameraManager
+    setenv("LIBCAMERA_RPI_CONFIG_FILE", "/home/alessandro/unlook-standalone/timeout.yaml", 1);
+    std::cout << "[HardwareSync] Exported LIBCAMERA_RPI_CONFIG_FILE=/home/alessandro/unlook-standalone/timeout.yaml for sync" << std::endl;
 
     // Initialize libcamera camera manager
     camera_manager_ = std::make_unique<CameraManager>();
@@ -78,10 +136,13 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
     
     for (auto camera : cameras) {
         std::string id = camera->id();
-        if (id.find("i2c@1/imx296@1a") != std::string::npos) {
+        // Support both hardware paths: original (i2c@1/i2c@0) and actual CM5 (i2c@88000/i2c@70000)
+        if (id.find("i2c@1/imx296@1a") != std::string::npos || 
+            id.find("i2c@88000/imx296@1a") != std::string::npos) {
             camera1 = camera;  // Camera 1 = LEFT/MASTER
             std::cout << "[HardwareSync] Found MASTER camera: " << id << std::endl;
-        } else if (id.find("i2c@0/imx296@1a") != std::string::npos) {
+        } else if (id.find("i2c@0/imx296@1a") != std::string::npos ||
+                   id.find("i2c@70000/imx296@1a") != std::string::npos) {
             camera0 = camera;  // Camera 0 = RIGHT/SLAVE  
             std::cout << "[HardwareSync] Found SLAVE camera: " << id << std::endl;
         }
@@ -108,8 +169,8 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
     }
 
     // Configure streams (following cam app pattern)
-    master_config_ = master_camera_->generateConfiguration({StreamRole::Raw});
-    slave_config_ = slave_camera_->generateConfiguration({StreamRole::Raw});
+    master_config_ = master_camera_->generateConfiguration({StreamRole::Viewfinder});
+    slave_config_ = slave_camera_->generateConfiguration({StreamRole::Viewfinder});
 
     if (!master_config_ || !slave_config_) {
         std::cerr << "[HardwareSync] Failed to generate camera configurations" << std::endl;
@@ -121,15 +182,25 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
     master_stream_config.size.width = config.width;
     master_stream_config.size.height = config.height;
     master_stream_config.pixelFormat = config.format;
+    master_stream_config.bufferCount = config.buffer_count;  // FORCE buffer count
 
     StreamConfiguration& slave_stream_config = slave_config_->at(0);
     slave_stream_config.size.width = config.width;
     slave_stream_config.size.height = config.height;  
     slave_stream_config.pixelFormat = config.format;
+    slave_stream_config.bufferCount = config.buffer_count;   // FORCE buffer count
+
+    std::cout << "[HardwareSync] BEFORE validation - Requested format: " 
+              << config.format.toString() << std::endl;
 
     // Validate and apply configurations
     CameraConfiguration::Status master_status = master_config_->validate();
     CameraConfiguration::Status slave_status = slave_config_->validate();
+
+    std::cout << "[HardwareSync] AFTER validation - Master format: " 
+              << master_stream_config.pixelFormat.toString() << std::endl;
+    std::cout << "[HardwareSync] AFTER validation - Slave format: " 
+              << slave_stream_config.pixelFormat.toString() << std::endl;
 
     if (master_status == CameraConfiguration::Invalid || 
         slave_status == CameraConfiguration::Invalid) {
@@ -143,12 +214,16 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
         return false;
     }
 
-    // INTELLIGENT AUTO-EXPOSURE for IMX296 sensors
+    // INTELLIGENT AUTO-EXPOSURE for IMX296 sensors - DISABLED FOR FPS TESTING
     // Apply optimal exposure and gain settings for stereo precision
+    // DISABLED: Auto-exposure causes sync instability and FPS oscillation (0→1→14→0 loop)
+    /*
     if (!configureAutoExposure()) {
         std::cerr << "[HardwareSync] Failed to configure auto-exposure" << std::endl;
         return false;
     }
+    */
+    std::cout << "[HardwareSync] Auto-exposure DISABLED - using fixed exposure for stability" << std::endl;
 
     // Allocate frame buffers (following cam app pattern)
     master_allocator_ = std::make_unique<FrameBufferAllocator>(master_camera_);
@@ -181,10 +256,11 @@ bool HardwareSyncCapture::createRequestPools() {
     // Initialize auto-exposure with optimal IMX296 settings
     {
         std::lock_guard<std::mutex> lock(exposure_mutex_);
-        // Start with moderate exposure to avoid initial over/under exposure
-        master_exposure_.exposure_time_us = 5000;  // 5ms initial exposure
-        master_exposure_.analogue_gain = 2.0f;     // 2x initial gain
-        slave_exposure_ = master_exposure_;        // Sync slave with master
+        // PROPER EXPOSURE FOR INDUSTRIAL SCANNER - CRITICAL!
+        // Indoor lighting requires higher exposure and gain
+        master_exposure_.exposure_time_us = 15000;  // 15ms for proper illumination
+        master_exposure_.analogue_gain = 3.0f;      // 3x gain for indoor lighting
+        slave_exposure_ = master_exposure_;         // Sync slave with master
     }
 
     // Create master requests
@@ -292,27 +368,59 @@ bool HardwareSyncCapture::start() {
 }
 
 void HardwareSyncCapture::stop() {
-    if (!running_) {
-        return;
+    std::cout << "[HardwareSync] Stopping synchronized capture" << std::endl;
+    
+    // CRITICAL: Thread-safe shutdown
+    {
+        std::lock_guard<std::mutex> lock(running_mutex_);
+        if (!running_) {
+            std::cout << "[HardwareSync] Already stopped" << std::endl;
+            return;
+        }
+        running_ = false;
     }
 
-    std::cout << "[HardwareSync] Stopping synchronized capture" << std::endl;
-    running_ = false;
+    // Wake up any waiting threads
+    frame_condition_.notify_all();
 
-    // Disconnect signals
-    master_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onMasterRequestComplete);
-    slave_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onSlaveRequestComplete);
+    // Disconnect signals to stop callbacks
+    if (master_camera_) {
+        master_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onMasterRequestComplete);
+    }
+    if (slave_camera_) {
+        slave_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onSlaveRequestComplete);
+    }
+
+    // Small delay to allow pending callbacks to complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Stop cameras (reverse order)
     if (slave_camera_) {
-        slave_camera_->stop();
+        try {
+            slave_camera_->stop();
+            std::cout << "[HardwareSync] Slave camera stopped" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Error stopping slave camera: " << e.what() << std::endl;
+        }
     }
     
     if (master_camera_) {
-        master_camera_->stop();
+        try {
+            master_camera_->stop();
+            std::cout << "[HardwareSync] Master camera stopped" << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Error stopping master camera: " << e.what() << std::endl;
+        }
     }
 
-    std::cout << "[HardwareSync] Synchronized capture stopped" << std::endl;
+    // Clear pending frames
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        pending_master_.ready = false;
+        pending_slave_.ready = false;
+    }
+
+    std::cout << "[HardwareSync] Synchronized capture stopped successfully" << std::endl;
 }
 
 void HardwareSyncCapture::onMasterRequestComplete(Request* request) {
@@ -320,11 +428,9 @@ void HardwareSyncCapture::onMasterRequestComplete(Request* request) {
         return;
     }
 
-    // Process request asynchronously to avoid blocking camera thread
-    // (following cam app event loop pattern)
-    std::thread([this, request]() {
-        processMasterRequest(request);
-    }).detach();
+    // CRITICAL: Process synchronously to maintain request lifecycle
+    // Detached threads cause request lifetime issues
+    processMasterRequest(request);
 }
 
 void HardwareSyncCapture::onSlaveRequestComplete(Request* request) {
@@ -332,89 +438,134 @@ void HardwareSyncCapture::onSlaveRequestComplete(Request* request) {
         return; 
     }
 
-    // Process request asynchronously
-    std::thread([this, request]() {
-        processSlaveRequest(request);
-    }).detach();
+    // CRITICAL: Process synchronously to maintain request lifecycle
+    // Detached threads cause request lifetime issues
+    processSlaveRequest(request);
 }
 
 void HardwareSyncCapture::processMasterRequest(Request* request) {
-    if (!running_) return;
-
-    // Extract frame data
-    const Request::BufferMap& buffers = request->buffers();
-    FrameBuffer* buffer = buffers.begin()->second;
-    uint64_t timestamp = buffer->metadata().timestamp;
-
-    // Convert buffer to OpenCV Mat
-    cv::Mat image = convertBufferToMat(buffer, master_config_->at(0));
-
-    // Update auto-exposure based on image brightness
-    updateAutoExposure(image, master_exposure_, "MASTER");
-    
-    // Apply noise reduction if needed (high gain scenarios)
-    if (master_exposure_.apply_noise_reduction) {
-        image = applyNoiseReduction(image, master_exposure_.analogue_gain);
-    }
-
-    // Store pending frame for synchronization
+    // CRITICAL: Check running state with proper synchronization
     {
-        std::lock_guard<std::mutex> lock(frame_mutex_);
-        pending_master_.image = image.clone();
-        pending_master_.timestamp_ns = timestamp;
-        pending_master_.ready = true;
-        
-        tryFrameSync();
+        std::lock_guard<std::mutex> lock(running_mutex_);
+        if (!running_) {
+            return;
+        }
     }
 
-    // Reuse and requeue request with updated exposure controls
-    request->reuse(Request::ReuseBuffers);
-    
-    // Apply updated exposure controls for next frame
-    applyExposureControls(request, master_exposure_);
-    
-    if (running_ && master_camera_->queueRequest(request) < 0) {
-        std::cerr << "[HardwareSync] Failed to requeue master request" << std::endl;
+    try {
+        // Extract frame data with error checking
+        const Request::BufferMap& buffers = request->buffers();
+        if (buffers.empty()) {
+            std::cerr << "[HardwareSync] No buffers in master request" << std::endl;
+            requeueMasterRequest(request);
+            return;
+        }
+        
+        FrameBuffer* buffer = buffers.begin()->second;
+        if (!buffer) {
+            std::cerr << "[HardwareSync] Null buffer in master request" << std::endl;
+            requeueMasterRequest(request);
+            return;
+        }
+        
+        uint64_t timestamp = buffer->metadata().timestamp;
+
+        // Convert buffer to OpenCV Mat with error handling
+        cv::Mat image = convertBufferToMat(buffer, master_config_->at(0));
+        if (image.empty()) {
+            std::cerr << "[HardwareSync] Failed to convert master buffer" << std::endl;
+            requeueMasterRequest(request);
+            return;
+        }
+
+        // Update auto-exposure based on image brightness - DISABLED FOR FPS TESTING  
+        // DISABLED: Auto-exposure calculations cause FPS instability and sync errors
+        // updateAutoExposure(image, master_exposure_, "MASTER");
+        
+        // Apply noise reduction if needed (high gain scenarios)
+        if (master_exposure_.apply_noise_reduction) {
+            image = applyNoiseReduction(image, master_exposure_.analogue_gain);
+        }
+
+        // Store pending frame for synchronization
+        {
+            std::lock_guard<std::mutex> lock(frame_mutex_);
+            pending_master_.image = image.clone();
+            pending_master_.timestamp_ns = timestamp;
+            pending_master_.ready = true;
+            
+            tryFrameSync();
+        }
+
+        // Requeue request with proper error handling
+        requeueMasterRequest(request);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[HardwareSync] Exception in processMasterRequest: " << e.what() << std::endl;
+        requeueMasterRequest(request);
     }
 }
 
 void HardwareSyncCapture::processSlaveRequest(Request* request) {
-    if (!running_) return;
-
-    // Extract frame data
-    const Request::BufferMap& buffers = request->buffers();
-    FrameBuffer* buffer = buffers.begin()->second;
-    uint64_t timestamp = buffer->metadata().timestamp;
-
-    // Convert buffer to OpenCV Mat  
-    cv::Mat image = convertBufferToMat(buffer, slave_config_->at(0));
-
-    // Update auto-exposure based on image brightness
-    updateAutoExposure(image, slave_exposure_, "SLAVE");
-    
-    // Apply noise reduction if needed (high gain scenarios)
-    if (slave_exposure_.apply_noise_reduction) {
-        image = applyNoiseReduction(image, slave_exposure_.analogue_gain);
-    }
-
-    // Store pending frame for synchronization
+    // CRITICAL: Check running state with proper synchronization
     {
-        std::lock_guard<std::mutex> lock(frame_mutex_);
-        pending_slave_.image = image.clone();
-        pending_slave_.timestamp_ns = timestamp;
-        pending_slave_.ready = true;
-
-        tryFrameSync();
+        std::lock_guard<std::mutex> lock(running_mutex_);
+        if (!running_) {
+            return;
+        }
     }
 
-    // Reuse and requeue request with updated exposure controls
-    request->reuse(Request::ReuseBuffers);
-    
-    // Apply updated exposure controls for next frame
-    applyExposureControls(request, slave_exposure_);
-    
-    if (running_ && slave_camera_->queueRequest(request) < 0) {
-        std::cerr << "[HardwareSync] Failed to requeue slave request" << std::endl;
+    try {
+        // Extract frame data with error checking
+        const Request::BufferMap& buffers = request->buffers();
+        if (buffers.empty()) {
+            std::cerr << "[HardwareSync] No buffers in slave request" << std::endl;
+            requeueSlaveRequest(request);
+            return;
+        }
+        
+        FrameBuffer* buffer = buffers.begin()->second;
+        if (!buffer) {
+            std::cerr << "[HardwareSync] Null buffer in slave request" << std::endl;
+            requeueSlaveRequest(request);
+            return;
+        }
+        
+        uint64_t timestamp = buffer->metadata().timestamp;
+
+        // Convert buffer to OpenCV Mat with error handling
+        cv::Mat image = convertBufferToMat(buffer, slave_config_->at(0));
+        if (image.empty()) {
+            std::cerr << "[HardwareSync] Failed to convert slave buffer" << std::endl;
+            requeueSlaveRequest(request);
+            return;
+        }
+
+        // Update auto-exposure based on image brightness - DISABLED FOR FPS TESTING
+        // DISABLED: Auto-exposure calculations cause FPS instability and sync errors  
+        // updateAutoExposure(image, slave_exposure_, "SLAVE");
+        
+        // Apply noise reduction if needed (high gain scenarios)
+        if (slave_exposure_.apply_noise_reduction) {
+            image = applyNoiseReduction(image, slave_exposure_.analogue_gain);
+        }
+
+        // Store pending frame for synchronization
+        {
+            std::lock_guard<std::mutex> lock(frame_mutex_);
+            pending_slave_.image = image.clone();
+            pending_slave_.timestamp_ns = timestamp;
+            pending_slave_.ready = true;
+
+            tryFrameSync();
+        }
+
+        // Requeue request with proper error handling
+        requeueSlaveRequest(request);
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[HardwareSync] Exception in processSlaveRequest: " << e.what() << std::endl;
+        requeueSlaveRequest(request);
     }
 }
 
@@ -461,123 +612,84 @@ void HardwareSyncCapture::tryFrameSync() {
 
 cv::Mat HardwareSyncCapture::convertBufferToMat(FrameBuffer* buffer, 
                                                 const StreamConfiguration& config) {
-    // Map the buffer to access raw data
+    // CRITICAL VALIDATION: Check buffer and configuration
+    if (!buffer || buffer->planes().empty()) {
+        std::cerr << "[HardwareSync] Invalid buffer: null or no planes" << std::endl;
+        return cv::Mat();
+    }
+    
+    // Map the buffer to access YUV420 data
     const FrameBuffer::Plane& plane = buffer->planes()[0];
-    uint8_t* raw_data = static_cast<uint8_t*>(mmap(nullptr, plane.length, 
+    
+    // Get dimensions and validate buffer size
+    const int width = config.size.width;
+    const int height = config.size.height;
+    
+    // CRITICAL FIX: Get the correct stride from StreamConfiguration
+    // The stride (bytes per row) might be larger than width due to memory alignment
+    const int stride = config.stride;
+    
+    // CORRECTED: libcamera provides ONLY Y plane for YUV420 
+    // For 3D scanning, Y plane (luminance) is sufficient for grayscale conversion
+    const size_t expected_min_size = stride * height;
+    
+    if (plane.length < expected_min_size) {
+        std::cerr << "[HardwareSync] Buffer too small: " << plane.length 
+                  << " bytes, expected >= " << expected_min_size << " bytes"
+                  << " (stride=" << stride << ", " << width << "x" << height << ")" << std::endl;
+        return cv::Mat();
+    }
+    
+    uint8_t* yuv_data = static_cast<uint8_t*>(mmap(nullptr, plane.length, 
                                                     PROT_READ, MAP_SHARED, 
                                                     plane.fd.get(), 0));
     
-    if (raw_data == MAP_FAILED) {
+    if (yuv_data == MAP_FAILED) {
         std::cerr << "[HardwareSync] Failed to map buffer: " << strerror(errno) << std::endl;
         return cv::Mat();
     }
 
-    // Get dimensions
-    const int width = config.size.width;
-    const int height = config.size.height;
-    
-    // OPTIMIZED APPROACH: Properly extract Green channel from SBGGR10 packed format
-    // SBGGR10 is packed: 4 pixels in 5 bytes, each pixel is 10-bit
-    // Better green channel extraction = less noise = cleaner images
-    
     cv::Mat result;
     try {
-        // SBGGR10 Bayer pattern (BGGR):
-        //   B G B G ... 
-        //   G R G R ...
-        //   B G B G ...
+        // YUV420 format: Y plane (luminance) + U/V planes (chrominance)  
+        // Y plane is stride*height, U and V planes follow
+        // For grayscale conversion, we only need the Y (luminance) plane
         
-        // Create 16-bit buffer for proper 10-bit handling
-        cv::Mat raw_16bit(height, width, CV_16UC1);
-        
-        // Unpack SBGGR10 packed format (4 pixels in 5 bytes)
-        const int pixels_per_pack = 4;
-        const int bytes_per_pack = 5;
-        const int total_pixels = width * height;
-        
-        for (int i = 0; i < total_pixels / pixels_per_pack; i++) {
-            const uint8_t* pack = raw_data + i * bytes_per_pack;
-            uint16_t* out = raw_16bit.ptr<uint16_t>() + i * pixels_per_pack;
-            
-            // Unpack 4 10-bit pixels from 5 bytes
-            out[0] = ((uint16_t)pack[0] << 2) | (pack[1] >> 6);
-            out[1] = (((uint16_t)(pack[1] & 0x3F)) << 4) | (pack[2] >> 4);
-            out[2] = (((uint16_t)(pack[2] & 0x0F)) << 6) | (pack[3] >> 2);
-            out[3] = (((uint16_t)(pack[3] & 0x03)) << 8) | pack[4];
+        // CRITICAL: Validate stride alignment (should be multiple of 32 or 64 for ARM)
+        if (stride % 32 != 0) {
+            std::cout << "[HardwareSync] WARNING: Stride " << stride 
+                      << " not aligned to 32 bytes, may impact performance" << std::endl;
         }
         
-        // Create output grayscale image
-        cv::Mat gray_result(height, width, CV_8UC1);
+        std::cout << "[HardwareSync] YUV420 conversion: " << width << "x" << height 
+                  << ", stride=" << stride << " bytes/row, buffer=" << plane.length << " bytes" << std::endl;
         
-        // Extract and interpolate green channel with better quality
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                uint16_t pixel_value = 0;
-                
-                // Check if this pixel is Green in BGGR pattern
-                bool is_green = ((y % 2 == 0 && x % 2 == 1) || // Even rows: odd columns
-                                (y % 2 == 1 && x % 2 == 0));   // Odd rows: even columns
-                
-                if (is_green) {
-                    // Direct green pixel
-                    pixel_value = raw_16bit.at<uint16_t>(y, x);
-                } else {
-                    // Interpolate from neighboring green pixels for smoother result
-                    int count = 0;
-                    uint32_t sum = 0;
-                    
-                    // Check all 4 neighbors
-                    if (x > 0 && ((y % 2 == 0 && (x-1) % 2 == 1) || (y % 2 == 1 && (x-1) % 2 == 0))) {
-                        sum += raw_16bit.at<uint16_t>(y, x-1);
-                        count++;
-                    }
-                    if (x < width-1 && ((y % 2 == 0 && (x+1) % 2 == 1) || (y % 2 == 1 && (x+1) % 2 == 0))) {
-                        sum += raw_16bit.at<uint16_t>(y, x+1);
-                        count++;
-                    }
-                    if (y > 0 && ((x % 2 == 0 && (y-1) % 2 == 1) || (x % 2 == 1 && (y-1) % 2 == 0))) {
-                        sum += raw_16bit.at<uint16_t>(y-1, x);
-                        count++;
-                    }
-                    if (y < height-1 && ((x % 2 == 0 && (y+1) % 2 == 1) || (x % 2 == 1 && (y+1) % 2 == 0))) {
-                        sum += raw_16bit.at<uint16_t>(y+1, x);
-                        count++;
-                    }
-                    
-                    pixel_value = (count > 0) ? (sum / count) : 0;
-                }
-                
-                // Convert 10-bit to 8-bit with improved scaling
-                // Use linear scaling with slight boost for indoor lighting
-                float normalized = pixel_value / 1023.0f;  // Normalize to 0-1
-                
-                // Apply adaptive gamma based on brightness level
-                // Lower gamma (0.85) brightens the image for indoor scenes
-                float gamma = 0.85f;  // Brighten for better indoor exposure
-                normalized = std::pow(normalized, gamma);
-                
-                // Add slight brightness boost for dark images
-                normalized = normalized * 1.1f;  // 10% brightness boost
-                normalized = std::min(normalized, 1.0f);  // Clamp to valid range
-                
-                gray_result.at<uint8_t>(y, x) = static_cast<uint8_t>(normalized * 255.0f);
-            }
+        // CRITICAL FIX: Create Mat from Y plane using CORRECT STRIDE
+        // The stride parameter tells OpenCV the actual memory layout
+        cv::Mat y_plane(height, width, CV_8UC1, yuv_data, stride);
+        
+        // Clone to ensure data ownership and proper stride handling
+        // This creates a contiguous copy without stride padding
+        result = y_plane.clone();
+        
+        // VALIDATION: Ensure result is valid
+        if (result.empty() || result.rows != height || result.cols != width) {
+            std::cerr << "[HardwareSync] Conversion produced invalid Mat: " 
+                      << result.rows << "x" << result.cols << std::endl;
+            munmap(yuv_data, plane.length);
+            return cv::Mat();
         }
-        
-        // Skip median blur - it can cause unwanted smoothing
-        // Only apply if really needed based on gain level
-        result = gray_result;  // Direct result without additional filtering
         
     } catch (const std::exception& e) {
-        std::cerr << "[HardwareSync] Green channel extraction failed: " << e.what() << std::endl;
-        munmap(raw_data, plane.length);
+        std::cerr << "[HardwareSync] YUV420 conversion failed: " << e.what() << std::endl;
+        munmap(yuv_data, plane.length);
         return cv::Mat();
     }
     
     // Unmap the buffer
-    munmap(raw_data, plane.length);
+    munmap(yuv_data, plane.length);
     
-    // Return the processed grayscale image
+    // Return the Y plane as grayscale image
     return result;
 }
 
@@ -930,11 +1042,11 @@ void HardwareSyncCapture::updateAutoExposure(const cv::Mat& image,
 bool HardwareSyncCapture::configureAutoExposure() {
     std::lock_guard<std::mutex> lock(exposure_mutex_);
     
-    // Set optimal default parameters for IMX296 sensors
-    // Adjusted for indoor conditions to avoid maxing out exposure
-    master_exposure_.exposure_time_us = 5000;    // 5ms initial exposure
-    master_exposure_.analogue_gain = 1.5f;       // Lower initial gain for cleaner image
-    master_exposure_.target_brightness = 80.0f;   // REDUCED TARGET: 80/255 for indoor lighting
+    // OPTIMIZED parameters for IMX296 sensors in INDUSTRIAL INDOOR environments
+    // CORRECTED: Higher exposure, lower gain for cleaner images
+    master_exposure_.exposure_time_us = 15000;   // 15ms exposure for better light capture
+    master_exposure_.analogue_gain = 1.8f;       // Lower gain to reduce noise
+    master_exposure_.target_brightness = 85.0f;  // Slightly lower target to prevent oversaturation
     master_exposure_.brightness_tolerance = 8.0f; // Tighter tolerance for stability
     
     // PI controller parameters - FASTER convergence
@@ -974,6 +1086,98 @@ bool HardwareSyncCapture::configureAutoExposure() {
     std::cout << "[HardwareSync]   Target brightness: " << master_exposure_.target_brightness << "/255" << std::endl;
     
     return true;
+}
+
+/**
+ * Safe request requeuing with delayed execution to prevent race conditions
+ * CRITICAL: Delay allows libcamera to complete internal cleanup before reuse
+ */
+void HardwareSyncCapture::requeueMasterRequest(libcamera::Request* request) {
+    // CRITICAL FIX: Implement delayed requeuing to prevent frontend timeout
+    // This prevents race conditions in libcamera's request lifecycle
+    std::thread([this, request]() {
+        // Minimal 5μs delay to prevent request lifecycle race conditions
+        std::this_thread::sleep_for(std::chrono::microseconds(5));
+        
+        // Check if still running before requeuing
+        {
+            std::lock_guard<std::mutex> lock(running_mutex_);
+            if (!running_) {
+                return;
+            }
+        }
+        
+        try {
+            // Reuse request with buffers after delay
+            request->reuse(libcamera::Request::ReuseBuffers);
+            
+            // Apply updated exposure controls for next frame
+            {
+                std::lock_guard<std::mutex> lock(exposure_mutex_);
+                applyExposureControls(request, master_exposure_);
+            }
+            
+            // Queue request with error handling
+            int ret = master_camera_->queueRequest(request);
+            if (ret < 0) {
+                std::cerr << "[HardwareSync] Failed to requeue master request: " << ret << std::endl;
+                
+                // Track error but don't crash
+                {
+                    std::lock_guard<std::mutex> lock(stats_mutex_);
+                    stats_.sync_errors++;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Exception requeuing master request: " << e.what() << std::endl;
+        }
+    }).detach();  // Detach to avoid blocking callback thread
+}
+
+/**
+ * Safe request requeuing with delayed execution to prevent race conditions
+ * CRITICAL: Delay allows libcamera to complete internal cleanup before reuse
+ */
+void HardwareSyncCapture::requeueSlaveRequest(libcamera::Request* request) {
+    // CRITICAL FIX: Implement delayed requeuing to prevent frontend timeout
+    // This prevents race conditions in libcamera's request lifecycle
+    std::thread([this, request]() {
+        // Minimal 5μs delay to prevent request lifecycle race conditions
+        std::this_thread::sleep_for(std::chrono::microseconds(5));
+        
+        // Check if still running before requeuing
+        {
+            std::lock_guard<std::mutex> lock(running_mutex_);
+            if (!running_) {
+                return;
+            }
+        }
+        
+        try {
+            // Reuse request with buffers after delay
+            request->reuse(libcamera::Request::ReuseBuffers);
+            
+            // Apply updated exposure controls for next frame
+            {
+                std::lock_guard<std::mutex> lock(exposure_mutex_);
+                applyExposureControls(request, slave_exposure_);
+            }
+            
+            // Queue request with error handling
+            int ret = slave_camera_->queueRequest(request);
+            if (ret < 0) {
+                std::cerr << "[HardwareSync] Failed to requeue slave request: " << ret << std::endl;
+                
+                // Track error but don't crash
+                {
+                    std::lock_guard<std::mutex> lock(stats_mutex_);
+                    stats_.sync_errors++;
+                }
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Exception requeuing slave request: " << e.what() << std::endl;
+        }
+    }).detach();  // Detach to avoid blocking callback thread
 }
 
 } // namespace camera  
