@@ -1,6 +1,6 @@
 #include "unlook/core/config.h"
 #include "unlook/core/exception.h"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include <fstream>
 #include <sstream>
 

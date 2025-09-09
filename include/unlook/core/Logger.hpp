@@ -131,5 +131,43 @@ private:
 #define LOG_ERROR(msg) unlook::core::Logger::getInstance().error(msg, __FILE__, __LINE__)
 #define LOG_CRITICAL(msg) unlook::core::Logger::getInstance().critical(msg, __FILE__, __LINE__)
 
+// Stream-style logging support
+class LogStream {
+public:
+    LogStream(LogLevel level, const std::string& component = "")
+        : level_(level), component_(component) {}
+    
+    ~LogStream() {
+        Logger::getInstance().log(level_, stream_.str(), component_, 0);
+    }
+    
+    template<typename T>
+    LogStream& operator<<(const T& value) {
+        stream_ << value;
+        return *this;
+    }
+
+private:
+    LogLevel level_;
+    std::string component_;
+    std::ostringstream stream_;
+};
+
+// UNLOOK_LOG_* macros for compatibility with existing code
+#define UNLOOK_LOG_DEBUG(component) \
+    unlook::core::LogStream(unlook::core::LogLevel::DEBUG, component)
+
+#define UNLOOK_LOG_INFO(component) \
+    unlook::core::LogStream(unlook::core::LogLevel::INFO, component)
+
+#define UNLOOK_LOG_WARNING(component) \
+    unlook::core::LogStream(unlook::core::LogLevel::WARNING, component)
+
+#define UNLOOK_LOG_ERROR(component) \
+    unlook::core::LogStream(unlook::core::LogLevel::ERROR, component)
+
+#define UNLOOK_LOG_CRITICAL(component) \
+    unlook::core::LogStream(unlook::core::LogLevel::CRITICAL, component)
+
 } // namespace core
 } // namespace unlook

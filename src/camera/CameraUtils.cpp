@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <vector>
 #include <ctime>
 #include <cstring>
 
@@ -27,10 +28,13 @@ bool CameraUtils::bayerToGrayscale(const uint8_t* bayerData,
     // Create output Mat
     output.create(height, width, CV_8UC1);
     
-    if (bayerFormat == "SBGGR10" || bayerFormat == "SBGGR10_CSI2P") {
-        return sbggr10ToGrayscale(bayerData, width, height, output);
+    if (bayerFormat == "YUV420") {
+        // YUV420: Y plane is already grayscale, just copy it
+        cv::Mat y_plane(height, width, CV_8UC1, const_cast<uint8_t*>(bayerData));
+        output = y_plane.clone();
+        return true;
     } else {
-        // Generic Bayer conversion
+        // Generic Bayer conversion (fallback)
         convertBayerToGray_generic(bayerData, output.data, width, height, 10);
         return true;
     }
@@ -58,43 +62,67 @@ void CameraUtils::convertBayerToGray_SBGGR10_optimized(const uint8_t* src,
                                                         uint8_t* dst,
                                                         int width,
                                                         int height) {
-    // SBGGR10 Bayer pattern:
-    // B G B G ...
-    // G R G R ...
-    // B G B G ...
-    // G R G R ...
+    // SBGGR10 packed format: 4 pixels (40 bits) packed in 5 bytes
+    // Proper unpacking is REQUIRED - cannot treat as 8-bit data!
     
-    // Simple demosaicing: average 2x2 blocks
-    for (int y = 0; y < height; y += 2) {
-        for (int x = 0; x < width; x += 2) {
-            // Calculate byte positions for 10-bit packed data
-            // 4 pixels = 5 bytes
-            int pixelGroup = (y * width + x) / 4;
-            int byteOffset = pixelGroup * 5;
-            int pixelInGroup = (y * width + x) % 4;
-            
-            // Extract 10-bit values (simplified - assumes byte-aligned for now)
-            // In production, proper bit unpacking would be needed
-            
-            // For simplicity, treat as 8-bit for initial implementation
-            // Full 10-bit unpacking can be added later
+    const int pixels_per_pack = 4;
+    const int bytes_per_pack = 5;
+    const int total_pixels = width * height;
+    
+    // Temporary buffer for 10-bit unpacked values
+    std::vector<uint16_t> unpacked(total_pixels);
+    
+    // First: Unpack SBGGR10 to 16-bit values
+    for (int i = 0; i < total_pixels / pixels_per_pack; i++) {
+        const uint8_t* pack = src + i * bytes_per_pack;
+        uint16_t* out = unpacked.data() + i * pixels_per_pack;
+        
+        // Unpack 4 10-bit pixels from 5 bytes (working implementation)
+        out[0] = ((uint16_t)pack[0] << 2) | (pack[1] >> 6);
+        out[1] = (((uint16_t)(pack[1] & 0x3F)) << 4) | (pack[2] >> 4);
+        out[2] = (((uint16_t)(pack[2] & 0x0F)) << 6) | (pack[3] >> 2);
+        out[3] = (((uint16_t)(pack[3] & 0x03)) << 8) | pack[4];
+    }
+    
+    // Second: Convert Bayer pattern to grayscale
+    // SBGGR10 Bayer pattern (BGGR):
+    // B G B G ...
+    // G R G R ... 
+    // B G B G ...
+    
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
             int idx = y * width + x;
+            uint16_t pixel_value;
             
-            uint8_t b = src[idx];  // Blue
-            uint8_t g1 = (x + 1 < width) ? src[idx + 1] : src[idx];  // Green 1
-            uint8_t g2 = (y + 1 < height) ? src[idx + width] : src[idx];  // Green 2
-            uint8_t r = ((x + 1 < width) && (y + 1 < height)) ? 
-                        src[idx + width + 1] : src[idx];  // Red
+            // Extract green pixels directly, interpolate others
+            if ((y % 2 == 0 && x % 2 == 1) || (y % 2 == 1 && x % 2 == 0)) {
+                // This is a Green pixel - use directly
+                pixel_value = unpacked[idx];
+            } else {
+                // Non-green pixel - interpolate from surrounding greens
+                uint32_t sum = 0;
+                int count = 0;
+                
+                // Check 4-connected green neighbors
+                if (x > 0 && (y % 2 == 0 && (x-1) % 2 == 1) || (y % 2 == 1 && (x-1) % 2 == 0)) {
+                    sum += unpacked[idx - 1]; count++;
+                }
+                if (x < width-1 && (y % 2 == 0 && (x+1) % 2 == 1) || (y % 2 == 1 && (x+1) % 2 == 0)) {
+                    sum += unpacked[idx + 1]; count++;
+                }
+                if (y > 0 && ((y-1) % 2 == 0 && x % 2 == 1) || ((y-1) % 2 == 1 && x % 2 == 0)) {
+                    sum += unpacked[idx - width]; count++;
+                }
+                if (y < height-1 && ((y+1) % 2 == 0 && x % 2 == 1) || ((y+1) % 2 == 1 && x % 2 == 0)) {
+                    sum += unpacked[idx + width]; count++;
+                }
+                
+                pixel_value = count > 0 ? sum / count : unpacked[idx];
+            }
             
-            // Simple averaging for grayscale
-            uint8_t gray = (uint8_t)((b + g1 + g2 + r) / 4);
-            
-            // Set 2x2 block to same gray value
-            dst[y * width + x] = gray;
-            if (x + 1 < width) dst[y * width + x + 1] = gray;
-            if (y + 1 < height) dst[(y + 1) * width + x] = gray;
-            if ((x + 1 < width) && (y + 1 < height)) 
-                dst[(y + 1) * width + x + 1] = gray;
+            // Convert 10-bit to 8-bit (shift right by 2)
+            dst[idx] = (uint8_t)(pixel_value >> 2);
         }
     }
 }

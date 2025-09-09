@@ -1,5 +1,5 @@
 #include "unlook/camera/camera_system.hpp"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include "unlook/core/exception.h"
 
 #include <libcamera/libcamera.h>
@@ -216,7 +216,7 @@ struct CameraSystem::CameraImpl {
             }
             
             // Generate configuration
-            config = camera->generateConfiguration({libcamera::StreamRole::VideoRecording});
+            config = camera->generateConfiguration({libcamera::StreamRole::Viewfinder});
             if (!config || config->empty()) {
                 UNLOOK_LOG_ERROR("Camera") << "Failed to generate configuration";
                 return false;
@@ -226,7 +226,7 @@ struct CameraSystem::CameraImpl {
             libcamera::StreamConfiguration& stream_config = config->at(0);
             stream_config.size.width = IMX296_WIDTH;
             stream_config.size.height = IMX296_HEIGHT;
-            stream_config.pixelFormat = libcamera::formats::SBGGR10;  // IMX296 native format
+            stream_config.pixelFormat = libcamera::formats::YUV420;  // YUV420 for OpenCV compatibility
             stream_config.bufferCount = 4;  // Use 4 buffers for smooth capture
             
             // Validate configuration
@@ -756,7 +756,7 @@ bool CameraSystem::initialize() {
     
     UNLOOK_LOG_INFO("Camera") << "Camera system initialized successfully";
     UNLOOK_LOG_INFO("Camera") << "Hardware sync: XVS/XHS enabled, <1ms precision target";
-    UNLOOK_LOG_INFO("Camera") << "Resolution: " << IMX296_WIDTH << "x" << IMX296_HEIGHT << " SBGGR10";
+    UNLOOK_LOG_INFO("Camera") << "Resolution: " << IMX296_WIDTH << "x" << IMX296_HEIGHT << " YUV420";
     UNLOOK_LOG_INFO("Camera") << "Baseline: 70.017mm (from calibration)";
     
     return true;

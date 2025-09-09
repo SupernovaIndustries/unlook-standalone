@@ -19,8 +19,8 @@
 #include <chrono>
 #include <thread>
 
-using namespace unlook::camera;
 using namespace unlook::core;
+namespace camera = unlook::camera;
 
 // Global flag for clean shutdown
 std::atomic<bool> shouldExit(false);
@@ -47,7 +47,7 @@ void printUsage(const char* programName) {
 void testSynchronization() {
     std::cout << "\n=== Testing Hardware Synchronization ===" << std::endl;
     
-    auto system = CameraSystem::getInstance();
+    auto system = camera::CameraSystem::getInstance();
     
     // Capture multiple frames and measure sync error
     const int numFrames = 100;
@@ -56,7 +56,7 @@ void testSynchronization() {
     
     std::cout << "Capturing " << numFrames << " frames to measure synchronization..." << std::endl;
     for (int i = 0; i < numFrames; ++i) {
-        StereoFrame frame;
+        camera::StereoFrame frame;
         if (system->captureStereoFrame(frame, 1000)) {
             syncErrors.push_back(frame.syncErrorMs);
             
@@ -90,7 +90,7 @@ void displayLiveFeed() {
     std::cout << "\n=== Live Camera Feed ===" << std::endl;
     std::cout << "Press 'q' to quit, 's' to save images, 'a' to toggle auto-exposure" << std::endl;
     
-    auto system = CameraSystem::getInstance();
+    auto system = camera::CameraSystem::getInstance();
     
     // Set up OpenCV windows
     cv::namedWindow("LEFT Camera", cv::WINDOW_NORMAL);
@@ -98,7 +98,7 @@ void displayLiveFeed() {
     cv::resizeWindow("LEFT Camera", 728, 544);
     cv::resizeWindow("RIGHT Camera", 728, 544);
     
-    system->setFrameCallback([](const StereoFrame& frame) {
+    system->setFrameCallback([](const camera::StereoFrame& frame) {
         // Display frames
         if (!frame.leftImage.empty()) {
             cv::imshow("LEFT Camera", frame.leftImage);
@@ -109,7 +109,7 @@ void displayLiveFeed() {
     });
     
     // FPS counter
-    CameraUtils::FPSCounter fpsCounter(30);
+    camera::CameraUtils::FPSCounter fpsCounter(30);
     int frameCount = 0;
     
     // Start capture
@@ -127,7 +127,7 @@ void displayLiveFeed() {
             break;
         } else if (key == 's') {
             // Save current frames
-            StereoFrame frame;
+            camera::StereoFrame frame;
             if (system->captureStereoFrame(frame)) {
                 cv::imwrite("left_camera.png", frame.leftImage);
                 cv::imwrite("right_camera.png", frame.rightImage);
@@ -188,33 +188,29 @@ int main(int argc, char* argv[]) {
     
     // Setup logging
     if (enableVerbose) {
-        Logger::getInstance().setLogLevel(LogLevel::DEBUG);
+        Logger::getInstance().setLevel(LogLevel::DEBUG);
     } else {
-        Logger::getInstance().setLogLevel(LogLevel::INFO);
+        Logger::getInstance().setLevel(LogLevel::INFO);
     }
     
     // Initialize logger
-    Logger::getInstance().initialize("camera_test.log");
+    Logger::getInstance().initialize(LogLevel::INFO, true, true, "camera_test.log");
     
     std::cout << "=======================" << std::endl;
     std::cout << " Unlook Camera Test" << std::endl;
     std::cout << "=======================" << std::endl;
     
     // Load configuration
-    Configuration config;
+    // Configuration loading removed - using direct CameraConfig instead
     if (!configFile.empty()) {
-        if (!config.loadFromFile(configFile)) {
-            std::cerr << "Failed to load configuration from " << configFile << std::endl;
-            return 1;
-        }
-        std::cout << "Loaded configuration from " << configFile << std::endl;
+        std::cout << "Note: Configuration file loading not yet implemented" << std::endl;
     }
     
     // Get camera system instance
-    auto system = CameraSystem::getInstance();
+    auto system = camera::CameraSystem::getInstance();
     
     // Setup camera configuration
-    CameraConfig cameraConfig;
+    camera::CameraConfig cameraConfig;
     cameraConfig.width = 1456;
     cameraConfig.height = 1088;
     cameraConfig.targetFps = targetFps;
@@ -240,7 +236,7 @@ int main(int argc, char* argv[]) {
     
     // Print camera status
     std::cout << "\n=== Camera System Status ===" << std::endl;
-    CameraStatus status = system->getStatus();
+    camera::CameraStatus status = system->getStatus();
     std::cout << "  Left camera ready:  " << (status.leftCameraReady ? "YES" : "NO") << std::endl;
     std::cout << "  Right camera ready: " << (status.rightCameraReady ? "YES" : "NO") << std::endl;
     std::cout << "  Synchronized:       " << (status.isSynchronized ? "YES" : "NO") << std::endl;
@@ -257,7 +253,7 @@ int main(int argc, char* argv[]) {
     // If no specific test requested, capture a single frame pair
     if (!testSync && !displayFeed) {
         std::cout << "\nCapturing single stereo frame..." << std::endl;
-        StereoFrame frame;
+        camera::StereoFrame frame;
         if (system->captureStereoFrame(frame)) {
             std::cout << "✓ Frame captured successfully" << std::endl;
             std::cout << "  Left timestamp:  " << frame.leftTimestampNs << " ns" << std::endl;

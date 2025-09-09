@@ -3,7 +3,7 @@
 #include "unlook/api/depth_processor.h"
 #include "unlook/api/calibration_manager.h"
 #include "unlook/core/exception.h"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include "unlook/core/config.h"
 #include <filesystem>
 #include <fstream>

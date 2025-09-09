@@ -62,8 +62,8 @@ public:
         CameraConfig() 
             : width(1456)
             , height(1088)
-            , format(libcamera::formats::SBGGR10)
-            , buffer_count(4) {}
+            , format(libcamera::formats::YUV420)
+            , buffer_count(2) {}  // 2 buffers to prevent starvation
     };
 
     HardwareSyncCapture();
@@ -137,6 +137,7 @@ private:
     // Synchronization state
     std::atomic<bool> running_{false};
     std::atomic<bool> initialized_{false};
+    std::mutex running_mutex_;  // Protects running_ state changes
     
     // Frame callback and synchronization
     FrameCallback frame_callback_;
@@ -223,6 +224,10 @@ private:
     // NEON-optimized image processing methods
     void unpackSBGGR10_NEON(const uint8_t* src, uint16_t* dst, int width, int height);
     cv::Mat fastDemosaicNEON(const cv::Mat& bayer, int pattern);
+    
+    // Safe request requeuing with error handling
+    void requeueMasterRequest(libcamera::Request* request);
+    void requeueSlaveRequest(libcamera::Request* request);
 };
 
 } // namespace camera

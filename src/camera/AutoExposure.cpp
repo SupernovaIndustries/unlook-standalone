@@ -1,5 +1,5 @@
 #include <unlook/camera/AutoExposure.hpp>
-#include <unlook/core/logger.h>
+#include <unlook/core/Logger.hpp>
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <numeric>

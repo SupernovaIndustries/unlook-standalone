@@ -93,19 +93,19 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/calibration_validation_example.cpp")
     list(APPEND EXAMPLE_TARGETS calibration_validation_example)
 endif()
 
-# C API example
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c_api_example.c")
-    add_executable(c_api_example
-        c_api_example.c
-    )
-    target_include_directories(c_api_example PRIVATE
-        ${CMAKE_SOURCE_DIR}/src
-    )
-    target_link_libraries(c_api_example PRIVATE
-        unlook
-    )
-    list(APPEND EXAMPLE_TARGETS c_api_example)
-endif()
+# C API example (temporarily disabled - requires C API implementation)
+# if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c_api_example.c")
+#     add_executable(c_api_example
+#         c_api_example.c
+#     )
+#     target_include_directories(c_api_example PRIVATE
+#         ${CMAKE_SOURCE_DIR}/src
+#     )
+#     target_link_libraries(c_api_example PRIVATE
+#         unlook
+#     )
+#     list(APPEND EXAMPLE_TARGETS c_api_example)
+# endif()
 
 # Install examples (only if they were built)
 if(EXAMPLE_TARGETS)

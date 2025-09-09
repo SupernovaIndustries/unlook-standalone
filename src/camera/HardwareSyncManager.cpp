@@ -1,5 +1,5 @@
 #include <unlook/camera/HardwareSyncManager.hpp>
-#include <unlook/core/logger.h>
+#include <unlook/core/Logger.hpp>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>

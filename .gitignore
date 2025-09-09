@@ -78,10 +78,11 @@ calibration/temp/
 calibration/working/
 calibration/*.backup
 
-# Third-party build artifacts (keep source)
-third-party/*/build/
-third-party/*/build-*/
-third-party/*/.build/
+# Third-party dependencies (entire directory)
+third-party/
+
+# Keep only specific third-party artifacts if needed
+!third-party/.gitkeep
 
 # System files
 .DS_Store

@@ -14,7 +14,7 @@
 
 // Core types and utilities
 #include "unlook/core/types.hpp"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include "unlook/core/config.h"
 #include "unlook/core/exception.h"
 

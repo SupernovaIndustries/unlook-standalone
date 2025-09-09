@@ -1,5 +1,5 @@
 #include <unlook/camera/LibcameraSyncDevice.hpp>
-#include <unlook/core/logger.h>
+#include <unlook/core/Logger.hpp>
 #include <thread>
 #include <libcamera/control_ids.h>
 #include <libcamera/property_ids.h>

@@ -1,6 +1,6 @@
 #include "unlook/api/camera_system.h"
 #include "unlook/core/exception.h"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include "unlook/core/config.h"
 #include <thread>
 #include <chrono>

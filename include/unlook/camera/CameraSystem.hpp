@@ -10,6 +10,12 @@
 #include <opencv2/core.hpp>
 
 namespace unlook {
+
+// Forward declarations for real-time pipeline
+namespace realtime {
+    class RealtimePipeline;
+}
+
 namespace camera {
 
 // Forward declarations
@@ -250,6 +256,9 @@ private:
     // Member variables
     CameraConfig config_;
     CameraStatus status_;
+    
+    // Real-time processing pipeline for high performance
+    // std::unique_ptr<realtime::RealtimePipeline> realtime_pipeline_;  // Temporarily disabled
     
     // Hardware-synchronized capture system
     std::unique_ptr<HardwareSyncCapture> hardware_sync_capture_;

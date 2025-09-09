@@ -3,7 +3,7 @@
 #include <unlook/camera/HardwareSyncManager.hpp>
 #include <unlook/camera/AutoExposure.hpp>
 #include <unlook/camera/CameraUtils.hpp>
-#include <unlook/core/logger.h>
+#include <unlook/core/Logger.hpp>
 #include <iostream>
 #include <chrono>
 #include <thread>

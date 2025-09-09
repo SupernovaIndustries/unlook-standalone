@@ -91,7 +91,7 @@ bool CameraDevice::initialize() {
     
     // Configure stream for IMX296 resolution
     StreamConfiguration &streamConfig = config_->at(0);
-    streamConfig.pixelFormat = formats::SBGGR10;  // IMX296 native format
+    streamConfig.pixelFormat = formats::YUV420;  // YUV420 for OpenCV compatibility
     streamConfig.size.width = 1456;
     streamConfig.size.height = 1088;
     streamConfig.bufferCount = 4;  // Use 4 buffers for smooth streaming

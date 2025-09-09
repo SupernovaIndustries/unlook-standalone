@@ -1,7 +1,7 @@
 #pragma once
 
 #include "unlook/core/types.hpp"
-#include "unlook/core/logger.h"
+#include "unlook/core/Logger.hpp"
 #include "unlook/core/config.h"
 #include <memory>
 #include <string>

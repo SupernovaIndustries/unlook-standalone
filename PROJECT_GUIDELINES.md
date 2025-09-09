@@ -60,9 +60,10 @@ This document contains critical development standards, architecture decisions, a
 // FIXED camera mapping
 Camera 1 (-c 1) = /base/soc/i2c0mux/i2c@1/imx296@1a = LEFT/MASTER
 Camera 0 (-c 2) = /base/soc/i2c0mux/i2c@0/imx296@1a = RIGHT/SLAVE
-Resolution: 1456x1088 SBGGR10 (calibration resolution)
+Resolution: 1456x1088 YUV420 (correct format for stride handling)
 Baseline: 70.017mm (from calib_boofcv_test3.yaml)
 Hardware Sync: XVS/XHS enabled, MAS pin configured
+Timeout Config: timeout.yaml MUST be exported before CameraManager
 ```
 
 ### Hardware Synchronization

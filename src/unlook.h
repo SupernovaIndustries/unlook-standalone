@@ -31,7 +31,7 @@
 #include <opencv2/imgproc.hpp>
 
 // Core modules
-#include "core/logger.h"
+#include "core/Logger.hpp"
 #include "core/config.h"
 #include "core/exception.h"
 #include "core/timer.h"

@@ -36,6 +36,7 @@ set(UNLOOK_COMPONENT_SOURCES
     camera/HardwareSyncCapture.cpp
     # Real-time processing components
     realtime/BayerNEON.cpp
+    # realtime/RealtimePipeline.cpp  # Temporarily disabled for integration testing
 )
 
 # Combine all sources

@@ -74,9 +74,9 @@ find_package(PkgConfig REQUIRED)
 # OpenCV - essential for image processing
 if(USE_SYSTEM_OPENCV)
     find_package(OpenCV 4.0 REQUIRED 
-        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo)
+        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo highgui)
     message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo")
+    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo highgui")
 else()
     # Add custom OpenCV build here if needed
     message(FATAL_ERROR "Custom OpenCV build not implemented - use system installation")
@@ -292,6 +292,9 @@ endif()
 
 # TGZ archive configuration
 set(CPACK_ARCHIVE_COMPONENT_INSTALL ON)
+
+# Enable CPack
+include(CPack)
 
 # Component-based packaging
 cpack_add_component(applications
