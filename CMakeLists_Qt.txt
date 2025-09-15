@@ -1,0 +1,118 @@
+# Qt Design Studio Compatible CMake Project for Unlook Scanner GUI
+cmake_minimum_required(VERSION 3.16)
+
+project(UnlookScannerGUI 
+    VERSION 1.0.0
+    DESCRIPTION "Unlook 3D Scanner GUI - Qt Design Studio Compatible"
+    LANGUAGES CXX)
+
+# Qt Design Studio compatibility
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Find Qt5 components
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui OpenGL UiTools Designer)
+
+# Enable Qt5 tools
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
+# Set UIC search paths for .ui files
+set(CMAKE_AUTOUIC_SEARCH_PATHS src/gui/ui)
+
+# UI files for Qt Design Studio
+set(UI_FILES
+    src/gui/ui/main_window.ui
+    src/gui/ui/camera_preview_widget.ui
+    src/gui/ui/depth_test_widget.ui
+    src/gui/ui/options_widget.ui
+)
+
+# Source files
+set(SOURCES
+    src/main.cpp
+    src/gui/main_window.cpp
+    src/gui/camera_preview_widget.cpp
+    src/gui/depth_test_widget.cpp
+    src/gui/options_widget.cpp
+    src/gui/widgets/parameter_slider.cpp
+    src/gui/widgets/status_display.cpp
+    src/gui/widgets/touch_button.cpp
+    src/gui/styles/supernova_style.cpp
+    src/gui/styles/display_metrics.cpp
+)
+
+# Header files
+set(HEADERS
+    include/unlook/gui/main_window.hpp
+    include/unlook/gui/camera_preview_widget.hpp
+    include/unlook/gui/depth_test_widget.hpp
+    include/unlook/gui/options_widget.hpp
+    include/unlook/gui/widgets/parameter_slider.hpp
+    include/unlook/gui/widgets/status_display.hpp
+    include/unlook/gui/widgets/touch_button.hpp
+    include/unlook/gui/styles/display_metrics.hpp
+    include/unlook/gui/styles/supernova_style.hpp
+)
+
+# Resources
+set(RESOURCES
+    src/gui/resources/icons.qrc
+    src/gui/resources/styles.qrc
+)
+
+# Create executable
+add_executable(unlook_scanner_gui
+    ${SOURCES}
+    ${HEADERS}
+    ${UI_FILES}
+    ${RESOURCES}
+)
+
+# Include directories
+target_include_directories(unlook_scanner_gui PRIVATE
+    include
+    include/unlook
+    include/unlook/gui
+    src
+    src/gui
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+
+# Link Qt5 libraries
+target_link_libraries(unlook_scanner_gui PRIVATE
+    Qt5::Core
+    Qt5::Widgets
+    Qt5::Gui
+    Qt5::OpenGL
+    Qt5::UiTools
+    Qt5::Designer
+)
+
+# Compiler definitions
+target_compile_definitions(unlook_scanner_gui PRIVATE
+    QT_DEPRECATED_WARNINGS
+)
+
+# Set executable properties for Qt Design Studio
+set_target_properties(unlook_scanner_gui PROPERTIES
+    WIN32_EXECUTABLE TRUE
+    MACOSX_BUNDLE TRUE
+)
+
+# Create source groups for better IDE organization
+source_group("UI Files" FILES ${UI_FILES})
+source_group("Resources" FILES ${RESOURCES})
+source_group("Headers" FILES ${HEADERS})
+source_group("Sources" FILES ${SOURCES})
+
+# Qt Design Studio project metadata
+set_property(TARGET unlook_scanner_gui PROPERTY 
+    QT_QMAKE_EXECUTABLE ${Qt5_QMAKE_EXECUTABLE})
+
+# Install targets
+install(TARGETS unlook_scanner_gui
+    RUNTIME DESTINATION bin
+    BUNDLE DESTINATION .
+)

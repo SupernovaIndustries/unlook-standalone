@@ -152,7 +152,8 @@ public:
     bool processWithConfidence(const cv::Mat& leftImage,
                               const cv::Mat& rightImage,
                               cv::Mat& depthMap,
-                              cv::Mat& confidenceMap);
+                              cv::Mat& confidenceMap,
+                              cv::Mat* disparityMap = nullptr);
     
     /**
      * @brief Generate point cloud from depth map
@@ -281,6 +282,13 @@ public:
 private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
+    
+    /**
+     * @brief Create LIDAR-like continuous depth map by filling holes and smoothing
+     * @param inputDepth Input depth map with potential holes
+     * @param outputDepth Output continuous depth map
+     */
+    void createLidarLikeDepthMap(const cv::Mat& inputDepth, cv::Mat& outputDepth) const;
     
     // Disable copy
     DepthProcessor(const DepthProcessor&) = delete;

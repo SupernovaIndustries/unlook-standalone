@@ -11,6 +11,11 @@
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 
+// Forward declarations
+QT_BEGIN_NAMESPACE
+namespace Ui { class OptionsWidget; }
+QT_END_NAMESPACE
+
 namespace unlook {
 namespace gui {
 
@@ -80,6 +85,14 @@ private:
     void initializeUI();
     
     /**
+     * @brief Connect UI signals to slots
+     */
+    void connectSignals();
+    
+    // UI Components  
+    Ui::OptionsWidget *ui;
+    
+    /**
      * @brief Create system status panel
      */
     QWidget* createSystemStatusPanel();
@@ -129,12 +142,8 @@ private:
     QLabel* camera_info_label_;
     QLabel* version_info_label_;
     
-    // Action buttons
-    widgets::TouchButton* refresh_button_;
-    widgets::TouchButton* calibration_validation_button_;
-    widgets::TouchButton* advanced_settings_button_;
-    widgets::TouchButton* reset_defaults_button_;
-    widgets::TouchButton* about_button_;
+    // UI widgets accessed via ui-> (defined in .ui file)
+    // Removed duplicates: all TouchButton members
 };
 
 } // namespace gui

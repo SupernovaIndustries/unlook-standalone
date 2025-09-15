@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+### Essential Commands
+```bash
+# Build the project
+./build.sh
+
+# Run the GUI with proper library paths
+LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./build/src/gui/unlook_scanner
+
+# Run hardware tests
+./build/test_hardware_sync_new
+
+# Validate build system
+./validate_build_system.sh
+
+# Cross-compile for Raspberry Pi CM5
+./build.sh --cross rpi5 -j 4
+```
+
+### Key Executables (after build)
+- `build/src/gui/unlook_scanner` - Main GUI application
+- `build/examples/camera_example` - Basic camera capture
+- `build/test_hardware_sync_new` - Hardware sync validation
+
 ## Project Overview
 
 **Unlook** is a professional modular opensource 3D scanner with target precision **0.005mm**, designed for industrial, educational and professional applications. The system combines stereovision, structured light VCSEL, and FPGA acceleration to achieve industrial-level performance at accessible costs.
@@ -75,8 +100,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### System Dependencies Installation
 ```bash
-# Install all dependencies using build script
-./build.sh --install-deps
+# Install all dependencies using build script (if supported)
+./build.sh --deps
+
+# Manual dependency installation
+sudo apt update
+sudo apt install build-essential cmake qt5-default libopencv-dev libopencv-contrib-dev ninja-build
 ```
 
 ### Build System (Primary Method)
@@ -84,13 +113,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Build with default settings (Release, with examples and GUI)
 ./build.sh
 
-# Build with specific options
-./build.sh -t Debug --tests --clean    # Debug build with tests, clean first
-./build.sh --validate                  # Validate dependencies only
-./build.sh --package                   # Create installation package
+# Build with specific options  
+./build.sh -t Debug --clean         # Debug build with clean first
+./build.sh --validate              # Validate build system only
+./build.sh --package               # Create installation package
 
 # Cross-compile for Raspberry Pi
-./build.sh -x rpi4 -j 4
+./build.sh --cross rpi4 -j 4
+./build.sh --cross rpi5 -j 4       # For CM5 with Cortex-A76 optimizations
 ```
 
 ### Manual Build (Alternative)
@@ -100,36 +130,41 @@ mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
 
-# Key executables will be in build/bin/:
-# - unlook_calibration_gui      # Main calibration GUI
-# - stereo_camera_example       # Basic stereo example
-# - test_boofcv_calibration     # BoofCV calibration test
+# Key executables will be in build/:
+# - src/gui/unlook_scanner      # Main scanner GUI
+# - examples/camera_example     # Basic camera example
+# - test_hardware_sync_new      # Hardware sync validation
 ```
 
 ### Running Applications
 ```bash
-# Main calibration GUI
-./build/bin/unlook_calibration_gui
+# Set up library path for third-party libcamera-sync (REQUIRED)
+export LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH
 
-# Stereo camera example
-./build/bin/stereo_camera_example
+# Main scanner GUI (correct executable name)
+./build/src/gui/unlook_scanner
 
-# Camera hardware tests (using libcamera-sync)
-./test_camera_access
-libcamera-hello --list-cameras  # Uses custom libcamera-sync system installation
+# Example applications
+./build/examples/camera_example
+./build/examples/camera_test
+
+# Hardware sync validation
+./build/test_hardware_sync_new
+
+# Alternative: Run with LD_LIBRARY_PATH inline
+LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./build/src/gui/unlook_scanner
 ```
 
 ### Testing and Validation
 ```bash
-# Hardware validation tests
-./test_cameras_basic.sh
-./configure_camera_sync.sh
+# Build system validation
+./validate_build_system.sh
 
-# Depth processing tests
-./test_depth_gui.sh
+# Hardware sync validation
+./test_synchronized_capture.sh
 
-# Comprehensive validation
-./FINAL_VERIFICATION_TEST.sh
+# Performance testing
+./build_and_test_performance.sh
 ```
 
 ## Code Architecture and Structure
@@ -276,28 +311,35 @@ Hardware sync: XVS/XHS enabled, MAS pin configured (needs testing)
 
 ## Testing and Development Workflow
 
+### Test Configuration
+Testing is configured in CMakeLists.txt with BUILD_TESTS option:
+```bash
+# Enable tests during build
+cmake .. -DBUILD_TESTS=ON
+make -j$(nproc)
+```
+
 ### Test Files in Repository
 The repository contains several test files for hardware validation:
-- `test_camera_sync.cpp` - Camera synchronization testing
-- `test_hardware_sync_new.cpp` - Hardware sync validation
-- `test_sbggr10_conversion.cpp` - SBGGR10 format handling
-- `test_sync_precision.cpp` - Precision timing validation
+- `test_hardware_sync_new.cpp` - Hardware synchronization validation (built by default)
+- Tests in `tests/` directory (when BUILD_TESTS=ON)
+- Examples that serve as integration tests in `examples/`
 
 ### Development Workflow
 ```bash
 # 1. Setup and validation
-./validate_build_system.sh    # Verify system readiness
-./build.sh --deps             # Build dependencies if needed
+./validate_build_system.sh     # Verify system readiness
+./build.sh --deps              # Build dependencies if needed
 
 # 2. Development build
-./build.sh -t Debug --clean   # Debug build with clean
+./build.sh -t Debug --clean    # Debug build with clean
 
-# 3. Testing
-./build.sh --tests            # Build with test suite
-make test                     # Run all tests
+# 3. Testing (Note: tests in CMakeLists.txt build with BUILD_TESTS=ON)
+cd build && make               # Build includes tests
+ctest                          # Run CTest if configured
 
-# 4. Hardware validation (requires actual hardware)
-./build/bin/test_camera_sync  # Camera sync testing
+# 4. Hardware validation (requires actual hardware)  
+./build/test_hardware_sync_new  # Hardware sync testing
 ./test_synchronized_capture.sh # Full sync validation
 ```
 
@@ -313,15 +355,19 @@ make test                     # Run all tests
 Camera 1 (-c 1) = /base/soc/i2c0mux/i2c@1/imx296@1a = LEFT/MASTER
 Camera 0 (-c 2) = /base/soc/i2c0mux/i2c@0/imx296@1a = RIGHT/SLAVE  
 Resolution: 1456x1088 SBGGR10
-Baseline: 70.017mm (from calib_boofcv_test3.yaml)
-Hardware Sync: XVS/XHS enabled, MAS pin configured (needs testing)
+Baseline: 70.017mm (from calibration/calib_boofcv_test3.yaml)
+Hardware Sync: XVS/XHS enabled, MAS pin configured
+
+// LIBRARY PATHS (CRITICAL FOR RUNTIME)
+LD_LIBRARY_PATH must include:
+- build/src (for main libraries)
+- third-party/libcamera-sync-fix/build/src/libcamera (libcamera.so.0.5.1)
+- third-party/libcamera-sync-fix/build/src/libcamera/base (libcamera-base.so.0.5.1)
 
 // AS1170 LED SYSTEM (TO BE IMPLEMENTED)
 I2C Bus: 4, Address: 0x30, Strobe GPIO: 27
 LED1 (VCSEL): For structured light projection
 LED2 (Flood): For stereo calibration illumination
-Timing: Synchronized with camera capture
-Safety: Temperature monitoring, emergency shutdown required
 ```
 
 ## AS1170 LED System Integration (TO BE IMPLEMENTED)
@@ -352,11 +398,11 @@ Safety: Temperature monitoring, emergency shutdown required
 ### Building and Running
 ```bash
 # Quick development cycle
-./build.sh && ./build/bin/unlook_scanner
+./build.sh && ./build/src/gui/unlook_scanner
 
 # Debug with specific component
 ./build.sh -t Debug --verbose
-gdb ./build/bin/unlook_scanner
+gdb ./build/src/gui/unlook_scanner
 
 # Cross-compile for deployment
 ./build.sh --cross rpi4 --package
@@ -378,11 +424,11 @@ calibManager->loadCalibration("calibration/calib_boofcv_test3.yaml");
 # Camera detection
 libcamera-hello --list-cameras
 
-# Manual camera test
-./test_camera_sync
+# Hardware sync test
+./build/test_hardware_sync_new
 
-# Timing precision validation
-./test_sync_precision
+# Timing precision validation  
+./build/examples/camera_test
 
 # Hardware sync validation  
 ./test_synchronized_capture.sh
@@ -413,3 +459,4 @@ libcamera-hello --list-cameras
 - Hardware tests require actual IMX296 cameras
 - Performance tests validate real-time requirements
 - Memory tests use AddressSanitizer and Valgrind
+- tu buildi, io testo con LD_LIBRARY_PATH=src:../third-party/libcamera-sync-fix/build/src/libcamera:../third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./src/gui/unlook_scanner , non cercare di runnare tu il test gui

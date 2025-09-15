@@ -66,12 +66,13 @@ Hardware Sync: XVS/XHS enabled, MAS pin configured
 Timeout Config: timeout.yaml MUST be exported before CameraManager
 ```
 
-### Hardware Synchronization
-- **XVS** (External Vertical Sync): GPIO 17
-- **XHS** (External Horizontal Sync): GPIO 27  
-- **MAS** (Master/Slave): GPIO 22
+### Camera Hardware Synchronization
+- **XVS** (External Vertical Sync): Physical pin connection between cameras
+- **XHS** (External Horizontal Sync): Physical pin connection between cameras
+- **MAS** (Master/Slave): Physical pin connection between cameras (soldered)
 - **Target Precision**: <1ms synchronization accuracy
-- **Fallback**: Software synchronization if hardware fails
+- **Implementation**: Hardware sync via physical connections, not Pi GPIO
+- **Fallback**: Software synchronization if hardware sync fails
 
 ### LED Controller System (TO BE IMPLEMENTED)
 ```cpp
@@ -205,6 +206,14 @@ Main Menu
 - **TouchButton**: Touch-friendly with animations
 - **ParameterSlider**: High-resolution parameter control
 - **StatusDisplay**: Color-coded status with progress
+
+### Qt Designer Integration (MANDATORY)
+- **ALL GUI widgets MUST use .ui files** for visual layout
+- **setupUi() MUST be called** to load .ui file layouts
+- **C++ code connects to existing widgets** via findChild<>() or object names
+- **NO manual layout creation** that conflicts with .ui files
+- **Qt Design Studio compatibility** maintained for visual editing
+- **.ui files stored in** `src/gui/ui/` directory
 
 ---
 

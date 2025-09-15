@@ -1,5 +1,6 @@
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
+#include "ui_options_widget.h"
 #include <QGridLayout>
 #include <QMessageBox>
 #include <QApplication>
@@ -12,12 +13,30 @@ namespace gui {
 
 OptionsWidget::OptionsWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
+    , ui(new Ui::OptionsWidget)
     , camera_system_(camera_system)
 {
+    // Setup UI from .ui file
+    ui->setupUi(this);
+    
+    // Connect signals
+    connectSignals();
+    
     initializeUI();
 }
 
-OptionsWidget::~OptionsWidget() = default;
+OptionsWidget::~OptionsWidget() {
+    delete ui;
+}
+
+void OptionsWidget::connectSignals() {
+    // TODO_UI: Add missing methods and buttons to .ui file
+    // connect(ui->calibration_validation_button, &QPushButton::clicked, this, &OptionsWidget::performCalibrationValidation);
+    connect(ui->advanced_camera_button, &QPushButton::clicked, this, &OptionsWidget::openAdvancedCameraSettings);
+    connect(ui->reset_defaults_button, &QPushButton::clicked, this, &OptionsWidget::resetToDefaults);
+    // connect(ui->export_logs_button, &QPushButton::clicked, this, &OptionsWidget::exportSystemLogs);
+    // connect(ui->system_diagnostics_button, &QPushButton::clicked, this, &OptionsWidget::runSystemDiagnostics);
+}
 
 void OptionsWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
@@ -247,30 +266,30 @@ QWidget* OptionsWidget::createActionButtonsPanel() {
     QGridLayout* button_layout = new QGridLayout();
     button_layout->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
     
-    // Refresh button
-    refresh_button_ = new TouchButton("REFRESH STATUS", TouchButton::ButtonType::PRIMARY);
-    connect(refresh_button_, &TouchButton::clicked, this, &OptionsWidget::refreshSystemStatus);
-    button_layout->addWidget(refresh_button_, 0, 0);
+    // TODO_UI: Add action buttons to .ui file
+    // refresh_button_ = new TouchButton("REFRESH STATUS", TouchButton::ButtonType::PRIMARY);
+    // connect(refresh_button_, &TouchButton::clicked, this, &OptionsWidget::refreshSystemStatus);
+    // button_layout->addWidget(refresh_button_, 0, 0);
     
-    // Calibration validation button
-    calibration_validation_button_ = new TouchButton("CALIBRATION VALIDATION", TouchButton::ButtonType::SECONDARY);
-    connect(calibration_validation_button_, &TouchButton::clicked, this, &OptionsWidget::openCalibrationValidation);
-    button_layout->addWidget(calibration_validation_button_, 0, 1);
+    // // Calibration validation button
+    // calibration_validation_button_ = new TouchButton("CALIBRATION VALIDATION", TouchButton::ButtonType::SECONDARY);
+    // connect(calibration_validation_button_, &TouchButton::clicked, this, &OptionsWidget::openCalibrationValidation);
+    // button_layout->addWidget(calibration_validation_button_, 0, 1);
     
-    // Advanced settings button
-    advanced_settings_button_ = new TouchButton("ADVANCED SETTINGS", TouchButton::ButtonType::SECONDARY);
-    connect(advanced_settings_button_, &TouchButton::clicked, this, &OptionsWidget::openAdvancedCameraSettings);
-    button_layout->addWidget(advanced_settings_button_, 1, 0);
+    // // Advanced settings button
+    // advanced_settings_button_ = new TouchButton("ADVANCED SETTINGS", TouchButton::ButtonType::SECONDARY);
+    // connect(advanced_settings_button_, &TouchButton::clicked, this, &OptionsWidget::openAdvancedCameraSettings);
+    // button_layout->addWidget(advanced_settings_button_, 1, 0);
     
-    // Reset defaults button
-    reset_defaults_button_ = new TouchButton("RESET TO DEFAULTS", TouchButton::ButtonType::WARNING);
-    connect(reset_defaults_button_, &TouchButton::clicked, this, &OptionsWidget::resetToDefaults);
-    button_layout->addWidget(reset_defaults_button_, 1, 1);
+    // // Reset defaults button
+    // reset_defaults_button_ = new TouchButton("RESET TO DEFAULTS", TouchButton::ButtonType::WARNING);
+    // connect(reset_defaults_button_, &TouchButton::clicked, this, &OptionsWidget::resetToDefaults);
+    // button_layout->addWidget(reset_defaults_button_, 1, 1);
     
-    // About button
-    about_button_ = new TouchButton("ABOUT", TouchButton::ButtonType::SUCCESS);
-    connect(about_button_, &TouchButton::clicked, this, &OptionsWidget::showAboutDialog);
-    button_layout->addWidget(about_button_, 2, 0, 1, 2); // Span 2 columns
+    // // About button
+    // about_button_ = new TouchButton("ABOUT", TouchButton::ButtonType::SUCCESS);
+    // connect(about_button_, &TouchButton::clicked, this, &OptionsWidget::showAboutDialog);
+    // button_layout->addWidget(about_button_, 2, 0, 1, 2); // Span 2 columns
     
     layout->addLayout(button_layout);
     

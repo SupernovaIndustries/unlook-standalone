@@ -1,12 +1,19 @@
-# Stereo library
-add_library(unlook_stereo STATIC
+# Base stereo library sources
+set(STEREO_SOURCES
     DepthProcessor.cpp
     StereoMatcher.cpp
     SGBMStereoMatcher.cpp
-    BoofCVStereoMatcher.cpp
     DisparityFilter.cpp
     ParameterManager.cpp
 )
+
+# Add BoofCV sources only if enabled
+if(BOOFCV_ENABLED)
+    list(APPEND STEREO_SOURCES BoofCVStereoMatcher.cpp)
+endif()
+
+# Stereo library
+add_library(unlook_stereo STATIC ${STEREO_SOURCES})
 
 # Set target properties
 set_target_properties(unlook_stereo PROPERTIES
@@ -32,6 +39,15 @@ target_link_libraries(unlook_stereo
         ${OpenCV_LIBS}
         unlook_calibration
 )
+
+# Add BoofCV/JNI support if enabled
+if(BOOFCV_ENABLED)
+    target_link_libraries(unlook_stereo PRIVATE ${JNI_LIBRARIES})
+    target_compile_definitions(unlook_stereo PRIVATE 
+        HAVE_BOOFCV=1
+        BOOFCV_JAR_PATH="${BOOFCV_JAR_PATH}"
+    )
+endif()
 
 # Installation and export
 install(TARGETS unlook_stereo

@@ -13,6 +13,10 @@
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 
+QT_BEGIN_NAMESPACE
+namespace Ui { class UnlookMainWindow; }
+QT_END_NAMESPACE
+
 namespace unlook {
 namespace gui {
 
@@ -118,24 +122,9 @@ private slots:
 
 private:
     /**
-     * @brief Initialize the user interface
+     * @brief Initialize additional UI components not in .ui file
      */
-    void initializeUI();
-    
-    /**
-     * @brief Create main menu screen
-     */
-    QWidget* createMainMenuScreen();
-    
-    /**
-     * @brief Create title bar with branding
-     */
-    QWidget* createTitleBar();
-    
-    /**
-     * @brief Create status bar
-     */
-    QWidget* createStatusBar();
+    void initializeAdditionalComponents();
     
     /**
      * @brief Apply Supernova styling to all components
@@ -163,30 +152,14 @@ private:
     void updateNavigationButtons();
     
     // UI Components
-    QWidget* central_widget_;
-    QVBoxLayout* main_layout_;
+    Ui::UnlookMainWindow *ui;
     
-    // Title and status bars
-    QWidget* title_bar_;
-    QLabel* title_label_;
-    QLabel* version_label_;
-    widgets::TouchButton* back_button_;
-    widgets::TouchButton* fullscreen_toggle_button_;
-    
-    QWidget* status_bar_;
+    // Custom status displays (not in .ui file)
     widgets::StatusDisplay* system_status_;
     widgets::StatusDisplay* camera_status_;
     
     // Screen management
-    QStackedWidget* screen_stack_;
     Screen current_screen_;
-    
-    // Main menu components
-    QWidget* main_menu_screen_;
-    widgets::TouchButton* camera_preview_button_;
-    widgets::TouchButton* depth_test_button_;
-    widgets::TouchButton* options_button_;
-    widgets::TouchButton* exit_button_;
     
     // Screen widgets
     std::unique_ptr<CameraPreviewWidget> camera_preview_widget_;
@@ -200,9 +173,6 @@ private:
     bool is_fullscreen_;
     bool camera_system_initialized_;
     QTimer* status_update_timer_;
-    
-    // Constants removed - now using responsive DisplayMetrics system
-    // All dimensions are calculated dynamically based on screen resolution
 };
 
 } // namespace gui

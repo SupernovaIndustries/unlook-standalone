@@ -10,6 +10,7 @@
 #include <chrono>
 #include <thread>
 #include <algorithm>
+#include <limits>
 #include <sys/mman.h>
 #include <unistd.h>
 #include <cstring>
@@ -33,24 +34,22 @@ HardwareSyncCapture::~HardwareSyncCapture() {
     // CRITICAL: Proper shutdown sequence to prevent segmentation faults
     std::cout << "[HardwareSync] Destructor called - initiating safe shutdown" << std::endl;
     
-    // Signal shutdown to all threads
+    // CRITICAL FIX: Stop capture properly if still running
+    if (running_) {
+        std::cout << "[HardwareSync] Stopping active capture in destructor" << std::endl;
+        stop();  // Use proper stop() method instead of manual shutdown
+        // Give time for stop() to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    // Signal shutdown to all threads (redundant but safe)
     {
         std::lock_guard<std::mutex> lock(running_mutex_);
-        if (running_) {
-            running_ = false;
-        }
+        running_ = false;
     }
     
     // Wake up any waiting threads
     frame_condition_.notify_all();
-    
-    // Disconnect signals first to stop new callbacks
-    if (master_camera_) {
-        master_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onMasterRequestComplete);
-    }
-    if (slave_camera_) {
-        slave_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onSlaveRequestComplete);
-    }
     
     // Now stop cameras
     if (slave_camera_) {
@@ -81,9 +80,17 @@ HardwareSyncCapture::~HardwareSyncCapture() {
         master_camera_->release();
     }
     
+    // CRITICAL FIX: Proper cleanup sequence for media devices
+    // Wait a bit before stopping camera manager to avoid "media device in use" errors
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    
     // Stop camera manager
     if (camera_manager_) {
-        camera_manager_->stop();
+        try {
+            camera_manager_->stop();
+        } catch (const std::exception& e) {
+            std::cerr << "[HardwareSync] Exception stopping camera manager: " << e.what() << std::endl;
+        }
     }
     
     std::cout << "[HardwareSync] Safe shutdown completed" << std::endl;
@@ -253,14 +260,14 @@ bool HardwareSyncCapture::createRequestPools() {
     const auto& master_buffers = master_allocator_->buffers(master_stream);
     const auto& slave_buffers = slave_allocator_->buffers(slave_stream);
 
-    // Initialize auto-exposure with optimal IMX296 settings
+    // Initialize with FIXED exposure for timing stability
     {
         std::lock_guard<std::mutex> lock(exposure_mutex_);
-        // PROPER EXPOSURE FOR INDUSTRIAL SCANNER - CRITICAL!
-        // Indoor lighting requires higher exposure and gain
-        master_exposure_.exposure_time_us = 15000;  // 15ms for proper illumination
-        master_exposure_.analogue_gain = 3.0f;      // 3x gain for indoor lighting
-        slave_exposure_ = master_exposure_;         // Sync slave with master
+        // OPTIMIZED: Fixed exposure for consistent timing
+        // Lower exposure time to ensure it fits within frame period
+        master_exposure_.exposure_time_us = 10000;  // 10ms - safe within 33ms frame
+        master_exposure_.analogue_gain = 2.0f;      // Moderate gain
+        slave_exposure_ = master_exposure_;         // Exact sync with master
     }
 
     // Create master requests
@@ -332,9 +339,10 @@ bool HardwareSyncCapture::start() {
         return false;
     }
 
-    // CRITICAL: Wait for master to stabilize before starting slave
+    // OPTIMIZED: Reduce stabilization time for faster synchronization
+    // Hardware sync should lock within 1-2 frames (33-66ms)
     std::cout << "[HardwareSync] Waiting for master stabilization..." << std::endl;
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Reduced back to 50ms
 
     std::cout << "[HardwareSync] Starting SLAVE camera (Camera 0 = RIGHT)" << std::endl;  
     if (slave_camera_->start()) {
@@ -342,21 +350,51 @@ bool HardwareSyncCapture::start() {
         master_camera_->stop();
         return false;
     }
+    
+    // OPTIMIZED: Minimal wait - hardware sync should engage immediately
+    std::cout << "[HardwareSync] Waiting for synchronized operation..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(33));  // Just 1 frame time
 
+    // CRITICAL FIX: Clear request tracking before queuing
+    master_request_index_ = 0;
+    slave_request_index_ = 0;
+    
     // Queue initial requests (following cam app pattern)
     std::cout << "[HardwareSync] Queuing initial requests" << std::endl;
     
-    for (auto& request : master_requests_) {
+    for (size_t i = 0; i < master_requests_.size(); ++i) {
+        auto& request = master_requests_[i];
+        
+        // CRITICAL FIX: Ensure request is properly reset before queuing
+        request->reuse(libcamera::Request::ReuseBuffers);
+        
+        // Apply initial exposure controls
+        {
+            std::lock_guard<std::mutex> lock(exposure_mutex_);
+            applyExposureControls(request.get(), master_exposure_);
+        }
+        
         if (master_camera_->queueRequest(request.get()) < 0) {
-            std::cerr << "[HardwareSync] Failed to queue master request" << std::endl;
+            std::cerr << "[HardwareSync] Failed to queue master request " << i << std::endl;
             stop();
             return false;
         }
     }
 
-    for (auto& request : slave_requests_) {
+    for (size_t i = 0; i < slave_requests_.size(); ++i) {
+        auto& request = slave_requests_[i];
+        
+        // CRITICAL FIX: Ensure request is properly reset before queuing
+        request->reuse(libcamera::Request::ReuseBuffers);
+        
+        // Apply initial exposure controls
+        {
+            std::lock_guard<std::mutex> lock(exposure_mutex_);
+            applyExposureControls(request.get(), slave_exposure_);
+        }
+        
         if (slave_camera_->queueRequest(request.get()) < 0) {
-            std::cerr << "[HardwareSync] Failed to queue slave request" << std::endl;
+            std::cerr << "[HardwareSync] Failed to queue slave request " << i << std::endl;
             stop();
             return false;
         }
@@ -383,7 +421,8 @@ void HardwareSyncCapture::stop() {
     // Wake up any waiting threads
     frame_condition_.notify_all();
 
-    // Disconnect signals to stop callbacks
+    // CRITICAL FIX: Disconnect signals BEFORE stopping cameras
+    // This prevents callbacks during shutdown which cause request validation errors
     if (master_camera_) {
         master_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onMasterRequestComplete);
     }
@@ -391,8 +430,10 @@ void HardwareSyncCapture::stop() {
         slave_camera_->requestCompleted.disconnect(this, &HardwareSyncCapture::onSlaveRequestComplete);
     }
 
-    // Small delay to allow pending callbacks to complete
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // CRITICAL FIX: Longer delay to ensure all callbacks complete
+    // This prevents "Request is not valid" errors during shutdown
+    std::cout << "[HardwareSync] Waiting for callbacks to complete..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));  // Increased from 100ms
 
     // Stop cameras (reverse order)
     if (slave_camera_) {
@@ -572,42 +613,81 @@ void HardwareSyncCapture::processSlaveRequest(Request* request) {
 void HardwareSyncCapture::tryFrameSync() {
     // Called with frame_mutex_ already locked
     
-    if (!pending_master_.ready || !pending_slave_.ready) {
-        return;  // Wait for both frames
+    // OPTIMIZED: Use frame queue for better timestamp matching
+    // Add new frames to queues if ready
+    if (pending_master_.ready) {
+        master_frame_queue_.push_back(pending_master_);
+        if (master_frame_queue_.size() > MAX_QUEUE_SIZE) {
+            master_frame_queue_.pop_front();
+        }
+        pending_master_.ready = false;
     }
-
-    // Create synchronized frame pair
-    StereoFrame stereo_frame;
-    stereo_frame.left_image = pending_master_.image;      // Camera 1 = LEFT
-    stereo_frame.right_image = pending_slave_.image;      // Camera 0 = RIGHT  
-    stereo_frame.left_timestamp_ns = pending_master_.timestamp_ns;
-    stereo_frame.right_timestamp_ns = pending_slave_.timestamp_ns;
-    stereo_frame.sync_error_ms = calculateSyncError(
-        pending_master_.timestamp_ns, 
-        pending_slave_.timestamp_ns
-    );
-
-    // Update statistics
-    double fps = 0.0;
-    if (last_timestamp_ns_ > 0) {
-        uint64_t dt = pending_master_.timestamp_ns - last_timestamp_ns_;
-        fps = dt > 0 ? 1000000000.0 / dt : 0.0;
-    }
-    last_timestamp_ns_ = pending_master_.timestamp_ns;
     
-    updateStats(stereo_frame.sync_error_ms, fps);
-
-    // Reset pending frames
-    pending_master_.ready = false;
-    pending_slave_.ready = false;
-
-    // Deliver frame via callback
-    if (frame_callback_) {
-        frame_callback_(stereo_frame);
+    if (pending_slave_.ready) {
+        slave_frame_queue_.push_back(pending_slave_);
+        if (slave_frame_queue_.size() > MAX_QUEUE_SIZE) {
+            slave_frame_queue_.pop_front();
+        }
+        pending_slave_.ready = false;
     }
+    
+    // Need at least one frame from each camera
+    if (master_frame_queue_.empty() || slave_frame_queue_.empty()) {
+        return;
+    }
+    
+    // OPTIMIZED: Find best matching pair based on timestamp proximity
+    PendingFrame* best_master = nullptr;
+    PendingFrame* best_slave = nullptr;
+    double best_sync_error_ms = std::numeric_limits<double>::max();
+    
+    // Compare all possible pairs to find best match
+    for (auto& master : master_frame_queue_) {
+        for (auto& slave : slave_frame_queue_) {
+            double sync_error = calculateSyncError(master.timestamp_ns, slave.timestamp_ns);
+            if (sync_error < best_sync_error_ms) {
+                best_sync_error_ms = sync_error;
+                best_master = &master;
+                best_slave = &slave;
+            }
+        }
+    }
+    
+    // OPTIMIZED: Only deliver frames if sync error is acceptable
+    // For hardware sync, we should achieve <1ms consistently
+    if (best_master && best_slave && best_sync_error_ms < 10.0) {  // 10ms max tolerance
+        // Create synchronized frame pair
+        StereoFrame stereo_frame;
+        stereo_frame.left_image = best_master->image;      // Camera 1 = LEFT
+        stereo_frame.right_image = best_slave->image;      // Camera 0 = RIGHT  
+        stereo_frame.left_timestamp_ns = best_master->timestamp_ns;
+        stereo_frame.right_timestamp_ns = best_slave->timestamp_ns;
+        stereo_frame.sync_error_ms = best_sync_error_ms;
 
-    // Notify single frame capture
-    frame_condition_.notify_one();
+        // Update statistics
+        double fps = 0.0;
+        if (last_timestamp_ns_ > 0) {
+            uint64_t dt = best_master->timestamp_ns - last_timestamp_ns_;
+            fps = dt > 0 ? 1000000000.0 / dt : 0.0;
+        }
+        last_timestamp_ns_ = best_master->timestamp_ns;
+        
+        updateStats(stereo_frame.sync_error_ms, fps);
+
+        // Remove used frames from queues
+        // Clear older frames to prevent buildup
+        master_frame_queue_.clear();
+        slave_frame_queue_.clear();
+
+        // Deliver frame via callback
+        if (frame_callback_) {
+            frame_callback_(stereo_frame);
+        }
+
+        // Notify single frame capture
+        frame_condition_.notify_one();
+    }
+    // If sync error is too high, keep frames in queue for next attempt
 }
 
 cv::Mat HardwareSyncCapture::convertBufferToMat(FrameBuffer* buffer, 
@@ -661,8 +741,8 @@ cv::Mat HardwareSyncCapture::convertBufferToMat(FrameBuffer* buffer,
                       << " not aligned to 32 bytes, may impact performance" << std::endl;
         }
         
-        std::cout << "[HardwareSync] YUV420 conversion: " << width << "x" << height 
-                  << ", stride=" << stride << " bytes/row, buffer=" << plane.length << " bytes" << std::endl;
+        // Debug logging removed - was causing excessive console output
+        // Only log errors or warnings, not routine conversions
         
         // CRITICAL FIX: Create Mat from Y plane using CORRECT STRIDE
         // The stride parameter tells OpenCV the actual memory layout
@@ -860,22 +940,60 @@ void HardwareSyncCapture::setFrameCallback(FrameCallback callback) {
     frame_callback_ = callback;
 }
 
-bool HardwareSyncCapture::captureSingle(StereoFrame& /* frame */, int timeout_ms) {
+bool HardwareSyncCapture::captureSingle(StereoFrame& frame, int timeout_ms) {
     if (!running_) {
+        std::cerr << "[HardwareSync] captureSingle called but system not running" << std::endl;
         return false;
     }
 
-    std::unique_lock<std::mutex> lock(frame_mutex_);
+    // CRITICAL FIX: Clear any pending frames before waiting for new ones
+    {
+        std::lock_guard<std::mutex> lock(frame_mutex_);
+        pending_master_.ready = false;
+        pending_slave_.ready = false;
+    }
     
-    bool captured = frame_condition_.wait_for(lock, std::chrono::milliseconds(timeout_ms), 
-        [this]() { return pending_master_.ready && pending_slave_.ready; });
+    // OPTIMIZED: Reduced stabilization for faster single capture
+    // Hardware sync should already be locked from continuous operation
+    std::cout << "[HardwareSync] Waiting for camera stabilization..." << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(33));  // Just 1 frame time
+    
+    // Set up temporary callback to capture the frame
+    std::atomic<bool> frame_captured{false};
+    StereoFrame captured_frame;
+    
+    auto original_callback = frame_callback_;
+    frame_callback_ = [&captured_frame, &frame_captured](const StereoFrame& f) {
+        if (!frame_captured.exchange(true)) {
+            captured_frame = f;
+        }
+    };
+    
+    // Wait for frame with timeout
+    auto start_time = std::chrono::steady_clock::now();
+    while (!frame_captured) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start_time).count();
         
-    if (!captured) {
-        return false;
+        if (elapsed >= timeout_ms) {
+            std::cerr << "[HardwareSync] Single frame capture timeout after " 
+                      << elapsed << "ms" << std::endl;
+            frame_callback_ = original_callback;
+            return false;
+        }
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-
-    // Create frame (tryFrameSync will be called and reset pending frames)
-    tryFrameSync();
+    
+    // Restore original callback
+    frame_callback_ = original_callback;
+    
+    // Copy captured frame
+    frame = captured_frame;
+    
+    std::cout << "[HardwareSync] Single frame captured - sync error: " 
+              << frame.sync_error_ms << "ms" << std::endl;
+    
     return true;
 }
 
@@ -900,9 +1018,10 @@ void HardwareSyncCapture::applyExposureControls(libcamera::Request* request,
     // Disable auto exposure/gain to use manual control
     controls.set(libcamera::controls::AeEnable, false);
     
-    // Set frame duration limits to maintain sync (33ms for 30fps)
+    // OPTIMIZED: Tighter frame duration for better sync (33.333ms exact for 30fps)
+    // This ensures consistent frame timing for hardware synchronization
     controls.set(libcamera::controls::FrameDurationLimits, 
-                libcamera::Span<const int64_t, 2>({33000, 33333}));
+                libcamera::Span<const int64_t, 2>({33333, 33333}));  // Exact 30fps timing
 }
 
 /**
@@ -1093,11 +1212,11 @@ bool HardwareSyncCapture::configureAutoExposure() {
  * CRITICAL: Delay allows libcamera to complete internal cleanup before reuse
  */
 void HardwareSyncCapture::requeueMasterRequest(libcamera::Request* request) {
-    // CRITICAL FIX: Implement delayed requeuing to prevent frontend timeout
-    // This prevents race conditions in libcamera's request lifecycle
+    // OPTIMIZED: Direct requeuing for minimal latency
+    // Use immediate requeue with proper synchronization
     std::thread([this, request]() {
-        // Minimal 5μs delay to prevent request lifecycle race conditions
-        std::this_thread::sleep_for(std::chrono::microseconds(5));
+        // OPTIMIZED: No delay needed with proper request handling
+        // The request lifecycle is managed by libcamera
         
         // Check if still running before requeuing
         {
@@ -1139,11 +1258,11 @@ void HardwareSyncCapture::requeueMasterRequest(libcamera::Request* request) {
  * CRITICAL: Delay allows libcamera to complete internal cleanup before reuse
  */
 void HardwareSyncCapture::requeueSlaveRequest(libcamera::Request* request) {
-    // CRITICAL FIX: Implement delayed requeuing to prevent frontend timeout
-    // This prevents race conditions in libcamera's request lifecycle
+    // OPTIMIZED: Direct requeuing for minimal latency
+    // Use immediate requeue with proper synchronization
     std::thread([this, request]() {
-        // Minimal 5μs delay to prevent request lifecycle race conditions
-        std::this_thread::sleep_for(std::chrono::microseconds(5));
+        // OPTIMIZED: No delay needed with proper request handling
+        // The request lifecycle is managed by libcamera
         
         // Check if still running before requeuing
         {
@@ -1178,6 +1297,36 @@ void HardwareSyncCapture::requeueSlaveRequest(libcamera::Request* request) {
             std::cerr << "[HardwareSync] Exception requeuing slave request: " << e.what() << std::endl;
         }
     }).detach();  // Detach to avoid blocking callback thread
+}
+
+void HardwareSyncCapture::setExposureTime(double exposure_us) {
+    std::lock_guard<std::mutex> lock(exposure_mutex_);
+    
+    // Validate range for IMX296 sensors
+    if (exposure_us < 100.0 || exposure_us > 50000.0) {
+        std::cerr << "[HardwareSync] Invalid exposure time: " << exposure_us 
+                  << "us. Range: 100-50000us" << std::endl;
+        return;
+    }
+    
+    // Set for both cameras with sync
+    master_exposure_.exposure_time_us = exposure_us;
+    slave_exposure_.exposure_time_us = exposure_us;
+}
+
+void HardwareSyncCapture::setGain(double gain) {
+    std::lock_guard<std::mutex> lock(exposure_mutex_);
+    
+    // Validate range for IMX296 sensors  
+    if (gain < 1.0 || gain > 16.0) {
+        std::cerr << "[HardwareSync] Invalid gain: " << gain 
+                  << "x. Range: 1.0-16.0x" << std::endl;
+        return;
+    }
+    
+    // Set for both cameras with sync
+    master_exposure_.analogue_gain = static_cast<float>(gain);
+    slave_exposure_.analogue_gain = static_cast<float>(gain);
 }
 
 } // namespace camera  

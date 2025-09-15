@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <functional>
 #include <chrono>
+#include <deque>
 
 #include <libcamera/libcamera.h>
 #include <opencv2/opencv.hpp>
@@ -102,6 +103,18 @@ public:
     bool captureSingle(StereoFrame& frame, int timeout_ms = 1000);
 
     /**
+     * Set manual exposure time for both cameras (microseconds)
+     * Range: 100-50000us for IMX296 sensors
+     */
+    void setExposureTime(double exposure_us);
+
+    /**
+     * Set manual gain for both cameras  
+     * Range: 1.0-16.0x for IMX296 sensors
+     */
+    void setGain(double gain);
+
+    /**
      * Get current synchronization statistics
      */
     struct SyncStats {
@@ -130,6 +143,10 @@ private:
     std::vector<std::unique_ptr<libcamera::Request>> master_requests_;
     std::vector<std::unique_ptr<libcamera::Request>> slave_requests_;
     
+    // Request tracking for proper lifecycle management
+    std::atomic<size_t> master_request_index_{0};
+    std::atomic<size_t> slave_request_index_{0};
+    
     // Stream configurations
     std::unique_ptr<libcamera::CameraConfiguration> master_config_;
     std::unique_ptr<libcamera::CameraConfiguration> slave_config_;
@@ -153,6 +170,11 @@ private:
     
     PendingFrame pending_master_;
     PendingFrame pending_slave_;
+    
+    // OPTIMIZED: Frame queue for better timestamp matching
+    std::deque<PendingFrame> master_frame_queue_;
+    std::deque<PendingFrame> slave_frame_queue_;
+    static constexpr size_t MAX_QUEUE_SIZE = 3;  // Keep last 3 frames for matching
     
     // Statistics
     mutable std::mutex stats_mutex_;

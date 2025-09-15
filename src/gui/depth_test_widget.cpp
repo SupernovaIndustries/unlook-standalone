@@ -1,9 +1,15 @@
 #include "unlook/gui/depth_test_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
+#include "unlook/calibration/CalibrationManager.hpp"
+#include "ui_depth_test_widget.h"
 #include <QGridLayout>
 #include <QComboBox>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QDebug>
+#include <QDir>
+#include <fstream>
+#include <opencv2/imgcodecs.hpp>
 
 using namespace unlook::gui::styles;
 using namespace unlook::gui::widgets;
@@ -13,14 +19,47 @@ namespace gui {
 
 DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
+    , ui(new Ui::DepthTestWidget)
     , camera_system_(camera_system)
     , processing_active_(false)
+    , live_preview_active_(false)
 {
+    // Setup UI from .ui file
+    ui->setupUi(this);
+    
+    // Connect signals
+    connectSignals();
+    
     initializeUI();
     initializeDepthProcessor();
 }
 
-DepthTestWidget::~DepthTestWidget() = default;
+DepthTestWidget::~DepthTestWidget() {
+    delete ui;
+}
+
+void DepthTestWidget::connectSignals() {
+    // Connect UI signals to slots
+    connect(ui->capture_button, &QPushButton::clicked, this, &DepthTestWidget::captureStereoFrame);
+    
+    // Connect parameter sliders  
+    connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, &DepthTestWidget::updateStereoParameters);
+    connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, &DepthTestWidget::updateStereoParameters);
+    connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, &DepthTestWidget::updateStereoParameters);
+    
+    // Connect algorithm selection
+    connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+            this, &DepthTestWidget::updateStereoParameters);
+    
+    // TODO: Add these widgets to .ui file and uncomment:
+    // connect(ui->export_button, &QPushButton::clicked, this, &DepthTestWidget::exportDepthMap);
+    // connect(ui->preset_fast_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::FAST); });
+    // connect(ui->preset_balanced_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::BALANCED); });
+    // connect(ui->preset_quality_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::QUALITY); });
+}
 
 void DepthTestWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
@@ -28,43 +67,79 @@ void DepthTestWidget::showEvent(QShowEvent* event) {
     if (processing_status_) {
         processing_status_->setStatus("Ready for depth testing", StatusDisplay::StatusType::INFO);
     }
+    
+    // AUTO-START LIVE PREVIEW when widget becomes visible
+    qDebug() << "[DepthWidget] Widget shown, starting live preview automatically";
+    startLivePreview();
 }
 
 void DepthTestWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     // Stop any ongoing processing
     processing_active_ = false;
+    
+    // AUTO-STOP LIVE PREVIEW when widget is hidden
+    qDebug() << "[DepthWidget] Widget hidden, stopping live preview";
+    stopLivePreview();
 }
 
 void DepthTestWidget::captureStereoFrame() {
-    if (!camera_system_ || !camera_system_->isReady()) {
+    qDebug() << "[DepthWidget] captureStereoFrame() called";
+    
+    if (!camera_system_) {
+        qDebug() << "[DepthWidget] ERROR: camera_system_ is null";
+        processing_status_->setStatus("Camera system not initialized", StatusDisplay::StatusType::ERROR);
+        return;
+    }
+    
+    if (!camera_system_->isReady()) {
+        qDebug() << "[DepthWidget] ERROR: Camera system not ready";
         processing_status_->setStatus("Camera system not ready", StatusDisplay::StatusType::ERROR);
         return;
     }
     
+    qDebug() << "[DepthWidget] Starting stereo frame capture";
     processing_active_ = true;
     capture_status_->setStatus("Capturing stereo frame...", StatusDisplay::StatusType::PROCESSING);
     capture_status_->startPulsing();
     
     // Capture single frame
+    qDebug() << "[DepthWidget] Calling camera_system_->captureSingle()";
     core::StereoFramePair frame_pair = camera_system_->captureSingle();
     
+    qDebug() << "[DepthWidget] Frame capture result:"
+             << "synchronized=" << frame_pair.synchronized
+             << "left_valid=" << frame_pair.left_frame.valid
+             << "right_valid=" << frame_pair.right_frame.valid
+             << "sync_error=" << frame_pair.sync_error_ms << "ms";
+    
     if (frame_pair.synchronized) {
+        // Show the captured stereo images in UI
+        updateStereoFrameImages(frame_pair.left_frame, frame_pair.right_frame);
+        
         capture_status_->setStatus("Processing depth map...", StatusDisplay::StatusType::PROCESSING);
         
         // Process depth map
         if (depth_processor_) {
+            qDebug() << "[DepthWidget] Processing depth with depth_processor_";
             core::DepthResult result = depth_processor_->processSync(frame_pair);
+            
+            // AUTO DEBUG SAVE: Save debug images for every depth processing
+            saveDebugImages(frame_pair, result);
+            
             onDepthResultReceived(result);
         } else {
+            qDebug() << "[DepthWidget] ERROR: depth_processor_ is null";
             capture_status_->setStatus("Depth processor not initialized", StatusDisplay::StatusType::ERROR);
         }
     } else {
+        qDebug() << "[DepthWidget] ERROR: Failed to capture synchronized frames";
         capture_status_->setStatus("Failed to capture synchronized frames", StatusDisplay::StatusType::ERROR);
     }
     
     capture_status_->stopPulsing();
     processing_active_ = false;
+    qDebug() << "[DepthWidget] captureStereoFrame() completed";
 }
 
 void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
@@ -85,11 +160,11 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
             .arg(result.std_depth, 0, 'f', 2);
         quality_metrics_label_->setText(metrics);
         
-        export_button_->setEnabled(true);
+        //export_button_->setEnabled(true);
     } else {
         processing_status_->setStatus("Depth processing failed: " + QString::fromStdString(result.error_message),
                                      StatusDisplay::StatusType::ERROR);
-        export_button_->setEnabled(false);
+        //export_button_->setEnabled(false);
     }
 }
 
@@ -98,27 +173,28 @@ void DepthTestWidget::onAlgorithmChanged(int index) {
 }
 
 void DepthTestWidget::applyParameterPreset() {
+    // TODO_UI: Add preset buttons to .ui file and reconnect
     TouchButton* sender_button = qobject_cast<TouchButton*>(sender());
     if (!sender_button) return;
     
     core::DepthQuality quality = core::DepthQuality::BALANCED;
     
-    if (sender_button == preset_fast_button_) {
-        quality = core::DepthQuality::FAST_LOW;
-    } else if (sender_button == preset_balanced_button_) {
-        quality = core::DepthQuality::BALANCED;
-    } else if (sender_button == preset_quality_button_) {
-        quality = core::DepthQuality::SLOW_HIGH;
-    }
+    // if (sender_button == preset_fast_button_) {
+    //     quality = core::DepthQuality::FAST_LOW;
+    // } else if (sender_button == preset_balanced_button_) {
+    //     quality = core::DepthQuality::BALANCED;
+    // } else if (sender_button == preset_quality_button_) {
+    //     quality = core::DepthQuality::SLOW_HIGH;
+    // }
     
     // Update parameters based on preset
     core::StereoConfig preset_config = api::DepthProcessor::createPreset(
         quality, core::StereoAlgorithm::SGBM_OPENCV);
     
     // Update UI sliders
-    num_disparities_slider_->setValue(preset_config.num_disparities);
-    block_size_slider_->setValue(preset_config.block_size);
-    uniqueness_ratio_slider_->setValue(preset_config.uniqueness_ratio);
+    ui->num_disparities_slider->setValue(preset_config.num_disparities);
+    ui->block_size_slider->setValue(preset_config.block_size);
+    // ui->uniqueness_ratio_slider->setValue(preset_config.uniqueness_ratio); // TODO: Add to .ui
     
     updateStereoParameters();
 }
@@ -147,21 +223,30 @@ void DepthTestWidget::updateStereoParameters() {
     core::StereoConfig config = depth_processor_->getStereoConfig();
     
     // Update config from UI
-    config.min_disparity = static_cast<int>(min_disparity_slider_->getValue());
-    config.num_disparities = static_cast<int>(num_disparities_slider_->getValue());
-    config.block_size = static_cast<int>(block_size_slider_->getValue());
-    config.uniqueness_ratio = static_cast<int>(uniqueness_ratio_slider_->getValue());
+    config.min_disparity = ui->min_disparity_slider->value();
+    config.num_disparities = ui->num_disparities_slider->value();
+    config.block_size = ui->block_size_slider->value();
+    config.uniqueness_ratio = 10; // Default value - TODO: Add slider to .ui
     
     // Set algorithm from combo box
-    switch (algorithm_combo_->currentIndex()) {
+    switch (ui->algorithm_combo->currentIndex()) {
         case 0:
             config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
             break;
         case 1:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_BASIC;
+            config.algorithm = core::StereoAlgorithm::BOOFCV_DENSE_BM;
             break;
         case 2:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_PRECISE;
+            config.algorithm = core::StereoAlgorithm::BOOFCV_DENSE_SGM;
+            break;
+        case 3:
+            config.algorithm = core::StereoAlgorithm::BOOFCV_SUBPIXEL_BM;
+            break;
+        case 4:
+            config.algorithm = core::StereoAlgorithm::BOOFCV_SUBPIXEL_SGM;
+            break;
+        default:
+            config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
             break;
     }
     
@@ -206,17 +291,17 @@ QWidget* DepthTestWidget::createCapturePanel() {
     title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
     layout->addWidget(title);
     
-    // Capture button
-    capture_button_ = new TouchButton("CAPTURE STEREO FRAME", TouchButton::ButtonType::PRIMARY);
-    capture_button_->setMinimumHeight(60);
-    connect(capture_button_, &TouchButton::clicked, this, &DepthTestWidget::captureStereoFrame);
-    layout->addWidget(capture_button_);
+    // TODO_UI: Add capture_button and export_button to .ui file
+    // capture_button_ = new TouchButton("CAPTURE STEREO FRAME", TouchButton::ButtonType::PRIMARY);
+    // //capture_button_->setMinimumHeight(60);
+    // connect(capture_button_, &TouchButton::clicked, this, &DepthTestWidget::captureStereoFrame);
+    // layout->addWidget(capture_button_);
     
-    // Export button
-    export_button_ = new TouchButton("EXPORT DEPTH MAP", TouchButton::ButtonType::SECONDARY);
-    export_button_->setEnabled(false);
-    connect(export_button_, &TouchButton::clicked, this, &DepthTestWidget::exportDepthMap);
-    layout->addWidget(export_button_);
+    // // Export button
+    // export_button_ = new TouchButton("EXPORT DEPTH MAP", TouchButton::ButtonType::SECONDARY);
+    // //export_button_->setEnabled(false);
+    // connect(export_button_, &TouchButton::clicked, this, &DepthTestWidget::exportDepthMap);
+    // layout->addWidget(export_button_);
     
     // Capture status
     capture_status_ = new StatusDisplay("Capture");
@@ -236,29 +321,30 @@ QWidget* DepthTestWidget::createAlgorithmPanel() {
     title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
     layout->addWidget(title);
     
-    // Algorithm combo box
-    algorithm_combo_ = new QComboBox();
-    algorithm_combo_->addItem("OpenCV SGBM");
-    algorithm_combo_->addItem("BoofCV Basic");
-    algorithm_combo_->addItem("BoofCV Precise");
-    connect(algorithm_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), 
-            this, &DepthTestWidget::onAlgorithmChanged);
-    layout->addWidget(algorithm_combo_);
+    // TODO_UI: Add algorithm_combo to .ui file
+    // algorithm_combo_ = new QComboBox();
+    // //algorithm_combo_->addItem("OpenCV SGBM");
+    // //algorithm_combo_->addItem("BoofCV Basic");
+    // //algorithm_combo_->addItem("BoofCV Precise");
+    // connect(algorithm_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+    //         this, &DepthTestWidget::onAlgorithmChanged);
+    // layout->addWidget(algorithm_combo_);
     
     // Preset buttons
     QHBoxLayout* preset_layout = new QHBoxLayout();
     
-    preset_fast_button_ = new TouchButton("Fast", TouchButton::ButtonType::WARNING);
-    connect(preset_fast_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    preset_layout->addWidget(preset_fast_button_);
+    // TODO_UI: Add preset buttons to .ui file
+    // preset_fast_button_ = new TouchButton("Fast", TouchButton::ButtonType::WARNING);
+    // connect(preset_fast_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
+    // preset_layout->addWidget(preset_fast_button_);
     
-    preset_balanced_button_ = new TouchButton("Balanced", TouchButton::ButtonType::PRIMARY);
-    connect(preset_balanced_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    preset_layout->addWidget(preset_balanced_button_);
+    // preset_balanced_button_ = new TouchButton("Balanced", TouchButton::ButtonType::PRIMARY);
+    // connect(preset_balanced_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
+    // preset_layout->addWidget(preset_balanced_button_);
     
-    preset_quality_button_ = new TouchButton("Quality", TouchButton::ButtonType::SUCCESS);
-    connect(preset_quality_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    preset_layout->addWidget(preset_quality_button_);
+    // preset_quality_button_ = new TouchButton("Quality", TouchButton::ButtonType::SUCCESS);
+    // connect(preset_quality_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
+    // preset_layout->addWidget(preset_quality_button_);
     
     layout->addLayout(preset_layout);
     
@@ -274,22 +360,22 @@ QWidget* DepthTestWidget::createParameterPanel() {
     title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
     layout->addWidget(title);
     
-    // Parameter sliders
-    min_disparity_slider_ = new ParameterSlider("Min Disparity", 0, 64, 0);
-    connect(min_disparity_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
-    layout->addWidget(min_disparity_slider_);
+    // TODO_UI: Add parameter sliders to .ui file
+    // min_disparity_slider_ = new ParameterSlider("Min Disparity", 0, 64, 0);
+    // connect(min_disparity_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
+    // layout->addWidget(min_disparity_slider_);
     
-    num_disparities_slider_ = new ParameterSlider("Num Disparities", 16, 256, 128);
-    connect(num_disparities_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
-    layout->addWidget(num_disparities_slider_);
+    // num_disparities_slider_ = new ParameterSlider("Num Disparities", 16, 256, 128);
+    // connect(num_disparities_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
+    // layout->addWidget(num_disparities_slider_);
     
-    block_size_slider_ = new ParameterSlider("Block Size", 3, 11, 5);
-    connect(block_size_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
-    layout->addWidget(block_size_slider_);
+    // block_size_slider_ = new ParameterSlider("Block Size", 3, 11, 5);
+    // connect(block_size_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
+    // layout->addWidget(block_size_slider_);
     
-    uniqueness_ratio_slider_ = new ParameterSlider("Uniqueness Ratio", 1, 20, 10);
-    connect(uniqueness_ratio_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
-    layout->addWidget(uniqueness_ratio_slider_);
+    // uniqueness_ratio_slider_ = new ParameterSlider("Uniqueness Ratio", 1, 20, 10);
+    // connect(uniqueness_ratio_slider_, &ParameterSlider::valueChanged, this, &DepthTestWidget::updateStereoParameters);
+    // layout->addWidget(uniqueness_ratio_slider_);
     
     return panel;
 }
@@ -340,9 +426,10 @@ void DepthTestWidget::updateDepthVisualization(const core::DepthResult& result) 
                    visualization.step, QImage::Format_BGR888);
         QPixmap pixmap = QPixmap::fromImage(qimg.rgbSwapped());
         
-        // Scale to fit display
-        pixmap = pixmap.scaled(depth_map_display_->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        depth_map_display_->setPixmap(pixmap);
+        // Scale to fit display using .ui label
+        pixmap = pixmap.scaled(ui->depth_image_label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        ui->depth_image_label->setPixmap(pixmap);
+        ui->depth_image_label->setText(""); // Clear the "No Depth Data" text
     }
 }
 
@@ -361,6 +448,380 @@ void DepthTestWidget::initializeDepthProcessor() {
     
     // Set initial parameters
     updateStereoParameters();
+}
+
+void DepthTestWidget::updateStereoFrameImages(const core::CameraFrame& leftFrame, const core::CameraFrame& rightFrame) {
+    // COPIED FROM CameraPreviewWidget - OPTIMIZED FOR SINGLE CAMERA DISPLAY
+    if (!leftFrame.image.empty()) {
+        // Convert left frame to QPixmap only (right frame still needed for depth processing)
+        cv::Mat left_rgb;
+        cv::cvtColor(leftFrame.image, left_rgb, cv::COLOR_BGRA2RGB);
+        
+        // Create QImage from cv::Mat
+        QImage left_qimg(left_rgb.data, left_rgb.cols, left_rgb.rows, left_rgb.step, QImage::Format_RGB888);
+        
+        // Scale to preview size
+        QSize preview_size = QSize(300, 225); // Fixed size like CameraPreviewWidget
+        QPixmap left_pixmap = QPixmap::fromImage(left_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        
+        // Set pixmap - only showing left camera in UI now
+        ui->left_image_label->setPixmap(left_pixmap);
+        ui->left_image_label->setText(""); // Clear text
+    }
+}
+
+void DepthTestWidget::startLivePreview() {
+    if (!camera_system_ || live_preview_active_) return;
+    
+    qDebug() << "[DepthWidget] Starting live preview...";
+    
+    // Create live preview callback - COPIED FROM CameraPreviewWidget
+    auto live_callback = [this](const core::StereoFramePair& frame_pair) {
+        // Use direct Qt signal emission for real-time processing
+        QMetaObject::invokeMethod(this, [this, frame_pair]() {
+            onLiveFrameReceived(frame_pair);
+        }, Qt::QueuedConnection);
+    };
+    
+    if (camera_system_->startCapture(live_callback)) {
+        live_preview_active_ = true;
+        qDebug() << "[DepthWidget] Live preview started successfully";
+    } else {
+        qDebug() << "[DepthWidget] Failed to start live preview";
+    }
+}
+
+void DepthTestWidget::stopLivePreview() {
+    if (!live_preview_active_) return;
+    
+    qDebug() << "[DepthWidget] Stopping live preview...";
+    live_preview_active_ = false;
+    
+    // Switch to background mode like CameraPreviewWidget does
+    auto background_callback = [](const core::StereoFramePair& /*frame_pair*/) {
+        // Keep cameras running in background
+    };
+    
+    if (camera_system_->startCapture(background_callback)) {
+        qDebug() << "[DepthWidget] Switched to background capture";
+    }
+}
+
+void DepthTestWidget::onLiveFrameReceived(const core::StereoFramePair& frame_pair) {
+    if (!live_preview_active_) return;
+    
+    // Update preview images with live frames - PERFORMANCE: Skip every 3rd frame like CameraPreviewWidget
+    static int frame_skip_counter = 0;
+    if (++frame_skip_counter % 3 != 0) {
+        return; // Skip frame for GUI performance
+    }
+    
+    // Update camera preview images
+    updateStereoFrameImages(frame_pair.left_frame, frame_pair.right_frame);
+}
+
+void DepthTestWidget::saveDebugImages(const core::StereoFramePair& frame_pair, const core::DepthResult& result) {
+    try {
+        // Create debug directory with timestamp
+        std::string debug_dir = createDebugDirectory();
+        
+        qDebug() << "[DepthWidget] Saving debug images to:" << QString::fromStdString(debug_dir);
+        
+        // Save original stereo frames
+        if (!frame_pair.left_frame.image.empty()) {
+            cv::imwrite(debug_dir + "/01_left_original.png", frame_pair.left_frame.image);
+        }
+        if (!frame_pair.right_frame.image.empty()) {
+            cv::imwrite(debug_dir + "/02_right_original.png", frame_pair.right_frame.image);
+        }
+        
+        // Save rectified stereo frames
+        if (depth_processor_ && !frame_pair.left_frame.image.empty() && !frame_pair.right_frame.image.empty()) {
+            try {
+                // Get calibration manager from depth processor to rectify images
+                cv::Mat leftRectified, rightRectified;
+                
+                // Manual rectification using the same process as depth processor
+                // Convert to grayscale if needed for rectification
+                cv::Mat leftGray, rightGray;
+                if (frame_pair.left_frame.image.channels() == 4) {
+                    cv::cvtColor(frame_pair.left_frame.image, leftGray, cv::COLOR_BGRA2GRAY);
+                    cv::cvtColor(frame_pair.right_frame.image, rightGray, cv::COLOR_BGRA2GRAY);
+                } else if (frame_pair.left_frame.image.channels() == 3) {
+                    cv::cvtColor(frame_pair.left_frame.image, leftGray, cv::COLOR_BGR2GRAY);
+                    cv::cvtColor(frame_pair.right_frame.image, rightGray, cv::COLOR_BGR2GRAY);
+                } else {
+                    frame_pair.left_frame.image.copyTo(leftGray);
+                    frame_pair.right_frame.image.copyTo(rightGray);
+                }
+                
+                // Try to get rectification using a temporary CalibrationManager
+                auto tempCalibManager = std::make_unique<calibration::CalibrationManager>();
+                std::string calibration_file = "/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml";
+                
+                if (tempCalibManager->loadCalibration(calibration_file)) {
+                    if (tempCalibManager->rectifyImages(leftGray, rightGray, leftRectified, rightRectified)) {
+                        cv::imwrite(debug_dir + "/03_left_rectified.png", leftRectified);
+                        cv::imwrite(debug_dir + "/04_right_rectified.png", rightRectified);
+                        qDebug() << "[DepthWidget] Rectified images saved successfully";
+                    } else {
+                        qWarning() << "[DepthWidget] Failed to rectify images for debug saving";
+                    }
+                } else {
+                    qWarning() << "[DepthWidget] Failed to load calibration for rectification";
+                }
+            } catch (const std::exception& e) {
+                qWarning() << "[DepthWidget] Exception during rectification:" << e.what();
+            }
+        }
+        
+        // Save depth map (ROBUST normalization for visualization)
+        if (!result.depth_map.empty()) {
+            cv::Mat depth_clean;
+            
+            // CRITICAL FIX: Remove invalid values and outliers for proper visualization
+            // Replace NaN, inf, and extreme values with 0
+            result.depth_map.copyTo(depth_clean);
+            
+            // Remove invalid values (NaN, inf)
+            cv::Mat mask;
+            cv::inRange(depth_clean, 1.0, 10000.0, mask); // Valid depth range: 1-10000mm
+            depth_clean.setTo(0, ~mask);
+            
+            // Calculate robust statistics (ignore zeros)
+            cv::Mat valid_depths;
+            depth_clean.copyTo(valid_depths, mask);
+            
+            if (cv::countNonZero(mask) > 100) { // Ensure we have enough valid pixels
+                cv::Scalar mean_val, std_val;
+                cv::meanStdDev(valid_depths, mean_val, std_val, mask);
+                
+                double mean_depth = mean_val[0];
+                double std_depth = std_val[0];
+                
+                // ROBUST: Use 3-sigma range for normalization (remove extreme outliers)
+                double min_depth = std::max(1.0, mean_depth - 2.0 * std_depth);
+                double max_depth = std::min(8000.0, mean_depth + 2.0 * std_depth);
+                
+                // Clamp values to robust range
+                cv::Mat depth_clamped;
+                cv::threshold(depth_clean, depth_clamped, max_depth, max_depth, cv::THRESH_TRUNC);
+                cv::threshold(depth_clamped, depth_clamped, min_depth, 0, cv::THRESH_TOZERO);
+                
+                // Normalize to 0-255 for visualization
+                cv::Mat depth_normalized;
+                depth_clamped.convertTo(depth_normalized, CV_8U, 255.0 / (max_depth - min_depth), -min_depth * 255.0 / (max_depth - min_depth));
+                
+                cv::imwrite(debug_dir + "/05_depth_map.png", depth_normalized);
+                
+                // Save ENHANCED COLORIZED depth map with NO BLACK LINES
+                cv::Mat depth_colorized;
+                cv::applyColorMap(depth_normalized, depth_colorized, cv::COLORMAP_JET);
+                
+                // Replace black areas with dark blue for better visibility
+                cv::Mat black_mask = (depth_normalized == 0);
+                depth_colorized.setTo(cv::Scalar(100, 0, 0), black_mask);  // Dark blue instead of black
+                cv::imwrite(debug_dir + "/06_depth_colorized.png", depth_colorized);
+                
+                // ADDITIONAL: Save depth map with alternative visualization
+                cv::Mat depth_alternative;
+                cv::applyColorMap(depth_normalized, depth_alternative, cv::COLORMAP_PLASMA);
+                depth_alternative.setTo(cv::Scalar(50, 0, 50), black_mask);  // Dark purple for invalid
+                cv::imwrite(debug_dir + "/10_depth_plasma.png", depth_alternative);
+                
+                // LIDAR-LIKE: Save the continuous depth map with NO BLACK LINES
+                cv::Mat depth_lidar_clean = result.depth_map.clone();
+                
+                // Ensure ALL pixels have valid depth values (no zeros that create black lines)
+                cv::Mat still_invalid = depth_lidar_clean <= 0.1;
+                int remainingHoles = cv::countNonZero(still_invalid);
+                
+                if (remainingHoles > 0) {
+                    std::cout << "[DepthWidget] Final cleanup: " << remainingHoles << " remaining holes to interpolate" << std::endl;
+                    
+                    // Final pass: Fill remaining holes with global mean depth
+                    cv::Scalar global_mean = cv::mean(depth_lidar_clean, depth_lidar_clean > 0.1);
+                    depth_lidar_clean.setTo(global_mean[0], still_invalid);
+                }
+                
+                // Normalize for visualization with guaranteed continuous range
+                cv::Mat depth_lidar_normalized;
+                double final_min, final_max;
+                cv::minMaxLoc(depth_lidar_clean, &final_min, &final_max);
+                
+                // Ensure we have a reasonable range
+                if (final_max - final_min < 10.0) {
+                    final_min = std::max(1.0, final_min - 50.0);
+                    final_max = final_min + 100.0;
+                }
+                
+                depth_lidar_clean.convertTo(depth_lidar_normalized, CV_8U, 255.0 / (final_max - final_min), -final_min * 255.0 / (final_max - final_min));
+                
+                // Apply JET colormap - should now have NO black lines
+                cv::Mat depth_lidar_colored;
+                cv::applyColorMap(depth_lidar_normalized, depth_lidar_colored, cv::COLORMAP_JET);
+                cv::imwrite(debug_dir + "/11_depth_lidar_like.png", depth_lidar_colored);
+                
+                // Also save a TURBO version for comparison (more perceptually uniform)
+                cv::Mat depth_turbo;
+                cv::applyColorMap(depth_lidar_normalized, depth_turbo, cv::COLORMAP_TURBO);
+                cv::imwrite(debug_dir + "/12_depth_turbo.png", depth_turbo);
+                
+                std::cout << "[DepthWidget] LIDAR-like depth saved - ZERO black lines! Range: " 
+                          << final_min << "-" << final_max << "mm" << std::endl;
+                
+                // ENHANCED: Save raw depth statistics
+                std::ofstream depth_stats(debug_dir + "/depth_statistics.txt");
+                depth_stats << "=== DEPTH MAP ANALYSIS ===\n";
+                depth_stats << "Valid pixels: " << cv::countNonZero(mask) << " / " << (depth_clean.rows * depth_clean.cols) << "\n";
+                depth_stats << "Coverage: " << (100.0 * cv::countNonZero(mask) / (depth_clean.rows * depth_clean.cols)) << "%\n";
+                depth_stats << "Mean depth: " << mean_depth << "mm\n";
+                depth_stats << "Std deviation: " << std_depth << "mm\n";
+                depth_stats << "Visualization range: " << min_depth << " - " << max_depth << "mm\n";
+                depth_stats.close();
+                
+                qDebug() << "[DepthWidget] DEPTH DEBUG: Valid pixels:" << cv::countNonZero(mask) 
+                        << "Mean:" << mean_depth << "Std:" << std_depth 
+                        << "Range:" << min_depth << "-" << max_depth;
+            } else {
+                qWarning() << "[DepthWidget] DEPTH ERROR: Too few valid pixels for visualization";
+                // Save empty/invalid depth indication
+                cv::Mat error_img = cv::Mat::zeros(result.depth_map.size(), CV_8UC3);
+                cv::putText(error_img, "INVALID DEPTH DATA", cv::Point(50, result.depth_map.rows/2), 
+                           cv::FONT_HERSHEY_SIMPLEX, 2, cv::Scalar(0, 0, 255), 3);
+                cv::imwrite(debug_dir + "/05_depth_map.png", error_img);
+                cv::imwrite(debug_dir + "/06_depth_colorized.png", error_img);
+            }
+        }
+        
+        // COMPREHENSIVE DISPARITY DEBUG - Save multiple visualizations
+        if (!result.disparity_map.empty()) {
+            std::cout << "[DepthWidget] COMPREHENSIVE DISPARITY DEBUG" << std::endl;
+            
+            // Analyze disparity statistics first
+            double minDisp, maxDisp;
+            cv::minMaxLoc(result.disparity_map, &minDisp, &maxDisp);
+            cv::Scalar meanDisp = cv::mean(result.disparity_map, result.disparity_map > 0);
+            int validPixels = cv::countNonZero(result.disparity_map);
+            int totalPixels = result.disparity_map.rows * result.disparity_map.cols;
+            double validRatio = double(validPixels) / totalPixels * 100.0;
+            
+            std::cout << "[DepthWidget] Disparity Stats: Min=" << minDisp << ", Max=" << maxDisp 
+                      << ", Mean=" << meanDisp[0] << ", Valid=" << validPixels << "/" << totalPixels 
+                      << " (" << validRatio << "%)" << std::endl;
+                      
+            // 1. RAW DISPARITY - Standard normalization with black for invalid
+            cv::Mat disp_normalized;
+            cv::normalize(result.disparity_map, disp_normalized, 0, 255, cv::NORM_MINMAX);
+            disp_normalized.convertTo(disp_normalized, CV_8UC1);
+            cv::imwrite(debug_dir + "/07_disparity_raw.png", disp_normalized);
+            
+            // 2. DISPARITY WITHOUT ZEROS - Only normalize valid pixels (NO BLACK LINES!)
+            cv::Mat disp_no_zeros = result.disparity_map.clone();
+            cv::Mat valid_mask = disp_no_zeros > 0;
+            if (cv::countNonZero(valid_mask) > 100) {
+                double validMin, validMax;
+                cv::minMaxLoc(disp_no_zeros, &validMin, &validMax, nullptr, nullptr, valid_mask);
+                
+                cv::Mat disp_clean;
+                disp_no_zeros.convertTo(disp_clean, CV_8U, 255.0 / (validMax - validMin), -validMin * 255.0 / (validMax - validMin));
+                
+                // Set invalid pixels to gray instead of black
+                disp_clean.setTo(128, ~valid_mask);  // Gray for invalid instead of black
+                cv::imwrite(debug_dir + "/08_disparity_no_black.png", disp_clean);
+                
+                // 3. COLORED DISPARITY - Apply colormap to make it beautiful
+                cv::Mat disp_colored;
+                cv::applyColorMap(disp_clean, disp_colored, cv::COLORMAP_JET);
+                // Set invalid pixels to dark blue instead of black
+                disp_colored.setTo(cv::Scalar(100, 0, 0), ~valid_mask);  // Dark blue for invalid
+                cv::imwrite(debug_dir + "/09_disparity_colored.png", disp_colored);
+                
+                std::cout << "[DepthWidget] Enhanced disparity saved - Valid range: " 
+                          << validMin << "-" << validMax << " pixels" << std::endl;
+            }
+            
+            // 4. DISPARITY HISTOGRAM for analysis
+            if (validPixels > 0) {
+                std::vector<float> validDispValues;
+                for (int y = 0; y < result.disparity_map.rows; ++y) {
+                    for (int x = 0; x < result.disparity_map.cols; ++x) {
+                        float disp = result.disparity_map.at<float>(y, x);
+                        if (disp > 0) {
+                            validDispValues.push_back(disp);
+                        }
+                    }
+                }
+                
+                // Save histogram data
+                std::ofstream hist_file(debug_dir + "/disparity_histogram.txt");
+                hist_file << "=== DISPARITY HISTOGRAM ===\n";
+                hist_file << "Valid pixels: " << validPixels << " (" << validRatio << "%)\n";
+                hist_file << "Min disparity: " << minDisp << " pixels\n";
+                hist_file << "Max disparity: " << maxDisp << " pixels\n";
+                hist_file << "Mean disparity: " << meanDisp[0] << " pixels\n";
+                
+                // Simple histogram bins
+                std::sort(validDispValues.begin(), validDispValues.end());
+                hist_file << "Median: " << validDispValues[validDispValues.size()/2] << "\n";
+                hist_file << "25th percentile: " << validDispValues[validDispValues.size()/4] << "\n";
+                hist_file << "75th percentile: " << validDispValues[3*validDispValues.size()/4] << "\n";
+                hist_file.close();
+            }
+        }
+        
+        // Save confidence map if available
+        if (!result.confidence_map.empty()) {
+            cv::Mat conf_normalized;
+            cv::normalize(result.confidence_map, conf_normalized, 0, 255, cv::NORM_MINMAX);
+            conf_normalized.convertTo(conf_normalized, CV_8UC1);
+            cv::imwrite(debug_dir + "/08_confidence_map.png", conf_normalized);
+        }
+        
+        // Save processing info as text file
+        std::ofstream info_file(debug_dir + "/processing_info.txt");
+        info_file << "Unlook 3D Scanner - Debug Information\n";
+        info_file << "=====================================\n\n";
+        info_file << "Timestamp: " << QDateTime::currentDateTime().toString().toStdString() << "\n";
+        info_file << "Sync Error: " << frame_pair.sync_error_ms << "ms\n";
+        info_file << "Synchronized: " << (frame_pair.synchronized ? "YES" : "NO") << "\n";
+        info_file << "Processing Time: " << result.processing_time_ms << "ms\n";
+        info_file << "Mean Depth: " << result.mean_depth << "mm\n";
+        info_file << "Std Deviation: " << result.std_depth << "mm\n";
+        info_file << "Coverage: " << (result.coverage_ratio * 100) << "%\n";
+        info_file << "Success: " << (result.success ? "YES" : "NO") << "\n";
+        if (!result.error_message.empty()) {
+            info_file << "Error: " << result.error_message << "\n";
+        }
+        info_file.close();
+        
+        qDebug() << "[DepthWidget] Debug images saved successfully";
+        
+    } catch (const std::exception& e) {
+        qWarning() << "[DepthWidget] Failed to save debug images:" << e.what();
+    }
+}
+
+std::string DepthTestWidget::createDebugDirectory() {
+    // Get username
+    QString username = qgetenv("USER");
+    if (username.isEmpty()) {
+        username = qgetenv("USERNAME"); // Windows fallback
+    }
+    if (username.isEmpty()) {
+        username = "unknown";
+    }
+    
+    // Create base debug directory
+    QString base_dir = QString("/home/%1/unlook_debug").arg(username);
+    QDir().mkpath(base_dir);
+    
+    // Create timestamped subdirectory
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd_hh-mm-ss");
+    QString debug_dir = QString("%1/unlook_depth_%2").arg(base_dir, timestamp);
+    QDir().mkpath(debug_dir);
+    
+    return debug_dir.toStdString();
 }
 
 } // namespace gui

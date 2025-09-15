@@ -1,5 +1,8 @@
 #include "unlook/stereo/StereoMatcher.hpp"
 #include "unlook/stereo/SGBMStereoMatcher.hpp"
+#ifdef HAVE_BOOFCV
+#include "unlook/stereo/BoofCVStereoMatcher.hpp"
+#endif
 #include <opencv2/imgproc.hpp>
 
 namespace unlook {
@@ -142,15 +145,61 @@ bool StereoMatcher::validateStereoPair(const cv::Mat& left, const cv::Mat& right
 
 std::unique_ptr<StereoMatcher> StereoMatcher::create(StereoAlgorithm algorithm) {
     switch (algorithm) {
+        // OpenCV algorithms
         case StereoAlgorithm::SGBM:
             return std::make_unique<SGBMStereoMatcher>();
+        case StereoAlgorithm::BM:
+            return std::make_unique<SGBMStereoMatcher>(); // TODO: Create BMStereoMatcher
+            
+#ifdef HAVE_BOOFCV
+        // BoofCV algorithms - all use BoofCVStereoMatcher with different configurations
+        case StereoAlgorithm::BOOFCV_SGBM:
+        case StereoAlgorithm::BOOFCV_BM:
+        {
+            // Check if BoofCV is available before creating
+            if (!BoofCVStereoMatcher::isAvailable()) {
+                return nullptr;
+            }
+            
+            // Create configuration based on algorithm
+            BoofCVStereoConfig config;
+            if (algorithm == StereoAlgorithm::BOOFCV_SGBM) {
+                config.algorithm = BoofCVAlgorithm::DENSE_DISPARITY_SGM;
+                config.subpixel_enabled = true;
+            } else {
+                config.algorithm = BoofCVAlgorithm::DENSE_DISPARITY_BM;
+                config.subpixel_enabled = false;
+            }
+            
+            return std::make_unique<BoofCVStereoMatcher>(config);
+        }
+#else
+        // BoofCV algorithms not available - return null
+        case StereoAlgorithm::BOOFCV_SGBM:
+        case StereoAlgorithm::BOOFCV_BM:
+            return nullptr;
+#endif
+            
         default:
             return nullptr;
     }
 }
 
 std::vector<StereoAlgorithm> StereoMatcher::getAvailableAlgorithms() {
-    return {StereoAlgorithm::SGBM, StereoAlgorithm::BM};
+    std::vector<StereoAlgorithm> algorithms = {
+        StereoAlgorithm::SGBM,
+        StereoAlgorithm::BM
+    };
+    
+    // Add BoofCV algorithms if available
+#ifdef HAVE_BOOFCV
+    if (BoofCVStereoMatcher::isAvailable()) {
+        algorithms.push_back(StereoAlgorithm::BOOFCV_SGBM);
+        algorithms.push_back(StereoAlgorithm::BOOFCV_BM);
+    }
+#endif
+    
+    return algorithms;
 }
 
 // StereoQualityMetrics implementation

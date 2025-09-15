@@ -70,9 +70,18 @@ enum class CameraState {
 
 // Processing algorithms
 enum class StereoAlgorithm {
+    // OpenCV algorithms
     SGBM_OPENCV,
-    BOOFCV_BASIC,
-    BOOFCV_PRECISE
+    
+    // BoofCV algorithms - Dense Disparity with precision targeting
+    BOOFCV_DENSE_BM,      ///< BoofCV Dense Block Matching (fast)
+    BOOFCV_DENSE_SGM,     ///< BoofCV Dense Semi-Global Matching (balanced)
+    BOOFCV_SUBPIXEL_BM,   ///< BoofCV Sub-pixel Block Matching (precise)
+    BOOFCV_SUBPIXEL_SGM,  ///< BoofCV Sub-pixel Semi-Global Matching (highest precision)
+    
+    // Legacy enum values (mapped to specific algorithms)
+    BOOFCV_BASIC = BOOFCV_DENSE_BM,      ///< Legacy: Basic BoofCV processing
+    BOOFCV_PRECISE = BOOFCV_SUBPIXEL_SGM  ///< Legacy: Precise BoofCV processing
 };
 
 // Depth map quality levels

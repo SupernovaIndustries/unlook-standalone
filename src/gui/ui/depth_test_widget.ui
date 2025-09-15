@@ -1,0 +1,584 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DepthTestWidget</class>
+ <widget class="QWidget" name="DepthTestWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>718</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Depth Test</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Background */
+QWidget#DepthTestWidget {
+    background-color: #e0e5ec;
+}
+
+/* Neomorphism Sliders */
+QSlider::groove:horizontal {
+    height: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #c5cdd9,
+        stop:1 #d5dbe3);
+    border-radius: 4px;
+    border: 1px solid #b8c2d3;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    border: none;
+    width: 20px;
+    height: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #8b5cf6,
+        stop:1 #7c3aed);
+    border-radius: 4px;
+}
+
+/* Neomorphism ComboBox */
+QComboBox {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #4a5568;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QComboBox:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+}
+
+QComboBox::drop-down {
+    border: none;
+    width: 30px;
+}
+
+QComboBox QAbstractItemView {
+    background: #f0f0f0;
+    color: #4a5568;
+    border: 2px solid #bebebe;
+    selection-background-color: #8b5cf6;
+    selection-color: white;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>10</number>
+   </property>
+   <property name="topMargin">
+    <number>10</number>
+   </property>
+   <property name="rightMargin">
+    <number>10</number>
+   </property>
+   <property name="bottomMargin">
+    <number>10</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="content_layout">
+     <property name="spacing">
+      <number>15</number>
+     </property>
+     <item>
+      <layout class="QVBoxLayout" name="visualization_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <layout class="QHBoxLayout" name="images_layout">
+         <property name="spacing">
+          <number>10</number>
+         </property>
+         <item>
+          <layout class="QVBoxLayout" name="left_image_layout">
+           <item>
+            <widget class="QLabel" name="left_image_label">
+             <property name="minimumSize">
+              <size>
+               <width>300</width>
+               <height>225</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Neomorphism Frame */
+background: #d1d9e6;
+border: none;
+border-radius: 15px;
+color: #4a5568;
+border-left: 3px solid #bebebe;
+border-top: 3px solid #bebebe;
+border-right: 3px solid #ffffff;
+border-bottom: 3px solid #ffffff;</string>
+             </property>
+             <property name="text">
+              <string>No Image</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignmentFlag::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QVBoxLayout" name="right_image_layout">
+           <item>
+            <widget class="QLabel" name="depth_image_label">
+             <property name="minimumSize">
+              <size>
+               <width>600</width>
+               <height>200</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Neomorphism Frame */
+background: #d1d9e6;
+border: none;
+border-radius: 15px;
+color: #4a5568;
+border-left: 3px solid #bebebe;
+border-top: 3px solid #bebebe;
+border-right: 3px solid #ffffff;
+border-bottom: 3px solid #ffffff;</string>
+             </property>
+             <property name="text">
+              <string>No Depth Data</string>
+             </property>
+             <property name="alignment">
+              <set>Qt::AlignmentFlag::AlignCenter</set>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="depth_layout">
+         <item>
+          <layout class="QVBoxLayout" name="controls_layout">
+           <property name="spacing">
+            <number>15</number>
+           </property>
+           <property name="leftMargin">
+            <number>20</number>
+           </property>
+           <property name="topMargin">
+            <number>20</number>
+           </property>
+           <property name="rightMargin">
+            <number>20</number>
+           </property>
+           <property name="bottomMargin">
+            <number>20</number>
+           </property>
+           <item>
+            <widget class="QPushButton" name="capture_button">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>50</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+               <weight>87</weight>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Neomorphism Primary Button */
+QPushButton#capture_button {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #0e0e0e;
+    border: none;
+    border-radius: 25px;
+    padding: 15px;
+    font-weight: 900;
+    text-transform: uppercase;
+    border-left: 3px solid #ffffff;
+    border-top: 3px solid #ffffff;
+    border-right: 3px solid #bebebe;
+    border-bottom: 3px solid #bebebe;
+}
+
+QPushButton#capture_button:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #7c3aed;
+}
+
+QPushButton#capture_button:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #cacaca,
+        stop:1 #e5e5e5);
+    color: #6d28d9;
+    border-left: 3px solid #bebebe;
+    border-top: 3px solid #bebebe;
+    border-right: 3px solid #ffffff;
+    border-bottom: 3px solid #ffffff;
+}</string>
+             </property>
+             <property name="text">
+              <string>CAPTURE &amp; PROCESS</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="algorithm_combo">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>35</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Custom style handled by parent widget */
+
+
+</string>
+             </property>
+             <item>
+              <property name="text">
+               <string>OpenCV SGBM</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>BoofCV Dense Block Matching (Fast)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>BoofCV Dense Semi-Global Matching</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>BoofCV Sub-pixel Block Matching</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>BoofCV Sub-pixel SGM (Highest Precision)</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="parameters_label">
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #0e0e0e;</string>
+             </property>
+             <property name="text">
+              <string>Disparity Parameters</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="num_disparities_layout">
+             <property name="spacing">
+              <number>5</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="num_disparities_label">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #0e0e0e;</string>
+               </property>
+               <property name="text">
+                <string>Number of Disparities</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSlider" name="num_disparities_slider">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>30</height>
+                </size>
+               </property>
+               <property name="minimum">
+                <number>16</number>
+               </property>
+               <property name="maximum">
+                <number>256</number>
+               </property>
+               <property name="singleStep">
+                <number>16</number>
+               </property>
+               <property name="value">
+                <number>64</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="block_size_layout">
+             <property name="spacing">
+              <number>5</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="block_size_label">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #0e0e0e;</string>
+               </property>
+               <property name="text">
+                <string>Block Size</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSlider" name="block_size_slider">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>30</height>
+                </size>
+               </property>
+               <property name="minimum">
+                <number>5</number>
+               </property>
+               <property name="maximum">
+                <number>25</number>
+               </property>
+               <property name="singleStep">
+                <number>2</number>
+               </property>
+               <property name="value">
+                <number>15</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="min_disparity_layout">
+             <property name="spacing">
+              <number>5</number>
+             </property>
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="min_disparity_label">
+               <property name="font">
+                <font>
+                 <pointsize>10</pointsize>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">color: #0e0e0e;</string>
+               </property>
+               <property name="text">
+                <string>Minimum Disparity</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSlider" name="min_disparity_slider">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>30</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>16777215</width>
+                 <height>30</height>
+                </size>
+               </property>
+               <property name="minimum">
+                <number>-32</number>
+               </property>
+               <property name="maximum">
+                <number>32</number>
+               </property>
+               <property name="value">
+                <number>0</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="processing_status">
+             <property name="font">
+              <font>
+               <pointsize>10</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #0e0e0e;
+font-weight: 700;</string>
+             </property>
+             <property name="text">
+              <string>Idle</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="result_stats">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>30</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>9</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #0e0e0e;</string>
+             </property>
+             <property name="text">
+              <string>No results</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="controls_spacer">
+             <property name="orientation">
+              <enum>Qt::Orientation::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -9,6 +9,8 @@
 #include <QHBoxLayout>
 #include <opencv2/imgproc.hpp>
 
+#include "ui_camera_preview_widget.h"
+
 using namespace unlook::gui::styles;
 using namespace unlook::gui::widgets;
 
@@ -17,13 +19,26 @@ namespace gui {
 
 CameraPreviewWidget::CameraPreviewWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
+    , ui(new Ui::CameraPreviewWidget)
     , camera_system_(camera_system)
     , cameras_swapped_(false)
     , capture_active_(false)
     , widget_visible_(false)
     , frame_count_(0)
     , current_fps_(0.0)
+    , left_camera_label_(nullptr)
+    , right_camera_label_(nullptr)
 {
+    // Setup UI from .ui file
+    ui->setupUi(this);
+    
+    // Connect signals
+    connectSignals();
+    
+    // Initialize additional components
+    initializeAdditionalComponents();
+    
+    // Initialize UI compatibility components
     initializeUI();
     
     // Setup FPS timer
@@ -36,6 +51,7 @@ CameraPreviewWidget::~CameraPreviewWidget() {
     if (capture_active_) {
         stopCapture();
     }
+    delete ui;
 }
 
 void CameraPreviewWidget::showEvent(QShowEvent* event) {
@@ -65,11 +81,15 @@ void CameraPreviewWidget::onStereoFrameReceived(const core::StereoFramePair& fra
     if (++frame_skip_counter % 3 != 0) {
         // Skip this frame for GUI processing, but still update sync status
         if (frame_pair.synchronized) {
-            sync_status_->setStatus(QString("Sync OK (%1ms error)")
-                                   .arg(frame_pair.sync_error_ms, 0, 'f', 3),
-                                   StatusDisplay::StatusType::SUCCESS);
+            if (sync_status_) {
+// TODO_UI:                 sync_status_->setStatus(QString("Sync OK (%1ms error)")
+//                                      .arg(frame_pair.sync_error_ms, 0, 'f', 3),
+//                                      StatusDisplay::StatusType::SUCCESS);
+            }
         } else {
-            sync_status_->setStatus("Synchronization error", StatusDisplay::StatusType::ERROR);
+            if (sync_status_) {
+// TODO_UI:                 sync_status_->setStatus("Synchronization error", StatusDisplay::StatusType::ERROR);
+            }
         }
         return;
     }
@@ -79,11 +99,65 @@ void CameraPreviewWidget::onStereoFrameReceived(const core::StereoFramePair& fra
     
     // Update sync status
     if (frame_pair.synchronized) {
-        sync_status_->setStatus(QString("Sync OK (%1ms error)")
-                               .arg(frame_pair.sync_error_ms, 0, 'f', 3),
-                               StatusDisplay::StatusType::SUCCESS);
+        if (sync_status_) {
+// TODO_UI:             sync_status_->setStatus(QString("Sync OK (%1ms error)")
+//                                  .arg(frame_pair.sync_error_ms, 0, 'f', 3),
+//                                  StatusDisplay::StatusType::SUCCESS);
+        }
     } else {
-        sync_status_->setStatus("Synchronization error", StatusDisplay::StatusType::ERROR);
+        if (sync_status_) {
+// TODO_UI:             sync_status_->setStatus("Synchronization error", StatusDisplay::StatusType::ERROR);
+        }
+    }
+}
+
+void CameraPreviewWidget::connectSignals() {
+    // Connect UI signals to slots
+    connect(ui->start_capture_button, &QPushButton::clicked, this, &CameraPreviewWidget::startCapture);
+    connect(ui->stop_capture_button, &QPushButton::clicked, this, &CameraPreviewWidget::stopCapture);
+    connect(ui->swap_cameras_button, &QPushButton::clicked, this, &CameraPreviewWidget::swapCameraDisplays);
+    
+    // Connect sliders
+    connect(ui->left_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, [this](int value) { onLeftExposureChanged(static_cast<double>(value)); });
+    connect(ui->right_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, [this](int value) { onRightExposureChanged(static_cast<double>(value)); });
+    connect(ui->left_gain_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, [this](int value) { onLeftGainChanged(static_cast<double>(value) / 100.0); });
+    connect(ui->right_gain_slider, QOverload<int>::of(&QSlider::valueChanged), 
+            this, [this](int value) { onRightGainChanged(static_cast<double>(value) / 100.0); });
+    // TODO_UI: Add fps_slider to .ui file
+    // connect(ui->fps_slider, QOverload<int>::of(&QSlider::valueChanged), 
+    //         this, [this](int value) { onFPSChanged(static_cast<double>(value)); });
+    
+    // TODO_UI: Add auto exposure/gain buttons to .ui file
+    // Connect auto buttons
+    // connect(ui->left_auto_exposure_button, &QPushButton::clicked, this, &CameraPreviewWidget::toggleLeftAutoExposure);
+    // connect(ui->right_auto_exposure_button, &QPushButton::clicked, this, &CameraPreviewWidget::toggleRightAutoExposure);
+    // connect(ui->left_auto_gain_button, &QPushButton::clicked, this, &CameraPreviewWidget::toggleLeftAutoGain);
+    // connect(ui->right_auto_gain_button, &QPushButton::clicked, this, &CameraPreviewWidget::toggleRightAutoGain);
+}
+
+void CameraPreviewWidget::initializeAdditionalComponents() {
+    // Initialize slider value labels with default values (unified for both cameras)
+    // Exposure default: 10000µs (from .ui file)
+    ui->left_exposure_value->setText("10000µs");
+    
+    // Gain default: 1.0x (from .ui file, slider value 100 = gain 1.0)
+    ui->left_gain_value->setText("1.0x");
+    
+    // Hide/disable right sliders (will be removed from UI)
+    if (ui->right_exposure_slider) {
+        ui->right_exposure_slider->setVisible(false);
+    }
+    if (ui->right_gain_slider) {
+        ui->right_gain_slider->setVisible(false);
+    }
+    if (ui->right_exposure_value) {
+        ui->right_exposure_value->setVisible(false);
+    }
+    if (ui->right_gain_value) {
+        ui->right_gain_value->setVisible(false);
     }
 }
 
@@ -92,31 +166,35 @@ void CameraPreviewWidget::updateFPSDisplay() {
     current_fps_ = frame_count_ - last_frame_count;
     last_frame_count = frame_count_;
     
-    fps_status_->setStatus(QString("%1 FPS").arg(current_fps_), StatusDisplay::StatusType::INFO);
+    ui->fps_status->setText(QString("FPS: %1").arg(current_fps_));
 }
 
 void CameraPreviewWidget::onLeftExposureChanged(double value) {
     if (camera_system_) {
+        // Now controls BOTH cameras (unified control)
         camera_system_->setExposureTime(core::CameraId::LEFT, value);
     }
+    // Update label to show current value (for both cameras)
+    ui->left_exposure_value->setText(QString("%1µs").arg(static_cast<int>(value)));
 }
 
 void CameraPreviewWidget::onRightExposureChanged(double value) {
-    if (camera_system_) {
-        camera_system_->setExposureTime(core::CameraId::RIGHT, value);
-    }
+    // Deprecated - right slider will be removed
+    onLeftExposureChanged(value);
 }
 
 void CameraPreviewWidget::onLeftGainChanged(double value) {
     if (camera_system_) {
+        // Now controls BOTH cameras (unified control)
         camera_system_->setGain(core::CameraId::LEFT, value);
     }
+    // Update label to show current value (for both cameras, gain is from 1.0 to 16.0)
+    ui->left_gain_value->setText(QString("%1x").arg(value, 0, 'f', 1));
 }
 
 void CameraPreviewWidget::onRightGainChanged(double value) {
-    if (camera_system_) {
-        camera_system_->setGain(core::CameraId::RIGHT, value);
-    }
+    // Deprecated - right slider will be removed
+    onLeftGainChanged(value);
 }
 
 void CameraPreviewWidget::onFPSChanged(double value) {
@@ -133,9 +211,9 @@ void CameraPreviewWidget::toggleLeftAutoExposure() {
     
     camera_system_->setAutoExposure(core::CameraId::LEFT, new_auto);
     
-    left_auto_exposure_button_->setText(new_auto ? "Auto ON" : "Auto OFF");
-    left_auto_exposure_button_->setButtonType(new_auto ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    left_exposure_slider_->setEnabled(!new_auto);
+    // TODO_UI: Add auto exposure button to .ui file
+    // ui->left_auto_exposure_button->setText(new_auto ? "Auto ON" : "Auto OFF");
+    ui->left_exposure_slider->setEnabled(!new_auto);
 }
 
 void CameraPreviewWidget::toggleRightAutoExposure() {
@@ -146,9 +224,9 @@ void CameraPreviewWidget::toggleRightAutoExposure() {
     
     camera_system_->setAutoExposure(core::CameraId::RIGHT, new_auto);
     
-    right_auto_exposure_button_->setText(new_auto ? "Auto ON" : "Auto OFF");
-    right_auto_exposure_button_->setButtonType(new_auto ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    right_exposure_slider_->setEnabled(!new_auto);
+    // TODO_UI: Add auto exposure button to .ui file
+    // ui->right_auto_exposure_button->setText(new_auto ? "Auto ON" : "Auto OFF");
+    ui->right_exposure_slider->setEnabled(!new_auto);
 }
 
 void CameraPreviewWidget::toggleLeftAutoGain() {
@@ -159,9 +237,9 @@ void CameraPreviewWidget::toggleLeftAutoGain() {
     
     camera_system_->setAutoGain(core::CameraId::LEFT, new_auto);
     
-    left_auto_gain_button_->setText(new_auto ? "Auto ON" : "Auto OFF");
-    left_auto_gain_button_->setButtonType(new_auto ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    left_gain_slider_->setEnabled(!new_auto);
+    // TODO_UI: Add auto gain button to .ui file
+    // ui->left_auto_gain_button->setText(new_auto ? "Auto ON" : "Auto OFF");
+    ui->left_gain_slider->setEnabled(!new_auto);
 }
 
 void CameraPreviewWidget::toggleRightAutoGain() {
@@ -172,29 +250,32 @@ void CameraPreviewWidget::toggleRightAutoGain() {
     
     camera_system_->setAutoGain(core::CameraId::RIGHT, new_auto);
     
-    right_auto_gain_button_->setText(new_auto ? "Auto ON" : "Auto OFF");
-    right_auto_gain_button_->setButtonType(new_auto ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    right_gain_slider_->setEnabled(!new_auto);
+    // TODO_UI: Add auto gain button to .ui file
+    // ui->right_auto_gain_button->setText(new_auto ? "Auto ON" : "Auto OFF");
+    ui->right_gain_slider->setEnabled(!new_auto);
 }
 
 void CameraPreviewWidget::swapCameraDisplays() {
     cameras_swapped_ = !cameras_swapped_;
     
     if (cameras_swapped_) {
-        left_title_label_->setText("RIGHT Camera");
-        right_title_label_->setText("LEFT Camera");
-        swap_cameras_button_->setText("SWAP: R↔L");
+// TODO_UI:         left_title_label_->setText("RIGHT Camera");
+// TODO_UI:         right_title_label_->setText("LEFT Camera");
+// TODO_UI:         swap_cameras_button_->setText("SWAP: R↔L");
     } else {
-        left_title_label_->setText("LEFT Camera");
-        right_title_label_->setText("RIGHT Camera");
-        swap_cameras_button_->setText("SWAP: L↔R");
+// TODO_UI:         left_title_label_->setText("LEFT Camera");
+// TODO_UI:         right_title_label_->setText("RIGHT Camera");
+// TODO_UI:         swap_cameras_button_->setText("SWAP: L↔R");
     }
 }
 
 void CameraPreviewWidget::startCapture() {
     if (!camera_system_ || capture_active_) return;
     
-    // Set frame callback
+    // UX IMPROVEMENT: If cameras are already running (from auto-start), just attach to them
+    qDebug() << "[CameraPreview] Starting camera preview capture...";
+    
+    // Set frame callback for this widget
     auto frame_callback = [this](const core::StereoFramePair& frame_pair) {
         // PERFORMANCE FIX: Use direct Qt signal emission for real-time processing
         // QTimer::singleShot causes batching/accumulation - BAD for 30 FPS video!
@@ -205,28 +286,44 @@ void CameraPreviewWidget::startCapture() {
     
     if (camera_system_->startCapture(frame_callback)) {
         capture_active_ = true;
-        start_capture_button_->setEnabled(false);
-        stop_capture_button_->setEnabled(true);
+        ui->start_capture_button->setEnabled(false);
+        ui->stop_capture_button->setEnabled(true);
+        qDebug() << "[CameraPreview] Successfully attached to camera capture";
         
-        left_camera_status_->setStatus("Capturing", StatusDisplay::StatusType::PROCESSING);
-        right_camera_status_->setStatus("Capturing", StatusDisplay::StatusType::PROCESSING);
+// TODO_UI:         left_camera_status_->setStatus("Capturing", StatusDisplay::StatusType::PROCESSING);
+// TODO_UI:         right_camera_status_->setStatus("Capturing", StatusDisplay::StatusType::PROCESSING);
     } else {
-        left_camera_status_->setStatus("Failed to start capture", StatusDisplay::StatusType::ERROR);
-        right_camera_status_->setStatus("Failed to start capture", StatusDisplay::StatusType::ERROR);
+        qDebug() << "[CameraPreview] Failed to start camera capture";
+// TODO_UI:         left_camera_status_->setStatus("Failed to start capture", StatusDisplay::StatusType::ERROR);
+// TODO_UI:         right_camera_status_->setStatus("Failed to start capture", StatusDisplay::StatusType::ERROR);
     }
 }
 
 void CameraPreviewWidget::stopCapture() {
     if (!capture_active_) return;
     
-    camera_system_->stopCapture();
+    // UX IMPROVEMENT: Don't stop cameras completely, just return to background operation
+    // This keeps cameras running for other widgets and better user experience
+    qDebug() << "[CameraPreview] Switching to background capture mode instead of stopping completely";
+    
+    // Create a minimal background callback to keep cameras running
+    auto background_callback = [](const core::StereoFramePair& /*frame_pair*/) {
+        // Frame received but not processed - just keeps cameras running in background
+    };
+    
+    if (camera_system_->startCapture(background_callback)) {
+        qDebug() << "[CameraPreview] Switched to background capture successfully";
+    } else {
+        qDebug() << "[CameraPreview] Failed to switch to background capture, stopping completely";
+        camera_system_->stopCapture();
+    }
+    
     capture_active_ = false;
+    ui->start_capture_button->setEnabled(true);
+    ui->stop_capture_button->setEnabled(false);
     
-    start_capture_button_->setEnabled(true);
-    stop_capture_button_->setEnabled(false);
-    
-    left_camera_status_->setStatus("Stopped", StatusDisplay::StatusType::INFO);
-    right_camera_status_->setStatus("Stopped", StatusDisplay::StatusType::INFO);
+// TODO_UI:     left_camera_status_->setStatus("Background Mode", StatusDisplay::StatusType::INFO);
+// TODO_UI:     right_camera_status_->setStatus("Background Mode", StatusDisplay::StatusType::INFO);
 }
 
 void CameraPreviewWidget::initializeUI() {
@@ -235,345 +332,63 @@ void CameraPreviewWidget::initializeUI() {
     
     qDebug() << "CameraPreviewWidget: Compact mode:" << compact_mode << "Screen:" << metrics.screenSize();
     
-    if (compact_mode) {
-        // Vertical layout for small screens (840x480)
-        main_layout_ = new QHBoxLayout(this);
-        main_layout_->setSpacing(metrics.getSpacing(SupernovaStyle::Spacing::MARGIN_SMALL));
-        
-        // Create preview area (takes most space)
-        preview_area_ = createPreviewArea();
-        main_layout_->addWidget(preview_area_, 2); // More stretch for previews
-        
-        // Create combined controls+status panel (compact)
-        QWidget* side_panel = createCompactSidePanel();
-        side_panel->setFixedWidth(metrics.screenSize().width() * 0.25); // 25% of screen width
-        main_layout_->addWidget(side_panel);
-        
-    } else {
-        // Horizontal layout for larger screens
-        main_layout_ = new QHBoxLayout(this);
-        main_layout_->setSpacing(SupernovaStyle::Spacing::MARGIN_LARGE);
-        
-        // Create preview area
-        preview_area_ = createPreviewArea();
-        main_layout_->addWidget(preview_area_, 1);
-        
-        // Create controls panel
-        controls_panel_ = createControlsPanel();
-        controls_panel_->setFixedWidth(300);  // Standard width for larger screens
-        main_layout_->addWidget(controls_panel_);
-        
-        // Create status panel  
-        status_panel_ = createStatusPanel();
-        status_panel_->setFixedWidth(250);
-        main_layout_->addWidget(status_panel_);
-    }
-}
-
-QWidget* CameraPreviewWidget::createPreviewArea() {
-    const auto& metrics = styles::DisplayMetrics::instance();
-    bool compact_mode = metrics.shouldUseCompactMode();
+    // DO NOT create layouts here - setupUi() already created them from .ui file
+    // Instead, find and connect to existing widgets from .ui file
     
-    QWidget* area = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(area);
-    layout->setSpacing(compact_mode ? 2 : metrics.getSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM));
+    // TODO: Find widgets by object name from .ui file and assign to pointers
+    // For now, create them manually but without layout conflicts
     
-    // Title with responsive font - HIDDEN on SMALL screens to save space
-    if (!compact_mode) {
-        QLabel* title = new QLabel("Camera Preview");
-        title->setFont(metrics.getResponsiveFont(static_cast<int>(SupernovaStyle::FontSize::HEADING), QFont::Bold));
-        title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
-        title->setAlignment(Qt::AlignCenter);
-        layout->addWidget(title);
+    // Find camera labels from .ui file (using correct snake_case names)
+    if (!left_camera_label_) {
+        left_camera_label_ = findChild<QLabel*>("left_camera_label");
+        if (!left_camera_label_) {
+            qWarning() << "Could not find left_camera_label in .ui file";
+            return; // Don't create duplicates
+        }
     }
     
-    // Calculate responsive preview dimensions
+    if (!right_camera_label_) {
+        right_camera_label_ = findChild<QLabel*>("right_camera_label");
+        if (!right_camera_label_) {
+            qWarning() << "Could not find right_camera_label in .ui file";
+            return; // Don't create duplicates
+        }
+    }
+    
+    // Apply camera preview styling
     QSize preview_size = getResponsivePreviewSize();
-    int spacing = metrics.getSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
-    
-    // Camera displays layout - vertical stacking for compact mode
-    QBoxLayout* cameras_layout;
-    if (compact_mode) {
-        cameras_layout = new QVBoxLayout();
-    } else {
-        cameras_layout = new QHBoxLayout();
-    }
-    cameras_layout->setSpacing(spacing);
-    
-    // Left camera
-    QVBoxLayout* left_layout = new QVBoxLayout();
-    left_title_label_ = new QLabel(compact_mode ? "L" : "LEFT Camera");
-    left_title_label_->setFont(metrics.getResponsiveFont(static_cast<int>(SupernovaStyle::FontSize::SUBTITLE), QFont::Bold));
-    left_title_label_->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
-    left_title_label_->setAlignment(Qt::AlignCenter);
-    left_layout->addWidget(left_title_label_);
-    
-    left_camera_label_ = new QLabel();
-    left_camera_label_->setFixedSize(preview_size);
-    left_camera_label_->setStyleSheet(SupernovaStyle::getCameraPreviewStyle());
-    left_camera_label_->setAlignment(Qt::AlignCenter);
-    left_camera_label_->setText("No Video");
-    left_layout->addWidget(left_camera_label_);
-    
-    cameras_layout->addLayout(left_layout);
-    
-    // Right camera
-    QVBoxLayout* right_layout = new QVBoxLayout();
-    right_title_label_ = new QLabel(compact_mode ? "R" : "RIGHT Camera");
-    right_title_label_->setFont(metrics.getResponsiveFont(static_cast<int>(SupernovaStyle::FontSize::SUBTITLE), QFont::Bold));
-    right_title_label_->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
-    right_title_label_->setAlignment(Qt::AlignCenter);
-    right_layout->addWidget(right_title_label_);
-    
-    right_camera_label_ = new QLabel();
-    right_camera_label_->setFixedSize(preview_size);
-    right_camera_label_->setStyleSheet(SupernovaStyle::getCameraPreviewStyle());
-    right_camera_label_->setAlignment(Qt::AlignCenter);
-    right_camera_label_->setText("No Video");
-    right_layout->addWidget(right_camera_label_);
-    
-    cameras_layout->addLayout(right_layout);
-    
-    layout->addLayout(cameras_layout);
-    
-    // Swap button - OPTIMIZED: Compact size for better UI density
-    swap_cameras_button_ = new TouchButton("SWAP: L↔R", TouchButton::ButtonType::SECONDARY);
-    swap_cameras_button_->setCompactSize();
-    connect(swap_cameras_button_, &TouchButton::clicked, this, &CameraPreviewWidget::swapCameraDisplays);
-    layout->addWidget(swap_cameras_button_, 0, Qt::AlignCenter);
-    
-    return area;
-}
-
-QWidget* CameraPreviewWidget::createControlsPanel() {
-    QWidget* panel = new QWidget();
-    panel->setStyleSheet(SupernovaStyle::getStatusDisplayStyle(SupernovaStyle::NEBULA_SURFACE));
-    
-    QVBoxLayout* layout = new QVBoxLayout(panel);
-    layout->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
-    layout->setContentsMargins(SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE);
-    
-    // Title
-    QLabel* title = new QLabel("Camera Controls");
-    title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SUBTITLE, SupernovaStyle::FontWeight::BOLD));
-    title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
-    layout->addWidget(title);
-    
-    // Capture controls - HORIZONTAL LAYOUT: Start and Stop buttons side by side
-    QHBoxLayout* capture_buttons_layout = new QHBoxLayout();
-    capture_buttons_layout->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM); // 16px spacing between buttons
-    
-    start_capture_button_ = new TouchButton("START Preview", TouchButton::ButtonType::SUCCESS);
-    start_capture_button_->setCompactSize();
-    connect(start_capture_button_, &TouchButton::clicked, this, &CameraPreviewWidget::startCapture);
-    capture_buttons_layout->addWidget(start_capture_button_);
-    
-    stop_capture_button_ = new TouchButton("STOP Preview", TouchButton::ButtonType::ERROR);
-    stop_capture_button_->setCompactSize();
-    stop_capture_button_->setEnabled(false);
-    connect(stop_capture_button_, &TouchButton::clicked, this, &CameraPreviewWidget::stopCapture);
-    capture_buttons_layout->addWidget(stop_capture_button_);
-    
-    layout->addLayout(capture_buttons_layout);
-    
-    // LEFT camera controls
-    QLabel* left_section = new QLabel("LEFT Camera");
-    left_section->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::BODY, SupernovaStyle::FontWeight::BOLD));
-    left_section->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
-    layout->addWidget(left_section);
-    
-    left_exposure_slider_ = new ParameterSlider("Exposure (μs)", MIN_EXPOSURE_US, MAX_EXPOSURE_US, 10000);
-    connect(left_exposure_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onLeftExposureChanged);
-    layout->addWidget(left_exposure_slider_);
-    
-    left_auto_exposure_button_ = new TouchButton("Auto OFF", TouchButton::ButtonType::SECONDARY);
-    left_auto_exposure_button_->setCompactSize();
-    connect(left_auto_exposure_button_, &TouchButton::clicked, this, &CameraPreviewWidget::toggleLeftAutoExposure);
-    layout->addWidget(left_auto_exposure_button_);
-    
-    left_gain_slider_ = new ParameterSlider("Gain", MIN_GAIN, MAX_GAIN, 1.0, ParameterSlider::ValueType::FLOATING_POINT);
-    connect(left_gain_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onLeftGainChanged);
-    layout->addWidget(left_gain_slider_);
-    
-    left_auto_gain_button_ = new TouchButton("Auto OFF", TouchButton::ButtonType::SECONDARY);
-    left_auto_gain_button_->setCompactSize();
-    connect(left_auto_gain_button_, &TouchButton::clicked, this, &CameraPreviewWidget::toggleLeftAutoGain);
-    layout->addWidget(left_auto_gain_button_);
-    
-    // RIGHT camera controls
-    QLabel* right_section = new QLabel("RIGHT Camera");
-    right_section->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::BODY, SupernovaStyle::FontWeight::BOLD));
-    right_section->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
-    layout->addWidget(right_section);
-    
-    right_exposure_slider_ = new ParameterSlider("Exposure (μs)", MIN_EXPOSURE_US, MAX_EXPOSURE_US, 10000);
-    connect(right_exposure_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onRightExposureChanged);
-    layout->addWidget(right_exposure_slider_);
-    
-    right_auto_exposure_button_ = new TouchButton("Auto OFF", TouchButton::ButtonType::SECONDARY);
-    right_auto_exposure_button_->setCompactSize();
-    connect(right_auto_exposure_button_, &TouchButton::clicked, this, &CameraPreviewWidget::toggleRightAutoExposure);
-    layout->addWidget(right_auto_exposure_button_);
-    
-    right_gain_slider_ = new ParameterSlider("Gain", MIN_GAIN, MAX_GAIN, 1.0, ParameterSlider::ValueType::FLOATING_POINT);
-    connect(right_gain_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onRightGainChanged);
-    layout->addWidget(right_gain_slider_);
-    
-    right_auto_gain_button_ = new TouchButton("Auto OFF", TouchButton::ButtonType::SECONDARY);
-    right_auto_gain_button_->setCompactSize();
-    connect(right_auto_gain_button_, &TouchButton::clicked, this, &CameraPreviewWidget::toggleRightAutoGain);
-    layout->addWidget(right_auto_gain_button_);
-    
-    // Global controls
-    QLabel* global_section = new QLabel("Global Settings");
-    global_section->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::BODY, SupernovaStyle::FontWeight::BOLD));
-    global_section->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
-    layout->addWidget(global_section);
-    
-    fps_slider_ = new ParameterSlider("Target FPS", MIN_FPS, MAX_FPS, 30.0, ParameterSlider::ValueType::FLOATING_POINT);
-    connect(fps_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onFPSChanged);
-    layout->addWidget(fps_slider_);
-    
-    layout->addStretch();
-    
-    return panel;
-}
-
-QWidget* CameraPreviewWidget::createStatusPanel() {
-    QWidget* panel = new QWidget();
-    panel->setStyleSheet(SupernovaStyle::getStatusDisplayStyle(SupernovaStyle::NEBULA_SURFACE));
-    
-    QVBoxLayout* layout = new QVBoxLayout(panel);
-    layout->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
-    layout->setContentsMargins(SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE,
-                              SupernovaStyle::Spacing::PADDING_LARGE);
-    
-    // Title
-    QLabel* title = new QLabel("Status");
-    title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SUBTITLE, SupernovaStyle::FontWeight::BOLD));
-    title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
-    layout->addWidget(title);
-    
-    // Status displays
-    left_camera_status_ = new StatusDisplay("LEFT Camera");
-    left_camera_status_->setStatus("Ready", StatusDisplay::StatusType::INFO);
-    layout->addWidget(left_camera_status_);
-    
-    right_camera_status_ = new StatusDisplay("RIGHT Camera");  
-    right_camera_status_->setStatus("Ready", StatusDisplay::StatusType::INFO);
-    layout->addWidget(right_camera_status_);
-    
-    fps_status_ = new StatusDisplay("Frame Rate");
-    fps_status_->setStatus("0 FPS", StatusDisplay::StatusType::INFO);
-    layout->addWidget(fps_status_);
-    
-    sync_status_ = new StatusDisplay("Synchronization");
-    sync_status_->setStatus("Not capturing", StatusDisplay::StatusType::INFO);
-    layout->addWidget(sync_status_);
-    
-    layout->addStretch();
-    
-    return panel;
-}
-
-void CameraPreviewWidget::updateCameraControls() {
-    // Update UI controls based on current camera configuration
-    if (!camera_system_) return;
-    
-    core::CameraConfig left_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
-    core::CameraConfig right_config = camera_system_->getCameraConfig(core::CameraId::RIGHT);
-    
-    // Update sliders
-    left_exposure_slider_->setValue(left_config.exposure_time_us);
-    right_exposure_slider_->setValue(right_config.exposure_time_us);
-    left_gain_slider_->setValue(left_config.gain);
-    right_gain_slider_->setValue(right_config.gain);
-    fps_slider_->setValue(left_config.fps);
-    
-    // Update auto buttons
-    left_auto_exposure_button_->setText(left_config.auto_exposure ? "Auto ON" : "Auto OFF");
-    left_auto_exposure_button_->setButtonType(left_config.auto_exposure ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    
-    right_auto_exposure_button_->setText(right_config.auto_exposure ? "Auto ON" : "Auto OFF");
-    right_auto_exposure_button_->setButtonType(right_config.auto_exposure ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    
-    left_auto_gain_button_->setText(left_config.auto_gain ? "Auto ON" : "Auto OFF");
-    left_auto_gain_button_->setButtonType(left_config.auto_gain ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    
-    right_auto_gain_button_->setText(right_config.auto_gain ? "Auto ON" : "Auto OFF");
-    right_auto_gain_button_->setButtonType(right_config.auto_gain ? TouchButton::ButtonType::SUCCESS : TouchButton::ButtonType::SECONDARY);
-    
-    // Enable/disable sliders based on auto settings
-    left_exposure_slider_->setEnabled(!left_config.auto_exposure);
-    right_exposure_slider_->setEnabled(!right_config.auto_exposure);
-    left_gain_slider_->setEnabled(!left_config.auto_gain);
-    right_gain_slider_->setEnabled(!right_config.auto_gain);
-}
-
-QPixmap CameraPreviewWidget::matToQPixmap(const cv::Mat& mat) {
-    if (mat.empty()) {
-        return QPixmap();
+    if (left_camera_label_) {
+        left_camera_label_->setFixedSize(preview_size);
+        left_camera_label_->setStyleSheet(SupernovaStyle::getCameraPreviewStyle());
+        left_camera_label_->setAlignment(Qt::AlignCenter);
     }
     
-    QImage qimg;
-    if (mat.type() == CV_8UC1) {
-        // Grayscale image - COPY data to avoid memory sharing issues
-        qimg = QImage(mat.cols, mat.rows, QImage::Format_Grayscale8);
-        
-        // Copy row by row to handle potential stride differences
-        for (int y = 0; y < mat.rows; ++y) {
-            const uchar* src_row = mat.ptr<uchar>(y);
-            uchar* dst_row = qimg.scanLine(y);
-            std::memcpy(dst_row, src_row, mat.cols);
-        }
-    } else if (mat.type() == CV_8UC3) {
-        // Color image (BGR) - COPY and convert to RGB
-        cv::Mat rgb_mat;
-        cv::cvtColor(mat, rgb_mat, cv::COLOR_BGR2RGB);
-        
-        qimg = QImage(rgb_mat.cols, rgb_mat.rows, QImage::Format_RGB888);
-        
-        // Copy row by row to ensure proper data alignment
-        for (int y = 0; y < rgb_mat.rows; ++y) {
-            const uchar* src_row = rgb_mat.ptr<uchar>(y);
-            uchar* dst_row = qimg.scanLine(y);
-            std::memcpy(dst_row, src_row, rgb_mat.cols * 3);
-        }
-    } else {
-        // Unsupported format - create black placeholder
-        qimg = QImage(mat.cols, mat.rows, QImage::Format_Grayscale8);
-        qimg.fill(0);
+    if (right_camera_label_) {
+        right_camera_label_->setFixedSize(preview_size);
+        right_camera_label_->setStyleSheet(SupernovaStyle::getCameraPreviewStyle());
+        right_camera_label_->setAlignment(Qt::AlignCenter);
     }
-    
-    return QPixmap::fromImage(qimg);
-}
-
-QPixmap CameraPreviewWidget::scalePixmapToFit(const QPixmap& pixmap, const QSize& size) {
-    if (pixmap.isNull()) return QPixmap();
-    
-    return pixmap.scaled(size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
 
 void CameraPreviewWidget::updatePreviewImages(const core::CameraFrame& left_frame, 
-                                             const core::CameraFrame& right_frame) {
-    // PERFORMANCE OPTIMIZATION: Resize cv::Mat BEFORE QPixmap conversion (5-10x faster!)
+                                               const core::CameraFrame& right_frame) {
+    if (!left_camera_label_ || !right_camera_label_) return;
+    
+    // Convert frames to QPixmap
+    cv::Mat left_rgb, right_rgb;
+    cv::cvtColor(left_frame.image, left_rgb, cv::COLOR_BGRA2RGB);
+    cv::cvtColor(right_frame.image, right_rgb, cv::COLOR_BGRA2RGB);
+    
+    // Create QImage from cv::Mat
+    QImage left_qimg(left_rgb.data, left_rgb.cols, left_rgb.rows, left_rgb.step, QImage::Format_RGB888);
+    QImage right_qimg(right_rgb.data, right_rgb.cols, right_rgb.rows, right_rgb.step, QImage::Format_RGB888);
+    
+    // Scale to preview size
     QSize preview_size = getResponsivePreviewSize();
+    QPixmap left_pixmap = QPixmap::fromImage(left_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    QPixmap right_pixmap = QPixmap::fromImage(right_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     
-    // Resize OpenCV mats first (super fast with OpenCV)
-    cv::Mat left_resized, right_resized;
-    cv::resize(left_frame.image, left_resized, cv::Size(preview_size.width(), preview_size.height()), 0, 0, cv::INTER_LINEAR);
-    cv::resize(right_frame.image, right_resized, cv::Size(preview_size.width(), preview_size.height()), 0, 0, cv::INTER_LINEAR);
-    
-    // Convert smaller images to pixmaps (much faster on smaller data)
-    QPixmap left_pixmap = matToQPixmap(left_resized);
-    QPixmap right_pixmap = matToQPixmap(right_resized);
-    
-    // Apply to labels (considering swap state)
+    // Handle camera swapping
     if (cameras_swapped_) {
         left_camera_label_->setPixmap(right_pixmap);
         right_camera_label_->setPixmap(left_pixmap);
@@ -585,95 +400,14 @@ void CameraPreviewWidget::updatePreviewImages(const core::CameraFrame& left_fram
 
 QSize CameraPreviewWidget::getResponsivePreviewSize() {
     const auto& metrics = styles::DisplayMetrics::instance();
-    QSize screen_size = metrics.screenSize();
-    bool compact_mode = metrics.shouldUseCompactMode();
     
-    if (compact_mode) {
-        // For 800x480, use DRASTICALLY smaller previews - MAX 200x150px as requested
-        // Must fit both vertically stacked previews + controls in 420px available space
-        int preview_width = 200;  // Max width as requested
-        int preview_height = 150; // Max height as requested (200 * 0.75 = 150)
-        
-        // Ensure we don't exceed limits even on very small screens
-        preview_width = std::min(preview_width, static_cast<int>(screen_size.width() * 0.4));
-        preview_height = std::min(preview_height, static_cast<int>(screen_size.height() * 0.25));
-        
-        return QSize(preview_width, preview_height);
+    if (metrics.shouldUseCompactMode()) {
+        // Compact mode: smaller previews
+        return QSize(320, 240);
     } else {
-        // Standard size for larger screens
-        return QSize(400, 300);
+        // Desktop mode: larger previews
+        return QSize(480, 360);
     }
-}
-
-QWidget* CameraPreviewWidget::createCompactSidePanel() {
-    const auto& metrics = styles::DisplayMetrics::instance();
-    
-    QWidget* side_panel = new QWidget();
-    side_panel->setStyleSheet(SupernovaStyle::getStatusDisplayStyle(SupernovaStyle::NEBULA_SURFACE));
-    
-    QVBoxLayout* layout = new QVBoxLayout(side_panel);
-    layout->setSpacing(2); // Ultra-compact spacing for SMALL screens
-    
-    int padding = 2; // Minimal padding for SMALL screens
-    layout->setContentsMargins(padding, padding, padding, padding);
-    
-    // Title - shortened for SMALL screens
-    QLabel* title = new QLabel("Controls");
-    title->setFont(metrics.getResponsiveFont(static_cast<int>(SupernovaStyle::FontSize::BODY), QFont::Bold)); // Smaller font
-    title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
-    layout->addWidget(title);
-    
-    // Compact capture controls - vertical stack
-    start_capture_button_ = new TouchButton("START", TouchButton::ButtonType::SUCCESS);
-    start_capture_button_->setCompactSize();
-    connect(start_capture_button_, &TouchButton::clicked, this, &CameraPreviewWidget::startCapture);
-    layout->addWidget(start_capture_button_);
-    
-    stop_capture_button_ = new TouchButton("STOP", TouchButton::ButtonType::ERROR);
-    stop_capture_button_->setCompactSize();
-    stop_capture_button_->setEnabled(false);
-    connect(stop_capture_button_, &TouchButton::clicked, this, &CameraPreviewWidget::stopCapture);
-    layout->addWidget(stop_capture_button_);
-    
-    // Swap cameras button
-    swap_cameras_button_ = new TouchButton("SWAP L↔R", TouchButton::ButtonType::SECONDARY);
-    swap_cameras_button_->setCompactSize();
-    connect(swap_cameras_button_, &TouchButton::clicked, this, &CameraPreviewWidget::swapCameraDisplays);
-    layout->addWidget(swap_cameras_button_);
-    
-    // Essential controls section - REMOVED to save space on SMALL screens
-    
-    // Only essential sliders for compact mode
-    fps_slider_ = new ParameterSlider("FPS", MIN_FPS, MAX_FPS, 30.0, ParameterSlider::ValueType::FLOATING_POINT);
-    // fps_slider_->setCompactMode(true);  // TODO: Implement setCompactMode in ParameterSlider
-    connect(fps_slider_, &ParameterSlider::valueChanged, this, &CameraPreviewWidget::onFPSChanged);
-    layout->addWidget(fps_slider_);
-    
-    // Status section - REMOVED to save space on SMALL screens
-    
-    left_camera_status_ = new StatusDisplay("LEFT");
-    // left_camera_status_->setCompactMode(true);  // TODO: Implement setCompactMode in StatusDisplay
-    left_camera_status_->setStatus("Ready", StatusDisplay::StatusType::INFO);
-    layout->addWidget(left_camera_status_);
-    
-    right_camera_status_ = new StatusDisplay("RIGHT");
-    // right_camera_status_->setCompactMode(true);  // TODO: Implement setCompactMode in StatusDisplay
-    right_camera_status_->setStatus("Ready", StatusDisplay::StatusType::INFO);
-    layout->addWidget(right_camera_status_);
-    
-    fps_status_ = new StatusDisplay("FPS");
-    // fps_status_->setCompactMode(true);  // TODO: Implement setCompactMode in StatusDisplay
-    fps_status_->setStatus("0 FPS", StatusDisplay::StatusType::INFO);
-    layout->addWidget(fps_status_);
-    
-    sync_status_ = new StatusDisplay("Sync");
-    // sync_status_->setCompactMode(true);  // TODO: Implement setCompactMode in StatusDisplay
-    sync_status_->setStatus("Not capturing", StatusDisplay::StatusType::INFO);
-    layout->addWidget(sync_status_);
-    
-    layout->addStretch();
-    
-    return side_panel;
 }
 
 } // namespace gui

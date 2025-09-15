@@ -1,0 +1,953 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>CameraPreviewWidget</class>
+ <widget class="QWidget" name="CameraPreviewWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1436</width>
+    <height>835</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Camera Preview</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Background */
+QWidget#CameraPreviewWidget {
+    background-color: #e0e5ec;
+}
+
+/* Neomorphism Sliders */
+QSlider::groove:horizontal {
+    height: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #c5cdd9,
+        stop:1 #d5dbe3);
+    border-radius: 4px;
+    border: 1px solid #b8c2d3;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    border: none;
+    width: 20px;
+    height: 20px;
+    margin: -6px 0;
+    border-radius: 10px;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #06b6d4,
+        stop:1 #0891b2);
+    border-radius: 4px;
+}</string>
+  </property>
+  <layout class="QHBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>10</number>
+   </property>
+   <property name="topMargin">
+    <number>10</number>
+   </property>
+   <property name="rightMargin">
+    <number>10</number>
+   </property>
+   <property name="bottomMargin">
+    <number>10</number>
+   </property>
+   <item>
+    <layout class="QVBoxLayout" name="preview_layout">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <item>
+      <layout class="QHBoxLayout" name="cameras_layout" stretch="1,0">
+       <property name="spacing">
+        <number>38</number>
+       </property>
+       <item>
+        <layout class="QVBoxLayout" name="left_camera_layout">
+         <property name="spacing">
+          <number>22</number>
+         </property>
+         <property name="sizeConstraint">
+          <enum>QLayout::SetMinimumSize</enum>
+         </property>
+         <item>
+          <widget class="QLabel" name="left_title_label">
+           <property name="maximumSize">
+            <size>
+             <width>400</width>
+             <height>100</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <family>Inter Display</family>
+             <pointsize>12</pointsize>
+             <bold>false</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">color: #4a5568;</string>
+           </property>
+           <property name="text">
+            <string>LEFT Camera</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="left_camera_label">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>400</width>
+             <height>100</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>400</width>
+             <height>300</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>14</pointsize>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">/* Neomorphism Frame */
+background: #d1d9e6;
+border: none;
+border-radius: 15px;
+color: #4a5568;
+border-left: 3px solid #bebebe;
+border-top: 3px solid #bebebe;
+border-right: 3px solid #ffffff;
+border-bottom: 3px solid #ffffff;</string>
+           </property>
+           <property name="text">
+            <string>No Video</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="right_camera_layout">
+         <item>
+          <widget class="QLabel" name="right_title_label">
+           <property name="maximumSize">
+            <size>
+             <width>400</width>
+             <height>100</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>12</pointsize>
+             <bold>true</bold>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">color: #4a5568;</string>
+           </property>
+           <property name="text">
+            <string>RIGHT Camera</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="right_camera_label">
+           <property name="minimumSize">
+            <size>
+             <width>400</width>
+             <height>300</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>400</width>
+             <height>300</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <pointsize>14</pointsize>
+            </font>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">/* Neomorphism Frame */
+background: #d1d9e6;
+border: none;
+border-radius: 15px;
+color: #4a5568;
+border-left: 3px solid #bebebe;
+border-top: 3px solid #bebebe;
+border-right: 3px solid #ffffff;
+border-bottom: 3px solid #ffffff;</string>
+           </property>
+           <property name="text">
+            <string>No Video</string>
+           </property>
+           <property name="alignment">
+            <set>Qt::AlignCenter</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QPushButton" name="swap_cameras_button">
+       <property name="minimumSize">
+        <size>
+         <width>120</width>
+         <height>40</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>12</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">/* Neomorphism Button */
+QPushButton#swap_cameras_button {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #06b6d4;
+    border: none;
+    border-radius: 20px;
+    padding: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QPushButton#swap_cameras_button:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #0891b2;
+}
+
+QPushButton#swap_cameras_button:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #cacaca,
+        stop:1 #e5e5e5);
+    border-left: 2px solid #bebebe;
+    border-top: 2px solid #bebebe;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+}</string>
+       </property>
+       <property name="text">
+        <string>SWAP: L↔R</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="controls_layout">
+     <property name="spacing">
+      <number>15</number>
+     </property>
+     <property name="leftMargin">
+      <number>20</number>
+     </property>
+     <property name="topMargin">
+      <number>20</number>
+     </property>
+     <property name="rightMargin">
+      <number>20</number>
+     </property>
+     <property name="bottomMargin">
+      <number>20</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="controls_title">
+       <property name="font">
+        <font>
+         <family>Inter Black</family>
+         <pointsize>14</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>Camera Controls</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QHBoxLayout" name="capture_buttons_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <item>
+        <widget class="QPushButton" name="start_capture_button">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>11</pointsize>
+           <bold>false</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">/* Neomorphism Green Button */
+QPushButton#start_capture_button {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #10b981;
+    border: none;
+    border-radius: 20px;
+    padding: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QPushButton#start_capture_button:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #059669;
+}
+
+QPushButton#start_capture_button:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #cacaca,
+        stop:1 #e5e5e5);
+    border-left: 2px solid #bebebe;
+    border-top: 2px solid #bebebe;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+}</string>
+         </property>
+         <property name="text">
+          <string>START Preview</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="stop_capture_button">
+         <property name="enabled">
+          <bool>false</bool>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>40</height>
+          </size>
+         </property>
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>11</pointsize>
+           <bold>false</bold>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">/* Neomorphism Red Button */
+QPushButton#stop_capture_button {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #ef4444;
+    border: none;
+    border-radius: 20px;
+    padding: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #bebebe;
+    border-bottom: 2px solid #bebebe;
+}
+
+QPushButton#stop_capture_button:hover:enabled {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #dc2626;
+}
+
+QPushButton#stop_capture_button:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #cacaca,
+        stop:1 #e5e5e5);
+    border-left: 2px solid #bebebe;
+    border-top: 2px solid #bebebe;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+}
+
+QPushButton#stop_capture_button:disabled {
+    color: #94a3b8;
+    opacity: 0.5;
+}</string>
+         </property>
+         <property name="text">
+          <string>STOP Preview</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="left_section_label">
+       <property name="font">
+        <font>
+         <family>Inter Black</family>
+         <pointsize>12</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #FFFFFF;</string>
+       </property>
+       <property name="text">
+        <string>LEFT Camera</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="left_exposure_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="left_exposure_label">
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>10</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #FFFFFF;</string>
+         </property>
+         <property name="text">
+          <string>Exposure (μs)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="left_exposure_slider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>30</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>100</number>
+         </property>
+         <property name="maximum">
+          <number>50000</number>
+         </property>
+         <property name="value">
+          <number>10000</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="left_exposure_value">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #64748b;</string>
+         </property>
+         <property name="text">
+          <string>10000</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="left_gain_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="left_gain_label">
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>10</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #FFFFFF;</string>
+         </property>
+         <property name="text">
+          <string>Gain</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="left_gain_slider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>30</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>100</number>
+         </property>
+         <property name="maximum">
+          <number>1600</number>
+         </property>
+         <property name="value">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="left_gain_value">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #64748b;</string>
+         </property>
+         <property name="text">
+          <string>1.0</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <widget class="QLabel" name="right_section_label">
+       <property name="font">
+        <font>
+         <family>Inter Black</family>
+         <pointsize>12</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #FFFFFF;</string>
+       </property>
+       <property name="text">
+        <string>RIGHT Camera</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="right_exposure_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="right_exposure_label">
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>10</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #FFFFFF;</string>
+         </property>
+         <property name="text">
+          <string>Exposure (μs)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="right_exposure_slider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>30</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>100</number>
+         </property>
+         <property name="maximum">
+          <number>50000</number>
+         </property>
+         <property name="value">
+          <number>10000</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="right_exposure_value">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #64748b;</string>
+         </property>
+         <property name="text">
+          <string>10000</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="right_gain_layout">
+       <property name="spacing">
+        <number>10</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="right_gain_label">
+         <property name="font">
+          <font>
+           <family>Inter Display</family>
+           <pointsize>10</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #FFFFFF;</string>
+         </property>
+         <property name="text">
+          <string>Gain</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="right_gain_slider">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>30</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>100</number>
+         </property>
+         <property name="maximum">
+          <number>1600</number>
+         </property>
+         <property name="value">
+          <number>100</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="right_gain_value">
+         <property name="font">
+          <font>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">color: #64748b;</string>
+         </property>
+         <property name="text">
+          <string>1.0</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="fps_layout">
+       <property name="spacing">
+        <number>5</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </item>
+     <item>
+      <spacer name="controls_spacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QVBoxLayout" name="status_layout">
+     <property name="spacing">
+      <number>15</number>
+     </property>
+     <property name="leftMargin">
+      <number>20</number>
+     </property>
+     <property name="topMargin">
+      <number>20</number>
+     </property>
+     <property name="rightMargin">
+      <number>20</number>
+     </property>
+     <property name="bottomMargin">
+      <number>20</number>
+     </property>
+     <item>
+      <widget class="QLabel" name="status_title">
+       <property name="font">
+        <font>
+         <family>Inter Black</family>
+         <pointsize>14</pointsize>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>Status</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="left_camera_status">
+       <property name="font">
+        <font>
+         <family>Inter Display</family>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>LEFT Camera: Ready</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="right_camera_status">
+       <property name="font">
+        <font>
+         <family>Inter Display</family>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>RIGHT Camera: Ready</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="fps_status">
+       <property name="font">
+        <font>
+         <family>Inter Display</family>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>Frame Rate: 0 FPS</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="sync_status">
+       <property name="font">
+        <font>
+         <family>Inter Display</family>
+         <pointsize>10</pointsize>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">color: #06b6d4;
+font-weight: 700;</string>
+       </property>
+       <property name="text">
+        <string>Synchronization: Not capturing</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="status_spacer">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>20</width>
+         <height>40</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

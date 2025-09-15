@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iomanip>
 #include <sstream>
+#include <iostream>
 
 namespace unlook {
 namespace stereo {
@@ -107,8 +108,15 @@ bool DepthProcessor::processStereoPair(const cv::Mat& leftImage,
 bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
                                           const cv::Mat& rightImage,
                                           cv::Mat& depthMap,
-                                          cv::Mat& confidenceMap) {
+                                          cv::Mat& confidenceMap,
+                                          cv::Mat* disparityMap) {
     if (!pImpl->calibManager || !pImpl->stereoMatcher) {
+        if (!pImpl->calibManager) {
+            std::cout << "[Core DepthProcessor] ERROR: calibManager is null!" << std::endl;
+        }
+        if (!pImpl->stereoMatcher) {
+            std::cout << "[Core DepthProcessor] ERROR: stereoMatcher is null!" << std::endl;
+        }
         pImpl->lastError = "Not initialized";
         return false;
     }
@@ -132,12 +140,42 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
         return false;
     }
     
+    // COMPREHENSIVE DEBUG: Save disparity at each step
+    std::cout << "[Core DepthProcessor] RAW Disparity computed - Size: " << disparity.cols << "x" << disparity.rows 
+              << ", Type: " << disparity.type() << ", Channels: " << disparity.channels() << std::endl;
+    
+    // Analyze raw disparity values
+    double minDisp, maxDisp;
+    cv::minMaxLoc(disparity, &minDisp, &maxDisp);
+    cv::Scalar meanDisp = cv::mean(disparity, disparity > 0);  // Only valid pixels
+    int validPixels = cv::countNonZero(disparity);
+    int totalPixels = disparity.rows * disparity.cols;
+    double validRatio = double(validPixels) / totalPixels * 100.0;
+    
+    std::cout << "[Core DepthProcessor] RAW Disparity stats: Min=" << minDisp << ", Max=" << maxDisp 
+              << ", Mean=" << meanDisp[0] << ", Valid=" << validPixels << "/" << totalPixels 
+              << " (" << validRatio << "%)" << std::endl;
+    
     // Convert to depth
     auto& calibData = pImpl->calibManager->getCalibrationData();
     if (!StereoMatcher::disparityToDepth(disparity, calibData.Q, depthMap, true)) {
         pImpl->lastError = "Depth conversion failed";
         pImpl->processing = false;
         return false;
+    }
+    
+    // LIDAR-LIKE POST-PROCESSING: Fill holes and smooth for continuous depthmap
+    cv::Mat depthContinuous;
+    createLidarLikeDepthMap(depthMap, depthContinuous);
+    depthContinuous.copyTo(depthMap);  // Replace original with continuous version
+    
+    std::cout << "[Core DepthProcessor] LIDAR-like processing applied - Continuous depthmap created" << std::endl;
+    
+    // CRITICAL FIX: Copy disparity map to output parameter if requested
+    if (disparityMap != nullptr) {
+        disparity.copyTo(*disparityMap);
+        std::cout << "[Core DepthProcessor] Disparity map copied to output (size: " 
+                  << disparityMap->cols << "x" << disparityMap->rows << ")" << std::endl;
     }
     
     // Generate confidence map based on disparity validity and consistency
@@ -825,6 +863,111 @@ bool DepthIO::savePNG16(const std::string& filename, const cv::Mat& depthMap, fl
     compression_params.push_back(9);  // Maximum compression
     
     return cv::imwrite(filename, depth16, compression_params);
+}
+
+void DepthProcessor::createLidarLikeDepthMap(const cv::Mat& inputDepth, cv::Mat& outputDepth) const {
+    std::cout << "[Core DepthProcessor] Creating LIDAR-like continuous depthmap..." << std::endl;
+    
+    // Copy input to output
+    inputDepth.copyTo(outputDepth);
+    
+    // Step 1: Identify holes/invalid areas (depth = 0 or very large values)
+    cv::Mat mask = (inputDepth > 0.1) & (inputDepth < 8000.0);  // Valid depth range
+    cv::Mat holes = ~mask;  // Holes to fill
+    
+    int holesToFill = cv::countNonZero(holes);
+    int totalPixels = inputDepth.rows * inputDepth.cols;
+    double holeRatio = double(holesToFill) / totalPixels * 100.0;
+    
+    std::cout << "[Core DepthProcessor] Found " << holesToFill << " holes to fill (" << holeRatio << "%)" << std::endl;
+    
+    if (holesToFill > 0) {
+        // Step 2: REFINED INTERPOLATION for hole filling - more selective
+        cv::Mat filledDepth = outputDepth.clone();
+        
+        // Multi-pass hole filling with expanding neighborhoods
+        for (int pass = 0; pass < 3; ++pass) {  // Multiple passes for large holes
+            int radius = 1 + pass;  // Expanding search radius
+            
+            for (int y = radius; y < outputDepth.rows - radius; ++y) {
+                for (int x = radius; x < outputDepth.cols - radius; ++x) {
+                    if (filledDepth.at<float>(y, x) <= 0.1) {  // Invalid pixel
+                        
+                        // Find nearest valid pixels in expanding radius
+                        float depthSum = 0;
+                        float weightSum = 0;
+                        
+                        for (int dy = -radius; dy <= radius; ++dy) {
+                            for (int dx = -radius; dx <= radius; ++dx) {
+                                if (dx == 0 && dy == 0) continue;
+                                
+                                float neighborDepth = filledDepth.at<float>(y + dy, x + dx);
+                                if (neighborDepth > 0.1) {
+                                    // Distance-based weighting
+                                    float distance = sqrt(dx*dx + dy*dy);
+                                    float weight = 1.0f / (distance + 0.1f);
+                                    
+                                    depthSum += neighborDepth * weight;
+                                    weightSum += weight;
+                                }
+                            }
+                        }
+                        
+                        if (weightSum > 0.1) {
+                            filledDepth.at<float>(y, x) = depthSum / weightSum;
+                        }
+                    }
+                }
+            }
+        }
+        
+        filledDepth.copyTo(outputDepth);
+        std::cout << "[Core DepthProcessor] Multi-pass hole filling completed" << std::endl;
+    }
+    
+    // Step 3: LIGHT MORPHOLOGICAL CLOSING - much gentler
+    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));  // Smaller kernel
+    cv::Mat closed;
+    cv::morphologyEx(outputDepth, closed, cv::MORPH_CLOSE, kernel);
+    
+    // Blend morphological result gently with original
+    cv::Mat validMask = outputDepth > 0.1;
+    cv::Mat morphBlended;
+    cv::addWeighted(outputDepth, 0.8, closed, 0.2, 0, morphBlended);
+    morphBlended.copyTo(outputDepth, validMask);
+    
+    // Step 4: VERY LIGHT BILATERAL FILTER - preserve details
+    cv::Mat smoothed;
+    cv::bilateralFilter(outputDepth, smoothed, 5, 25, 25);  // Much gentler parameters
+    
+    // Blend smoothed result very lightly
+    cv::Mat bilateralBlended;
+    cv::addWeighted(outputDepth, 0.85, smoothed, 0.15, 0, bilateralBlended);
+    bilateralBlended.copyTo(outputDepth, validMask);
+    
+    // Step 5: MINIMAL MEDIAN FILTER only for outlier removal
+    cv::Mat medianFiltered;
+    cv::medianBlur(outputDepth, medianFiltered, 3);  // Smaller kernel
+    
+    // Very light blending to preserve original details
+    cv::Mat medianBlended;
+    cv::addWeighted(outputDepth, 0.9, medianFiltered, 0.1, 0, medianBlended);
+    medianBlended.copyTo(outputDepth, validMask);
+    
+    // Step 6: SKIP final Gaussian blur - too aggressive
+    // Keep the depth map as is after gentle processing
+    
+    // Final statistics
+    double finalMinVal, finalMaxVal;
+    cv::minMaxLoc(outputDepth, &finalMinVal, &finalMaxVal);
+    cv::Scalar meanDepth = cv::mean(outputDepth, outputDepth > 0);
+    int finalValidPixels = cv::countNonZero(outputDepth > 0);
+    
+    std::cout << "[Core DepthProcessor] LIDAR-like depthmap created: "
+              << "Range=" << finalMinVal << "-" << finalMaxVal << "mm, "
+              << "Mean=" << meanDepth[0] << "mm, "
+              << "Valid=" << finalValidPixels << "/" << totalPixels 
+              << " (" << (100.0 * finalValidPixels / totalPixels) << "%)" << std::endl;
 }
 
 } // namespace stereo

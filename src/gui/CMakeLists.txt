@@ -14,6 +14,9 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+# Set UIC search paths
+set(CMAKE_AUTOUIC_SEARCH_PATHS ui)
+
 # GUI source files (only existing files)
 set(GUI_SOURCES
     ../main.cpp
@@ -43,12 +46,9 @@ set(GUI_HEADERS
 # UI files
 set(GUI_UI_FILES
     ui/main_window.ui
-    ui/calibration_widget.ui
-    ui/camera_widget.ui
-    ui/depth_widget.ui
-    ui/settings_widget.ui
-    ui/status_widget.ui
-    ui/calibration_validation_widget.ui
+    ui/camera_preview_widget.ui
+    ui/depth_test_widget.ui
+    ui/options_widget.ui
 )
 
 # Resource files
@@ -67,6 +67,8 @@ file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/resources/styles)
 add_executable(unlook_scanner
     ${GUI_SOURCES}
     ${GUI_HEADERS}
+    ${GUI_UI_FILES}
+    ${GUI_RESOURCES}
 )
 
 # Set executable properties
@@ -154,7 +156,8 @@ endif()
 
 set(STYLES_QRC_FILE ${CMAKE_CURRENT_SOURCE_DIR}/resources/styles.qrc)  
 if(NOT EXISTS ${STYLES_QRC_FILE})
-    file(WRITE ${STYLES_QRC_FILE} "<!DOCTYPE RCC>\n<RCC version=\"1.0\">\n<qresource>\n</qresource>\n</RCC>\n")
+    # Create styles.qrc with tailwind theme
+    file(WRITE ${STYLES_QRC_FILE} "<!DOCTYPE RCC>\n<RCC version=\"1.0\">\n<qresource prefix=\"/styles\">\n    <file>styles/tailwind_theme.qss</file>\n</qresource>\n</RCC>\n")
 endif()
 
 # Example applications (commented out - no gui examples directory)

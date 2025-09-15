@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <RCC>
-    <qresource prefix="/">
+    <qresource prefix="/icons">
         <file>icons/unlook_icon.png</file>
         <file>icons/camera.png</file>
         <file>icons/depth.png</file>
         <file>icons/settings.png</file>
         <file>icons/exit.png</file>
         <file>icons/unlook_logo.png</file>
+    </qresource>
+    <qresource prefix="/images">
+        <file>images/slides bg-dark.png</file>
+        <!-- Aggiungi qui altri sfondi se necessario -->
     </qresource>
 </RCC>

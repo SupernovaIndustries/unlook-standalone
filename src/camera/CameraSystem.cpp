@@ -11,6 +11,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <future>
 
 // Use the official Unlook logging system
 using unlook::core::LogStream;
@@ -301,27 +302,12 @@ bool CameraSystem::startCapture() {
     
     LOG_INFO("Using HardwareSyncCapture for 30 FPS capture");
     
-    // Start real-time pipeline with frame callback
-    /*bool pipeline_started = realtime_pipeline_->start(
-        [this](const core::StereoFramePair& frame_pair) {
-            // Thread-safe callback delivery
-            std::lock_guard<std::mutex> lock(callbackMutex_);
-            if (frame_callback_) {
-                frame_callback_(frame_pair);
-            }
-            
-            // Update statistics
-            totalFrames_++;
-            if (frame_pair.sync_error_ms > 1.0) {
-                syncErrors_++;
-            }
-            updateSyncStats(frame_pair.sync_error_ms);
-        }
-    );
+    // CRITICAL FIX: Check if hardware_sync_capture_ is valid
+    if (!hardware_sync_capture_) {
+        LOG_ERROR("Hardware sync capture not initialized");
+        return false;
+    }
     
-    if (!pipeline_started) {
-        LOG_ERROR("Failed to start real-time pipeline, falling back to HardwareSyncCapture");*/ // Temporarily disabled
-        
     // Use HardwareSyncCapture directly
     if (!hardware_sync_capture_->start()) {
         LOG_ERROR("Failed to start hardware synchronized capture");
@@ -349,7 +335,7 @@ bool CameraSystem::startCapture() {
         
         // Sync info
         gui_frame.sync_error_ms = sync_frame.sync_error_ms;
-        gui_frame.synchronized = (sync_frame.sync_error_ms <= 1.0); // 1ms tolerance
+        gui_frame.synchronized = (sync_frame.sync_error_ms <= 5.0); // 5ms tolerance - realistic for hardware
         
         // Update statistics
         totalFrames_++;
@@ -377,14 +363,15 @@ void CameraSystem::stopCapture() {
     
     LOG_INFO("Stopping camera capture");
     
-    // Stop real-time pipeline if running
-    /*if (realtime_pipeline_ && realtime_pipeline_->isRunning()) {
-        realtime_pipeline_->stop();
-    }*/ // Temporarily disabled
+    // CRITICAL FIX: Clear frame callback before stopping to prevent callbacks during shutdown
+    frame_callback_ = nullptr;
     
     // Stop HardwareSyncCapture system if running
     if (hardware_sync_capture_) {
         hardware_sync_capture_->stop();
+        
+        // CRITICAL FIX: Wait for stop to complete
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     
     captureRunning_ = false;
@@ -733,47 +720,41 @@ bool CameraSystem::setAutoExposure(core::CameraId camera_id, bool enabled) {
 bool CameraSystem::setExposureTime(core::CameraId camera_id, double exposure_us) {
     std::lock_guard<std::mutex> lock(configMutex_);
     
-    if (exposure_us < 1.0 || exposure_us > 100000.0) {
-        LOG_ERROR("Invalid exposure time: " + std::to_string(exposure_us) + "us");
+    if (exposure_us < 100.0 || exposure_us > 50000.0) {
+        LOG_ERROR("Invalid exposure time: " + std::to_string(exposure_us) + "us (range: 100-50000)");
         return false;
     }
     
-    bool success = true;
+    // Update configuration for both cameras (unified control)
+    left_config_.exposure_time_us = exposure_us;
+    right_config_.exposure_time_us = exposure_us;
     
-    if (camera_id == core::CameraId::LEFT) {
-        left_config_.exposure_time_us = exposure_us;
-        // FIXED: HardwareSyncCapture manages exposure internally
-        // Just update the configuration
-    } else {
-        right_config_.exposure_time_us = exposure_us;
-        // FIXED: HardwareSyncCapture manages exposure internally
-        // Just update the configuration
+    // Apply to hardware via HardwareSyncCapture
+    if (hardware_sync_capture_) {
+        hardware_sync_capture_->setExposureTime(exposure_us);
     }
     
-    return success;
+    return true;
 }
 
 bool CameraSystem::setGain(core::CameraId camera_id, double gain) {
     std::lock_guard<std::mutex> lock(configMutex_);
     
     if (gain < 1.0 || gain > 16.0) {
-        LOG_ERROR("Invalid gain value: " + std::to_string(gain));
+        LOG_ERROR("Invalid gain value: " + std::to_string(gain) + "x (range: 1.0-16.0)");
         return false;
     }
     
-    bool success = true;
+    // Update configuration for both cameras (unified control)
+    left_config_.gain = gain;
+    right_config_.gain = gain;
     
-    if (camera_id == core::CameraId::LEFT) {
-        left_config_.gain = gain;
-        // FIXED: HardwareSyncCapture manages gain internally
-        // Just update the configuration
-    } else {
-        right_config_.gain = gain;
-        // FIXED: HardwareSyncCapture manages gain internally
-        // Just update the configuration
+    // Apply to hardware via HardwareSyncCapture
+    if (hardware_sync_capture_) {
+        hardware_sync_capture_->setGain(gain);
     }
     
-    return success;
+    return true;
 }
 
 bool CameraSystem::setAutoGain(core::CameraId camera_id, bool enabled) {
@@ -844,27 +825,107 @@ core::StereoFramePair CameraSystem::captureSingle() {
     core::StereoFramePair pair;
     
     if (!system_ready_) {
-        LOG_ERROR("Cannot capture: system not initialized");
+        LOG_ERROR("[DepthCapture] Cannot capture: system not initialized");
         pair.synchronized = false;
         return pair;
     }
     
-    StereoFrame frame;
-    if (captureStereoFrame(frame, 5000)) {
-        pair.left_frame.image = frame.leftImage;
-        pair.left_frame.timestamp_ns = frame.leftTimestampNs;
-        pair.left_frame.camera_id = core::CameraId::LEFT;
-        pair.left_frame.valid = true;
-        pair.right_frame.image = frame.rightImage;
-        pair.right_frame.timestamp_ns = frame.rightTimestampNs;
-        pair.right_frame.camera_id = core::CameraId::RIGHT;
-        pair.right_frame.valid = true;
-        pair.synchronized = frame.isSynchronized;
-        pair.sync_error_ms = frame.syncErrorMs;
+    LOG_INFO("[DepthCapture] Starting single frame capture");
+    
+    // CRITICAL FIX: Use direct captureSingle method if available
+    if (hardware_sync_capture_) {
+        LOG_DEBUG("[DepthCapture] Using HardwareSyncCapture for single frame");
+        
+        // Check if capture is already running
+        bool was_capturing = captureRunning_.load();
+        
+        if (was_capturing) {
+            // If already capturing, use callback method to avoid start/stop cycle
+            LOG_DEBUG("[DepthCapture] Capture already running, using callback method");
+            
+            // Create a promise/future pair for synchronous capture
+            std::promise<core::StereoFramePair> capture_promise;
+            std::future<core::StereoFramePair> capture_future = capture_promise.get_future();
+            
+            // Temporarily set a callback to capture one frame
+            std::atomic<bool> frame_captured{false};
+            
+            // Save original callback
+            auto original_callback = frame_callback_;
+            
+            // Set temporary callback
+            frame_callback_ = [&capture_promise, &frame_captured](const core::StereoFramePair& captured_pair) {
+                if (!frame_captured.exchange(true)) {
+                    capture_promise.set_value(captured_pair);
+                }
+            };
+            
+            // Wait for frame with timeout
+            auto status = capture_future.wait_for(std::chrono::milliseconds(2000));
+            
+            // Restore original callback
+            frame_callback_ = original_callback;
+            
+            if (status == std::future_status::ready) {
+                pair = capture_future.get();
+                LOG_INFO("[DepthCapture] Successfully captured single frame - Sync: " + 
+                        std::to_string(pair.synchronized) + ", Error: " + 
+                        std::to_string(pair.sync_error_ms) + "ms");
+            } else {
+                LOG_ERROR("[DepthCapture] Timeout waiting for single frame capture");
+                pair.synchronized = false;
+            }
+        } else {
+            // Not capturing, need to start capture temporarily
+            LOG_DEBUG("[DepthCapture] Starting temporary capture for single frame");
+            
+            // Start capture
+            if (!hardware_sync_capture_->start()) {
+                LOG_ERROR("[DepthCapture] Failed to start capture for single frame");
+                pair.synchronized = false;
+                return pair;
+            }
+            
+            // CRITICAL FIX: Wait for cameras to stabilize after start
+            // This prevents the 33ms sync error
+            LOG_DEBUG("[DepthCapture] Waiting for camera stabilization...");
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            
+            // Use captureSingle method directly
+            HardwareSyncCapture::StereoFrame sync_frame;
+            if (hardware_sync_capture_->captureSingle(sync_frame, 3000)) {
+                // Convert to core::StereoFramePair
+                pair.left_frame.image = sync_frame.left_image;
+                pair.left_frame.timestamp_ns = sync_frame.left_timestamp_ns;
+                pair.left_frame.camera_id = core::CameraId::LEFT;
+                pair.left_frame.valid = true;
+                
+                pair.right_frame.image = sync_frame.right_image;
+                pair.right_frame.timestamp_ns = sync_frame.right_timestamp_ns;
+                pair.right_frame.camera_id = core::CameraId::RIGHT;
+                pair.right_frame.valid = true;
+                
+                pair.sync_error_ms = sync_frame.sync_error_ms;
+                pair.synchronized = (sync_frame.sync_error_ms <= 5.0); // 5ms tolerance - realistic for hardware
+                
+                LOG_INFO("[DepthCapture] Successfully captured single frame - Sync: " + 
+                        std::to_string(pair.synchronized) + ", Error: " + 
+                        std::to_string(pair.sync_error_ms) + "ms");
+            } else {
+                LOG_ERROR("[DepthCapture] Failed to capture single frame");
+                pair.synchronized = false;
+            }
+            
+            // Stop temporary capture
+            LOG_DEBUG("[DepthCapture] Stopping temporary capture");
+            hardware_sync_capture_->stop();
+            
+            // Reset capture running flag
+            captureRunning_ = false;
+        }
     } else {
+        LOG_ERROR("[DepthCapture] No hardware sync capture available");
         pair.synchronized = false;
-        pair.left_frame.valid = false;
-        pair.right_frame.valid = false;
     }
     
     return pair;

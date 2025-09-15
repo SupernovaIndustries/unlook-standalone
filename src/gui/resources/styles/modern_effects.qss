@@ -1,0 +1,296 @@
+/* ============================================
+   UNLOOK Scanner - Modern Effects Theme
+   Neomorphism + Glassmorphism + Material Design
+   ============================================ */
+
+/* ============================================
+   GLOBAL STYLES
+   ============================================ */
+
+* {
+    font-family: "Inter Display", "Segoe UI", "San Francisco", sans-serif;
+}
+
+/* Main Window Background */
+QMainWindow#UnlookMainWindow {
+    /* Dark gradient background */
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #0a0e1a, 
+        stop:0.5 #0f1729,
+        stop:1 #141b2d);
+}
+
+/* ============================================
+   GLASSMORPHISM BUTTONS
+   ============================================ */
+
+.glass-button, QPushButton.glass {
+    /* Semi-transparent background with blur effect */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.1),
+        stop:0.5 rgba(255, 255, 255, 0.05),
+        stop:1 rgba(255, 255, 255, 0.1));
+    
+    /* Frosted glass border */
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 16px;
+    
+    color: rgba(255, 255, 255, 0.9);
+    padding: 12px 24px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.glass-button:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.15),
+        stop:0.5 rgba(255, 255, 255, 0.08),
+        stop:1 rgba(255, 255, 255, 0.15));
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.glass-button:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(255, 255, 255, 0.05),
+        stop:1 rgba(255, 255, 255, 0.1));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   NEOMORPHISM BUTTONS
+   ============================================ */
+
+.neo-button, QPushButton.neo {
+    /* Soft elevated look */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #1f2937,
+        stop:0.5 #1a2332,
+        stop:1 #151d2a);
+    
+    /* Double border for depth */
+    border: 1px solid #0a0f1a;
+    border-top: 1px solid #2a3441;
+    border-radius: 20px;
+    
+    color: #e2e8f0;
+    padding: 14px 28px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.neo-button:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #2a3441,
+        stop:0.5 #1f2937,
+        stop:1 #1a2332);
+    border-top: 1px solid #3a4451;
+}
+
+.neo-button:pressed {
+    /* Inverted gradient for pressed effect */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #0f1722,
+        stop:0.5 #151d2a,
+        stop:1 #1a2332);
+    border: 1px solid #2a3441;
+    border-top: 1px solid #0a0f1a;
+    padding: 15px 27px 13px 29px;
+}
+
+/* ============================================
+   MATERIAL GLOW BUTTONS
+   ============================================ */
+
+.glow-button, QPushButton.glow {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(6, 182, 212, 0.8),
+        stop:0.5 rgba(8, 145, 178, 0.9),
+        stop:1 rgba(14, 116, 144, 0.8));
+    
+    /* Subtle inner light */
+    border: 1px solid rgba(6, 182, 212, 0.5);
+    border-top: 2px solid rgba(255, 255, 255, 0.2);
+    border-radius: 24px;
+    
+    color: #ffffff;
+    padding: 16px 32px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.glow-button:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(6, 182, 212, 0.9),
+        stop:0.5 rgba(8, 145, 178, 1.0),
+        stop:1 rgba(14, 116, 144, 0.9));
+    border: 1px solid rgba(6, 182, 212, 0.7);
+}
+
+.glow-button:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(14, 116, 144, 1.0),
+        stop:1 rgba(6, 182, 212, 1.0));
+    border-top: none;
+    padding: 17px 31px 15px 33px;
+}
+
+/* ============================================
+   REALISTIC 3D BUTTONS
+   ============================================ */
+
+.realistic-button, QPushButton.realistic {
+    /* Multi-layer gradient for depth */
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #4a5568,
+        stop:0.05 #718096,
+        stop:0.5 #4a5568,
+        stop:0.95 #2d3748,
+        stop:1 #1a202c);
+    
+    /* Complex border for realism */
+    border: 1px solid #1a202c;
+    border-top: 1px solid #718096;
+    border-bottom: 2px solid #0a0e1a;
+    border-radius: 12px;
+    
+    color: #f7fafc;
+    padding: 12px 24px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.realistic-button:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #718096,
+        stop:0.05 #a0aec0,
+        stop:0.5 #718096,
+        stop:0.95 #4a5568,
+        stop:1 #2d3748);
+}
+
+.realistic-button:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #2d3748,
+        stop:0.05 #1a202c,
+        stop:0.95 #4a5568,
+        stop:1 #718096);
+    border-top: 2px solid #0a0e1a;
+    border-bottom: 1px solid #718096;
+    padding: 13px 23px 11px 25px;
+}
+
+/* ============================================
+   SPECIAL EFFECTS
+   ============================================ */
+
+/* Pulse animation for important buttons */
+@keyframes pulse {
+    0% { opacity: 1.0; }
+    50% { opacity: 0.8; }
+    100% { opacity: 1.0; }
+}
+
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* ============================================
+   COLOR VARIANTS
+   ============================================ */
+
+/* Cyan/Teal Glassmorphism */
+.glass-cyan {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(6, 182, 212, 0.2),
+        stop:0.5 rgba(8, 145, 178, 0.1),
+        stop:1 rgba(14, 116, 144, 0.2));
+    border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+/* Purple Glassmorphism */
+.glass-purple {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(139, 92, 246, 0.2),
+        stop:0.5 rgba(124, 58, 237, 0.1),
+        stop:1 rgba(109, 40, 217, 0.2));
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+/* Green Neomorphism */
+.neo-green {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #064e3b,
+        stop:0.5 #065f46,
+        stop:1 #047857);
+    border: 1px solid #064e3b;
+    border-top: 1px solid #10b981;
+    color: #6ee7b7;
+}
+
+/* Red Material Glow */
+.glow-red {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(239, 68, 68, 0.8),
+        stop:0.5 rgba(220, 38, 38, 0.9),
+        stop:1 rgba(185, 28, 28, 0.8));
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    border-top: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+/* ============================================
+   INPUT FIELDS WITH GLASS EFFECT
+   ============================================ */
+
+QLineEdit, QSpinBox, QDoubleSpinBox {
+    background: rgba(30, 41, 59, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #e2e8f0;
+    font-size: 14px;
+}
+
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {
+    background: rgba(30, 41, 59, 0.5);
+    border: 1px solid rgba(6, 182, 212, 0.5);
+}
+
+/* ============================================
+   SLIDERS WITH NEOMORPHISM
+   ============================================ */
+
+QSlider::groove:horizontal {
+    height: 8px;
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #0f1722,
+        stop:1 #1a2332);
+    border: 1px solid #0a0f1a;
+    border-radius: 4px;
+}
+
+QSlider::handle:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #4a5568,
+        stop:0.5 #718096,
+        stop:1 #4a5568);
+    border: 1px solid #2d3748;
+    width: 24px;
+    height: 24px;
+    margin: -8px 0;
+    border-radius: 12px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #718096,
+        stop:0.5 #a0aec0,
+        stop:1 #718096);
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(6, 182, 212, 0.6),
+        stop:1 rgba(8, 145, 178, 0.8));
+    border-radius: 4px;
+}

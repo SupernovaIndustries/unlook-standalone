@@ -14,8 +14,19 @@
 #include "unlook/gui/widgets/parameter_slider.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 
+QT_BEGIN_NAMESPACE
+namespace Ui { class CameraPreviewWidget; }
+QT_END_NAMESPACE
+
 namespace unlook {
 namespace gui {
+
+// Forward declarations
+namespace widgets {
+class TouchButton;
+class ParameterSlider;
+class StatusDisplay;
+}
 
 /**
  * @brief Camera preview widget with dual camera display and controls
@@ -130,22 +141,32 @@ private slots:
 
 private:
     /**
-     * @brief Initialize the widget UI
+     * @brief Connect UI signals to slots
+     */
+    void connectSignals();
+    
+    /**
+     * @brief Initialize additional UI components
+     */
+    void initializeAdditionalComponents();
+    
+    /**
+     * @brief Initialize UI components (for compatibility)
      */
     void initializeUI();
     
     /**
-     * @brief Create camera preview area
+     * @brief Create preview area with camera displays
      */
     QWidget* createPreviewArea();
     
     /**
-     * @brief Create camera controls panel
+     * @brief Create controls panel with camera settings
      */
     QWidget* createControlsPanel();
     
     /**
-     * @brief Create status panel
+     * @brief Create status panel with camera status displays
      */
     QWidget* createStatusPanel();
     
@@ -180,44 +201,14 @@ private:
      */
     QWidget* createCompactSidePanel();
     
+    // UI Components
+    Ui::CameraPreviewWidget *ui;
+    
     // Camera system
     std::shared_ptr<camera::CameraSystem> camera_system_;
     
-    // UI Layout
-    QHBoxLayout* main_layout_;
-    QWidget* preview_area_;
-    QWidget* controls_panel_;
-    QWidget* status_panel_;
-    
-    // Preview displays
-    QLabel* left_camera_label_;
-    QLabel* right_camera_label_;
-    QLabel* left_title_label_;
-    QLabel* right_title_label_;
-    bool cameras_swapped_;
-    
-    // Control widgets
-    widgets::ParameterSlider* left_exposure_slider_;
-    widgets::ParameterSlider* right_exposure_slider_;
-    widgets::ParameterSlider* left_gain_slider_;
-    widgets::ParameterSlider* right_gain_slider_;
-    widgets::ParameterSlider* fps_slider_;
-    
-    widgets::TouchButton* left_auto_exposure_button_;
-    widgets::TouchButton* right_auto_exposure_button_;
-    widgets::TouchButton* left_auto_gain_button_;
-    widgets::TouchButton* right_auto_gain_button_;
-    widgets::TouchButton* swap_cameras_button_;
-    widgets::TouchButton* start_capture_button_;
-    widgets::TouchButton* stop_capture_button_;
-    
-    // Status displays
-    widgets::StatusDisplay* left_camera_status_;
-    widgets::StatusDisplay* right_camera_status_;
-    widgets::StatusDisplay* fps_status_;
-    widgets::StatusDisplay* sync_status_;
-    
     // State management
+    bool cameras_swapped_;
     bool capture_active_;
     bool widget_visible_;
     
@@ -225,6 +216,18 @@ private:
     QTimer* fps_timer_;
     int frame_count_;
     double current_fps_;
+    
+    // UI Components: Camera labels (needed for dynamic image updates)
+    QLabel* left_camera_label_;
+    QLabel* right_camera_label_;
+    
+    // All other UI widgets are accessed via ui-> (defined in .ui file)
+    // Removed duplicates: buttons, sliders, labels, etc.
+    
+    widgets::StatusDisplay* left_camera_status_;
+    widgets::StatusDisplay* right_camera_status_;
+    widgets::StatusDisplay* fps_status_;
+    widgets::StatusDisplay* sync_status_;
     
     // Constants - dimensions now calculated dynamically via DisplayMetrics
     static constexpr double MIN_EXPOSURE_US = 100.0;

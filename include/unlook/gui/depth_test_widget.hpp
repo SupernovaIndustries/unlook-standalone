@@ -13,6 +13,11 @@
 #include "unlook/gui/widgets/parameter_slider.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 
+// Forward declarations
+QT_BEGIN_NAMESPACE
+namespace Ui { class DepthTestWidget; }
+QT_END_NAMESPACE
+
 namespace unlook {
 namespace gui {
 
@@ -62,6 +67,21 @@ private slots:
     void captureStereoFrame();
     
     /**
+     * @brief Start live camera preview
+     */
+    void startLivePreview();
+    
+    /**
+     * @brief Stop live camera preview
+     */
+    void stopLivePreview();
+    
+    /**
+     * @brief Handle live frame updates for preview
+     */
+    void onLiveFrameReceived(const core::StereoFramePair& frame_pair);
+    
+    /**
      * @brief Handle depth result from processor
      */
     void onDepthResultReceived(const core::DepthResult& result);
@@ -93,6 +113,34 @@ private:
     void initializeUI();
     
     /**
+     * @brief Update depth visualization 
+     */
+    void updateDepthVisualization(const core::DepthResult& result);
+    
+    /**
+     * @brief Update stereo frame images in UI labels
+     */
+    void updateStereoFrameImages(const core::CameraFrame& leftFrame, const core::CameraFrame& rightFrame);
+    
+    /**
+     * @brief Save debug images to timestamped directory
+     */
+    void saveDebugImages(const core::StereoFramePair& frame_pair, const core::DepthResult& result);
+    
+    /**
+     * @brief Create debug directory with timestamp
+     */
+    std::string createDebugDirectory();
+    
+    /**
+     * @brief Connect UI signals to slots
+     */
+    void connectSignals();
+    
+    // UI Components  
+    Ui::DepthTestWidget *ui;
+    
+    /**
      * @brief Create capture controls panel
      */
     QWidget* createCapturePanel();
@@ -113,11 +161,6 @@ private:
     QWidget* createVisualizationPanel();
     
     /**
-     * @brief Update depth map display
-     */
-    void updateDepthVisualization(const core::DepthResult& result);
-    
-    /**
      * @brief Initialize depth processor
      */
     void initializeDepthProcessor();
@@ -131,31 +174,21 @@ private:
     QWidget* controls_panel_;
     QWidget* visualization_panel_;
     
-    // Capture controls
-    widgets::TouchButton* capture_button_;
-    widgets::TouchButton* export_button_;
+    // UI widgets accessed via ui-> (defined in .ui file)
+    // Removed duplicates: capture_button, algorithm_combo, sliders, etc.
+    
+    // Only non-.ui widgets kept:
     widgets::StatusDisplay* capture_status_;
-    
-    // Algorithm selection
-    QComboBox* algorithm_combo_;
-    widgets::TouchButton* preset_fast_button_;
-    widgets::TouchButton* preset_balanced_button_;
-    widgets::TouchButton* preset_quality_button_;
-    
-    // Parameter controls
-    widgets::ParameterSlider* min_disparity_slider_;
-    widgets::ParameterSlider* num_disparities_slider_;
-    widgets::ParameterSlider* block_size_slider_;
-    widgets::ParameterSlider* uniqueness_ratio_slider_;
+    widgets::StatusDisplay* processing_status_;
     
     // Visualization
     QLabel* depth_map_display_;
     QLabel* quality_metrics_label_;
-    widgets::StatusDisplay* processing_status_;
     
     // Current data
     core::DepthResult current_result_;
     bool processing_active_;
+    bool live_preview_active_;
     
     // Constants
     static const int DEPTH_DISPLAY_WIDTH = 500;
