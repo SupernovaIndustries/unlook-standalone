@@ -24,6 +24,7 @@ namespace gui {
 class CameraPreviewWidget;
 class DepthTestWidget;
 class OptionsWidget;
+class FaceEnrollmentWidget;
 
 /**
  * @brief Main window for Unlook 3D Scanner with fullscreen touch interface
@@ -44,6 +45,7 @@ public:
         MAIN_MENU,
         CAMERA_PREVIEW,
         DEPTH_TEST,
+        FACE_ENROLLMENT,
         OPTIONS
     };
     
@@ -86,10 +88,15 @@ private slots:
     void showDepthTest();
     
     /**
+     * @brief Navigate to face enrollment screen
+     */
+    void showFaceEnrollment();
+
+    /**
      * @brief Navigate to options screen
      */
     void showOptions();
-    
+
     /**
      * @brief Navigate back to main menu
      */
@@ -164,6 +171,7 @@ private:
     // Screen widgets
     std::unique_ptr<CameraPreviewWidget> camera_preview_widget_;
     std::unique_ptr<DepthTestWidget> depth_test_widget_;
+    std::unique_ptr<FaceEnrollmentWidget> face_enrollment_widget_;
     std::unique_ptr<OptionsWidget> options_widget_;
     
     // System integration
