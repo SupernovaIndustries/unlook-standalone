@@ -9,6 +9,7 @@
 
 #include "unlook/camera/camera_system.hpp"
 #include "unlook/api/depth_processor.h"
+#include "unlook/pointcloud/PointCloudProcessor.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/parameter_slider.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
@@ -100,11 +101,36 @@ private slots:
      * @brief Export depth map
      */
     void exportDepthMap();
-    
+
+    /**
+     * @brief Export point cloud in selected format
+     */
+    void exportPointCloud();
+
+    /**
+     * @brief Export mesh from point cloud
+     */
+    void exportMesh();
+
+    /**
+     * @brief Configure point cloud export options
+     */
+    void configurePointCloudExport();
+
+    /**
+     * @brief Configure mesh generation options
+     */
+    void configureMeshGeneration();
+
     /**
      * @brief Update stereo parameters from UI
      */
     void updateStereoParameters();
+
+    /**
+     * @brief Update export format from UI selection
+     */
+    void updateExportFormat();
 
 private:
     /**
@@ -164,10 +190,21 @@ private:
      * @brief Initialize depth processor
      */
     void initializeDepthProcessor();
-    
+
+    /**
+     * @brief Initialize point cloud processor
+     */
+    void initializePointCloudProcessor();
+
+    /**
+     * @brief Create point cloud export panel
+     */
+    QWidget* createPointCloudExportPanel();
+
     // System integration
     std::shared_ptr<camera::CameraSystem> camera_system_;
     std::unique_ptr<api::DepthProcessor> depth_processor_;
+    std::unique_ptr<pointcloud::PointCloudProcessor> pointcloud_processor_;
     
     // UI Layout
     QHBoxLayout* main_layout_;
@@ -189,7 +226,19 @@ private:
     core::DepthResult current_result_;
     bool processing_active_;
     bool live_preview_active_;
-    
+
+    // Point cloud export configuration
+    pointcloud::PointCloudFilterConfig pointcloud_filter_config_;
+    pointcloud::MeshGenerationConfig mesh_generation_config_;
+    pointcloud::ExportFormat export_format_;
+
+    // Point cloud export UI components
+    widgets::TouchButton* export_pointcloud_button_;
+    widgets::TouchButton* export_mesh_button_;
+    widgets::TouchButton* configure_export_button_;
+    QComboBox* export_format_combo_;
+    widgets::StatusDisplay* export_status_;
+
     // Constants
     static const int DEPTH_DISPLAY_WIDTH = 500;
     static const int DEPTH_DISPLAY_HEIGHT = 375;

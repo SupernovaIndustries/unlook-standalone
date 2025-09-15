@@ -159,6 +159,37 @@ if(BUILD_GUI)
     endif()
 endif()
 
+# Open3D - for point cloud processing and mesh generation
+find_package(Open3D QUIET)
+if(Open3D_FOUND)
+    message(STATUS "Open3D found: ${Open3D_VERSION}")
+    message(STATUS "Open3D include dirs: ${Open3D_INCLUDE_DIRS}")
+    message(STATUS "Open3D libraries: ${Open3D_LIBRARIES}")
+    set(OPEN3D_ENABLED TRUE)
+
+    # ARM64 optimization for Open3D
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        message(STATUS "Enabling ARM64 optimizations for Open3D")
+        add_definitions(-DOPEN3D_ARM64_OPTIMIZED=1)
+    endif()
+
+else()
+    message(WARNING "Open3D not found - point cloud processing and mesh generation will use fallback implementations")
+    message(WARNING "To install Open3D: sudo apt install libopen3d-dev")
+    set(OPEN3D_ENABLED FALSE)
+
+    # Fallback: Check for PCL (Point Cloud Library) as alternative
+    find_package(PCL QUIET COMPONENTS common io filters surface)
+    if(PCL_FOUND)
+        message(STATUS "PCL found as Open3D fallback: ${PCL_VERSION}")
+        set(PCL_ENABLED TRUE)
+        add_definitions(-DUSE_PCL_FALLBACK=1)
+    else()
+        message(WARNING "Neither Open3D nor PCL found - advanced point cloud features will be limited")
+        set(PCL_ENABLED FALSE)
+    endif()
+endif()
+
 # Filesystem library for C++17
 find_library(FILESYSTEM_LIB stdc++fs)
 if(FILESYSTEM_LIB)
@@ -176,6 +207,14 @@ include_directories(
 
 if(LIBCAMERA_INCLUDE_DIRS)
     include_directories(${LIBCAMERA_INCLUDE_DIRS})
+endif()
+
+if(OPEN3D_ENABLED AND Open3D_INCLUDE_DIRS)
+    include_directories(${Open3D_INCLUDE_DIRS})
+endif()
+
+if(PCL_ENABLED)
+    include_directories(${PCL_INCLUDE_DIRS})
 endif()
 
 if(BOOFCV_ENABLED AND JNI_INCLUDE_DIRS)
@@ -199,7 +238,7 @@ include(GNUInstallDirs)
 # Install headers
 install(DIRECTORY include/unlook
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-    FILES_MATCHING PATTERN "*.h")
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
 # Create pkg-config file
 configure_file(

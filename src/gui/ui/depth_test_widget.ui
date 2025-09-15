@@ -14,68 +14,57 @@
    <string>Depth Test</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">/* Neomorphism Background */
+   <string notr="true">/* Supernova-tech Design System */
 QWidget#DepthTestWidget {
-    background-color: #e0e5ec;
+    background-color: #000000;
+    color: #FFFFFF;
+    font-family: "Inter", sans-serif;
 }
 
-/* Neomorphism Sliders */
+/* Supernova-tech Sliders */
 QSlider::groove:horizontal {
-    height: 8px;
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-        stop:0 #c5cdd9,
-        stop:1 #d5dbe3);
-    border-radius: 4px;
-    border: 1px solid #b8c2d3;
+    background: #1A2B2A;
+    height: 6px;
+    border-radius: 3px;
 }
 
 QSlider::handle:horizontal {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f0f0f0,
-        stop:1 #cacaca);
-    border: none;
+    background: #00E5CC;
+    border: 2px solid #00B8A3;
     width: 20px;
     height: 20px;
-    margin: -6px 0;
-    border-radius: 10px;
-    border-left: 2px solid #ffffff;
-    border-top: 2px solid #ffffff;
-    border-right: 2px solid #bebebe;
-    border-bottom: 2px solid #bebebe;
+    border-radius: 12px;
+    margin: -8px 0;
 }
 
 QSlider::handle:horizontal:hover {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f5f5f5,
-        stop:1 #d0d0d0);
+    background: #00B8A3;
+    border: 2px solid #00E5CC;
+}
+
+QSlider::handle:horizontal:pressed {
+    background: #008B7A;
 }
 
 QSlider::sub-page:horizontal {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 #8b5cf6,
-        stop:1 #7c3aed);
-    border-radius: 4px;
+    background: #00E5CC;
+    border-radius: 3px;
 }
 
-/* Neomorphism ComboBox */
+/* Supernova-tech ComboBox */
 QComboBox {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f0f0f0,
-        stop:1 #cacaca);
-    color: #4a5568;
-    border: none;
+    background: #1A2B2A;
+    color: #FFFFFF;
+    border: 1px solid #008B7A;
     border-radius: 8px;
-    padding: 8px;
-    border-left: 2px solid #ffffff;
-    border-top: 2px solid #ffffff;
-    border-right: 2px solid #bebebe;
-    border-bottom: 2px solid #bebebe;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 400;
 }
 
 QComboBox:hover {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f5f5f5,
-        stop:1 #d0d0d0);
+    border: 2px solid #00E5CC;
+    background: #1A2B2A;
 }
 
 QComboBox::drop-down {
@@ -83,12 +72,20 @@ QComboBox::drop-down {
     width: 30px;
 }
 
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #00E5CC;
+    margin-right: 5px;
+}
+
 QComboBox QAbstractItemView {
-    background: #f0f0f0;
-    color: #4a5568;
-    border: 2px solid #bebebe;
-    selection-background-color: #8b5cf6;
-    selection-color: white;
+    background: #1A2B2A;
+    color: #FFFFFF;
+    border: 2px solid #008B7A;
+    selection-background-color: #00E5CC;
+    selection-color: #000000;
 }</string>
   </property>
   <layout class="QVBoxLayout" name="main_layout">
@@ -138,15 +135,11 @@ QComboBox QAbstractItemView {
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">/* Neomorphism Frame */
-background: #d1d9e6;
-border: none;
-border-radius: 15px;
-color: #4a5568;
-border-left: 3px solid #bebebe;
-border-top: 3px solid #bebebe;
-border-right: 3px solid #ffffff;
-border-bottom: 3px solid #ffffff;</string>
+              <string notr="true">/* Supernova-tech Camera Preview */
+background: #000000;
+border: 2px solid #1A2B2A;
+border-radius: 8px;
+color: #FFFFFF;</string>
              </property>
              <property name="text">
               <string>No Image</string>
@@ -174,15 +167,11 @@ border-bottom: 3px solid #ffffff;</string>
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">/* Neomorphism Frame */
-background: #d1d9e6;
-border: none;
-border-radius: 15px;
-color: #4a5568;
-border-left: 3px solid #bebebe;
-border-top: 3px solid #bebebe;
-border-right: 3px solid #ffffff;
-border-bottom: 3px solid #ffffff;</string>
+              <string notr="true">/* Supernova-tech Depth Display */
+background: #000000;
+border: 2px solid #1A2B2A;
+border-radius: 8px;
+color: #FFFFFF;</string>
              </property>
              <property name="text">
               <string>No Depth Data</string>
@@ -230,44 +219,142 @@ border-bottom: 3px solid #ffffff;</string>
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">/* Neomorphism Primary Button */
+              <string notr="true">/* Supernova-tech Primary Button */
 QPushButton#capture_button {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f0f0f0,
-        stop:1 #cacaca);
-    color: #0e0e0e;
-    border: none;
-    border-radius: 25px;
-    padding: 15px;
-    font-weight: 900;
-    text-transform: uppercase;
-    border-left: 3px solid #ffffff;
-    border-top: 3px solid #ffffff;
-    border-right: 3px solid #bebebe;
-    border-bottom: 3px solid #bebebe;
+    background: #00E5CC;
+    color: #000000;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    padding: 16px 24px;
+    min-height: 60px;
+    font-weight: 500;
+    font-size: 16px;
+    font-family: "Inter", sans-serif;
 }
 
 QPushButton#capture_button:hover {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f5f5f5,
-        stop:1 #d0d0d0);
-    color: #7c3aed;
+    background: #00FFE6;
+    border: 2px solid #00E5CC;
 }
 
 QPushButton#capture_button:pressed {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #cacaca,
-        stop:1 #e5e5e5);
-    color: #6d28d9;
-    border-left: 3px solid #bebebe;
-    border-top: 3px solid #bebebe;
-    border-right: 3px solid #ffffff;
-    border-bottom: 3px solid #ffffff;
+    background: #00B8A3;
+}
+
+QPushButton#capture_button:disabled {
+    background: #555555;
+    color: #666666;
+    border: 2px solid transparent;
 }</string>
              </property>
              <property name="text">
               <string>CAPTURE &amp; PROCESS</string>
              </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="save_pointcloud_button">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>50</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>12</pointsize>
+               <weight>87</weight>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Supernova-tech Success Button */
+QPushButton#save_pointcloud_button {
+    background: #00FF88;
+    color: #000000;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    padding: 16px 24px;
+    min-height: 50px;
+    font-weight: 500;
+    font-size: 14px;
+    font-family: "Inter", sans-serif;
+}
+
+QPushButton#save_pointcloud_button:hover {
+    background: #33FFAA;
+    border: 2px solid #00FF88;
+}
+
+QPushButton#save_pointcloud_button:pressed {
+    background: #00CC66;
+}
+
+QPushButton#save_pointcloud_button:disabled {
+    background: #555555;
+    color: #666666;
+    border: 2px solid transparent;
+}</string>
+             </property>
+             <property name="text">
+              <string>SAVE POINT CLOUD</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QComboBox" name="export_format_combo">
+             <property name="minimumSize">
+              <size>
+               <width>0</width>
+               <height>35</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <pointsize>11</pointsize>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Custom style handled by parent widget */
+
+
+</string>
+             </property>
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <item>
+              <property name="text">
+               <string>PLY Binary (Recommended)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>PLY ASCII</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>PCD Binary</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>PCD ASCII</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>OBJ (Mesh)</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>XYZ (Points Only)</string>
+              </property>
+             </item>
             </widget>
            </item>
            <item>
@@ -325,7 +412,7 @@ QPushButton#capture_button:pressed {
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">color: #0e0e0e;</string>
+              <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
              </property>
              <property name="text">
               <string>Disparity Parameters</string>
@@ -357,7 +444,7 @@ QPushButton#capture_button:pressed {
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #0e0e0e;</string>
+                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Number of Disparities</string>
@@ -416,7 +503,7 @@ QPushButton#capture_button:pressed {
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #0e0e0e;</string>
+                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Block Size</string>
@@ -475,7 +562,7 @@ QPushButton#capture_button:pressed {
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #0e0e0e;</string>
+                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Minimum Disparity</string>
@@ -521,8 +608,9 @@ QPushButton#capture_button:pressed {
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">color: #0e0e0e;
-font-weight: 700;</string>
+              <string notr="true">color: #FFFFFF;
+font-weight: 700;
+font-family: "Inter", sans-serif;</string>
              </property>
              <property name="text">
               <string>Idle</string>
@@ -546,7 +634,7 @@ font-weight: 700;</string>
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">color: #0e0e0e;</string>
+              <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
              </property>
              <property name="text">
               <string>No results</string>

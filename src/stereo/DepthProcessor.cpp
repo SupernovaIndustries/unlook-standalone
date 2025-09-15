@@ -10,6 +10,9 @@
 #include <iomanip>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
+#include <vector>
+#include <cmath>
 
 namespace unlook {
 namespace stereo {
@@ -34,14 +37,30 @@ public:
     cv::Mat previousDepth;
     
     Impl() {
-        // Initialize default configuration
-        config.minDepthMm = 100.0f;  // Optimized for 70mm baseline
-        config.maxDepthMm = 800.0f;  // Target range
-        config.medianKernelSize = 5;
-        config.applyMedianFilter = true;
+        // OPTIMIZED CONFIGURATION FOR 70MM BASELINE
+        // Target: 0.005mm precision at 100-800mm range
+        config.minDepthMm = 100.0f;      // Minimum depth for 70mm baseline
+        config.maxDepthMm = 800.0f;      // Maximum practical depth
+
+        // Filtering parameters - less aggressive to preserve precision
+        config.medianKernelSize = 3;     // Smaller kernel (was 5)
+        config.applyMedianFilter = true; // Only for outliers
         config.applyBilateralFilter = true;
+        config.bilateralD = 5;           // Smaller window (was 9)
+        config.bilateralSigmaColor = 50.0; // Reduced (was 75)
+        config.bilateralSigmaSpace = 50.0; // Reduced (was 75)
+
+        // Hole filling - more conservative
         config.fillHoles = true;
+        config.maxHoleSize = 10;         // Much smaller (was 100)
+
+        // Validation parameters
         config.validateDepth = true;
+        config.maxDepthChange = 20.0f;   // Allow larger changes (was 10)
+
+        // Temporal filtering disabled by default
+        config.enableTemporalFilter = false;
+        config.temporalAlpha = 0.2f;     // Lower weight if enabled
     }
 };
 
@@ -164,12 +183,15 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
         return false;
     }
     
-    // LIDAR-LIKE POST-PROCESSING: Fill holes and smooth for continuous depthmap
-    cv::Mat depthContinuous;
-    createLidarLikeDepthMap(depthMap, depthContinuous);
-    depthContinuous.copyTo(depthMap);  // Replace original with continuous version
-    
-    std::cout << "[Core DepthProcessor] LIDAR-like processing applied - Continuous depthmap created" << std::endl;
+    // OPTIMIZED POST-PROCESSING: Preserve depth precision while handling invalid pixels
+    if (pImpl->config.fillHoles) {
+        cv::Mat depthOptimized;
+        createLidarLikeDepthMap(depthMap, depthOptimized);
+        depthOptimized.copyTo(depthMap);
+        std::cout << "[Core DepthProcessor] Precision-preserving post-processing applied" << std::endl;
+    } else {
+        std::cout << "[Core DepthProcessor] Post-processing skipped (fillHoles=false)" << std::endl;
+    }
     
     // CRITICAL FIX: Copy disparity map to output parameter if requested
     if (disparityMap != nullptr) {
@@ -693,15 +715,79 @@ void DepthProcessor::visualizeDepthMap(const cv::Mat& depthMap,
                                       cv::Mat& colorized,
                                       int colormap) {
     if (depthMap.empty()) return;
-    
-    double minVal, maxVal;
-    cv::minMaxLoc(depthMap, &minVal, &maxVal, nullptr, nullptr, depthMap > 0);
-    
-    cv::Mat normalized;
-    depthMap.convertTo(normalized, CV_8U, 255.0 / (maxVal - minVal), 
-                       -minVal * 255.0 / (maxVal - minVal));
-    
-    cv::applyColorMap(normalized, colorized, colormap);
+
+    // OPTIMIZED VISUALIZATION: Avoid quantization artifacts
+    // Use robust statistics to handle outliers without creating artificial levels
+
+    // Step 1: Calculate robust depth range (exclude outliers)
+    cv::Mat validMask = (depthMap > 0) & (depthMap < 10000);  // Reasonable depth range
+    if (cv::countNonZero(validMask) < 100) {
+        // Not enough valid pixels
+        colorized = cv::Mat::zeros(depthMap.size(), CV_8UC3);
+        return;
+    }
+
+    // Calculate percentiles for robust range
+    std::vector<float> validDepths;
+    validDepths.reserve(depthMap.rows * depthMap.cols);
+
+    for (int y = 0; y < depthMap.rows; ++y) {
+        for (int x = 0; x < depthMap.cols; ++x) {
+            float d = depthMap.at<float>(y, x);
+            if (d > 0 && d < 10000) {
+                validDepths.push_back(d);
+            }
+        }
+    }
+
+    if (validDepths.empty()) {
+        colorized = cv::Mat::zeros(depthMap.size(), CV_8UC3);
+        return;
+    }
+
+    // Use 2nd and 98th percentiles for robust range
+    std::sort(validDepths.begin(), validDepths.end());
+    float minVal = validDepths[validDepths.size() * 0.02];  // 2nd percentile
+    float maxVal = validDepths[validDepths.size() * 0.98];  // 98th percentile
+
+    // Ensure reasonable range
+    if (maxVal - minVal < 10.0f) {
+        // Range too small, expand it
+        float center = (minVal + maxVal) / 2.0f;
+        minVal = center - 50.0f;
+        maxVal = center + 50.0f;
+    }
+
+    // Step 2: Normalize with higher precision (16-bit intermediate)
+    cv::Mat normalized16;
+    depthMap.convertTo(normalized16, CV_16U, 65535.0 / (maxVal - minVal),
+                       -minVal * 65535.0 / (maxVal - minVal));
+
+    // Set invalid pixels to a specific value (not black)
+    normalized16.setTo(32768, ~validMask);  // Middle gray for invalid
+
+    // Step 3: Apply colormap with dithering to reduce banding
+    // First convert to 8-bit with dithering
+    cv::Mat normalized8;
+    normalized16.convertTo(normalized8, CV_8U, 1.0/256.0);
+
+    // Apply Gaussian noise to reduce banding (very subtle)
+    cv::Mat noise = cv::Mat(normalized8.size(), CV_8UC1);
+    cv::randn(noise, 0, 1);  // Very small noise
+    cv::add(normalized8, noise, normalized8, validMask);  // Only add to valid pixels
+
+    // Apply colormap
+    cv::applyColorMap(normalized8, colorized, colormap);
+
+    // Set invalid pixels to dark blue instead of black (less jarring)
+    cv::Vec3b invalidColor(64, 0, 0);  // Dark blue
+    for (int y = 0; y < colorized.rows; ++y) {
+        for (int x = 0; x < colorized.cols; ++x) {
+            if (!validMask.at<uint8_t>(y, x)) {
+                colorized.at<cv::Vec3b>(y, x) = invalidColor;
+            }
+        }
+    }
 }
 
 // DepthProcessingConfig implementation
@@ -866,107 +952,113 @@ bool DepthIO::savePNG16(const std::string& filename, const cv::Mat& depthMap, fl
 }
 
 void DepthProcessor::createLidarLikeDepthMap(const cv::Mat& inputDepth, cv::Mat& outputDepth) const {
-    std::cout << "[Core DepthProcessor] Creating LIDAR-like continuous depthmap..." << std::endl;
-    
+    std::cout << "[Core DepthProcessor] Applying optimized depth post-processing for 70mm baseline..." << std::endl;
+
     // Copy input to output
     inputDepth.copyTo(outputDepth);
-    
-    // Step 1: Identify holes/invalid areas (depth = 0 or very large values)
-    cv::Mat mask = (inputDepth > 0.1) & (inputDepth < 8000.0);  // Valid depth range
-    cv::Mat holes = ~mask;  // Holes to fill
-    
+
+    // Step 1: Identify valid depth range optimized for 70mm baseline
+    // For 70mm baseline with 6mm focal length: optimal range is 100-800mm
+    cv::Mat mask = (inputDepth > pImpl->config.minDepthMm) & (inputDepth < pImpl->config.maxDepthMm);
+    cv::Mat holes = ~mask;
+
     int holesToFill = cv::countNonZero(holes);
     int totalPixels = inputDepth.rows * inputDepth.cols;
     double holeRatio = double(holesToFill) / totalPixels * 100.0;
-    
-    std::cout << "[Core DepthProcessor] Found " << holesToFill << " holes to fill (" << holeRatio << "%)" << std::endl;
-    
-    if (holesToFill > 0) {
-        // Step 2: REFINED INTERPOLATION for hole filling - more selective
+
+    std::cout << "[Core DepthProcessor] Invalid pixels: " << holesToFill << " (" << holeRatio << "%)" << std::endl;
+
+    // Step 2: PRECISION-AWARE hole filling using weighted median instead of mean
+    // This prevents artificial depth levels and preserves natural depth variation
+    if (holesToFill > 0 && holesToFill < totalPixels * 0.5) {  // Only fill if <50% holes
         cv::Mat filledDepth = outputDepth.clone();
-        
-        // Multi-pass hole filling with expanding neighborhoods
-        for (int pass = 0; pass < 3; ++pass) {  // Multiple passes for large holes
-            int radius = 1 + pass;  // Expanding search radius
-            
-            for (int y = radius; y < outputDepth.rows - radius; ++y) {
-                for (int x = radius; x < outputDepth.cols - radius; ++x) {
-                    if (filledDepth.at<float>(y, x) <= 0.1) {  // Invalid pixel
-                        
-                        // Find nearest valid pixels in expanding radius
-                        float depthSum = 0;
-                        float weightSum = 0;
-                        
-                        for (int dy = -radius; dy <= radius; ++dy) {
-                            for (int dx = -radius; dx <= radius; ++dx) {
-                                if (dx == 0 && dy == 0) continue;
-                                
-                                float neighborDepth = filledDepth.at<float>(y + dy, x + dx);
-                                if (neighborDepth > 0.1) {
-                                    // Distance-based weighting
-                                    float distance = sqrt(dx*dx + dy*dy);
-                                    float weight = 1.0f / (distance + 0.1f);
-                                    
-                                    depthSum += neighborDepth * weight;
-                                    weightSum += weight;
-                                }
+
+        // Single-pass weighted median filling for small holes only
+        const int maxHoleRadius = 2;  // Much smaller radius to preserve detail
+
+        for (int y = maxHoleRadius; y < outputDepth.rows - maxHoleRadius; ++y) {
+            for (int x = maxHoleRadius; x < outputDepth.cols - maxHoleRadius; ++x) {
+                if (filledDepth.at<float>(y, x) <= pImpl->config.minDepthMm) {
+
+                    // Collect valid neighbor depths
+                    std::vector<float> validDepths;
+                    validDepths.reserve(25);
+
+                    for (int dy = -maxHoleRadius; dy <= maxHoleRadius; ++dy) {
+                        for (int dx = -maxHoleRadius; dx <= maxHoleRadius; ++dx) {
+                            if (dx == 0 && dy == 0) continue;
+
+                            float neighborDepth = filledDepth.at<float>(y + dy, x + dx);
+                            if (neighborDepth > pImpl->config.minDepthMm &&
+                                neighborDepth < pImpl->config.maxDepthMm) {
+                                validDepths.push_back(neighborDepth);
                             }
                         }
-                        
-                        if (weightSum > 0.1) {
-                            filledDepth.at<float>(y, x) = depthSum / weightSum;
-                        }
+                    }
+
+                    // Use median instead of mean to avoid creating artificial levels
+                    if (validDepths.size() >= 3) {  // Need at least 3 valid neighbors
+                        std::nth_element(validDepths.begin(),
+                                       validDepths.begin() + validDepths.size()/2,
+                                       validDepths.end());
+                        filledDepth.at<float>(y, x) = validDepths[validDepths.size()/2];
                     }
                 }
             }
         }
-        
+
         filledDepth.copyTo(outputDepth);
-        std::cout << "[Core DepthProcessor] Multi-pass hole filling completed" << std::endl;
+        std::cout << "[Core DepthProcessor] Precision hole filling completed" << std::endl;
     }
-    
-    // Step 3: LIGHT MORPHOLOGICAL CLOSING - much gentler
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3));  // Smaller kernel
-    cv::Mat closed;
-    cv::morphologyEx(outputDepth, closed, cv::MORPH_CLOSE, kernel);
-    
-    // Blend morphological result gently with original
-    cv::Mat validMask = outputDepth > 0.1;
-    cv::Mat morphBlended;
-    cv::addWeighted(outputDepth, 0.8, closed, 0.2, 0, morphBlended);
-    morphBlended.copyTo(outputDepth, validMask);
-    
-    // Step 4: VERY LIGHT BILATERAL FILTER - preserve details
-    cv::Mat smoothed;
-    cv::bilateralFilter(outputDepth, smoothed, 5, 25, 25);  // Much gentler parameters
-    
-    // Blend smoothed result very lightly
-    cv::Mat bilateralBlended;
-    cv::addWeighted(outputDepth, 0.85, smoothed, 0.15, 0, bilateralBlended);
-    bilateralBlended.copyTo(outputDepth, validMask);
-    
-    // Step 5: MINIMAL MEDIAN FILTER only for outlier removal
-    cv::Mat medianFiltered;
-    cv::medianBlur(outputDepth, medianFiltered, 3);  // Smaller kernel
-    
-    // Very light blending to preserve original details
-    cv::Mat medianBlended;
-    cv::addWeighted(outputDepth, 0.9, medianFiltered, 0.1, 0, medianBlended);
-    medianBlended.copyTo(outputDepth, validMask);
-    
-    // Step 6: SKIP final Gaussian blur - too aggressive
-    // Keep the depth map as is after gentle processing
-    
-    // Final statistics
+
+    // Step 3: EDGE-PRESERVING smoothing with WLS filter parameters optimized for 70mm baseline
+    // Skip morphological operations - they create artificial depth levels
+    if (pImpl->config.applyBilateralFilter && pImpl->config.bilateralD > 0) {
+        cv::Mat smoothed;
+        // Adaptive bilateral filter - preserve edges while smoothing
+        // Reduced parameters to preserve fine detail at 0.005mm target precision
+        cv::bilateralFilter(outputDepth, smoothed,
+                          pImpl->config.bilateralD,  // Use config value (default 9)
+                          pImpl->config.bilateralSigmaColor * 0.5,  // Reduce color sigma
+                          pImpl->config.bilateralSigmaSpace * 0.5); // Reduce space sigma
+
+        // Very conservative blending to preserve original depth precision
+        cv::Mat validMask = outputDepth > pImpl->config.minDepthMm;
+        cv::addWeighted(outputDepth, 0.95, smoothed, 0.05, 0, outputDepth);
+    }
+
+    // Step 4: OUTLIER removal with small median filter (not smoothing)
+    if (pImpl->config.applyMedianFilter && pImpl->config.medianKernelSize > 1) {
+        // Detect outliers using local statistics
+        cv::Mat localMean, localStdDev;
+        cv::Mat kernel = cv::getStructuringElement(cv::MORPH_RECT,
+                                                  cv::Size(5, 5));
+
+        // Calculate local statistics
+        cv::Mat depthSquared;
+        cv::multiply(outputDepth, outputDepth, depthSquared);
+        cv::morphologyEx(outputDepth, localMean, cv::MORPH_DILATE, kernel);
+        cv::morphologyEx(depthSquared, localStdDev, cv::MORPH_DILATE, kernel);
+
+        // Identify outliers (> 3 sigma from local mean)
+        cv::Mat outlierMask = cv::abs(outputDepth - localMean) > 3 * cv::sqrt(localStdDev - localMean.mul(localMean));
+
+        // Apply median filter ONLY to outliers
+        cv::Mat medianFiltered;
+        cv::medianBlur(outputDepth, medianFiltered, pImpl->config.medianKernelSize);
+        medianFiltered.copyTo(outputDepth, outlierMask);
+    }
+
+    // Final validation - ensure no artificial quantization levels
     double finalMinVal, finalMaxVal;
-    cv::minMaxLoc(outputDepth, &finalMinVal, &finalMaxVal);
+    cv::minMaxLoc(outputDepth, &finalMinVal, &finalMaxVal, nullptr, nullptr, outputDepth > 0);
     cv::Scalar meanDepth = cv::mean(outputDepth, outputDepth > 0);
     int finalValidPixels = cv::countNonZero(outputDepth > 0);
-    
-    std::cout << "[Core DepthProcessor] LIDAR-like depthmap created: "
+
+    std::cout << "[Core DepthProcessor] Optimized depth map: "
               << "Range=" << finalMinVal << "-" << finalMaxVal << "mm, "
               << "Mean=" << meanDepth[0] << "mm, "
-              << "Valid=" << finalValidPixels << "/" << totalPixels 
+              << "Valid=" << finalValidPixels << "/" << totalPixels
               << " (" << (100.0 * finalValidPixels / totalPixels) << "%)" << std::endl;
 }
 

@@ -29,9 +29,10 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     
     // Connect signals
     connectSignals();
-    
+
     initializeUI();
     initializeDepthProcessor();
+    initializePointCloudProcessor();
 }
 
 DepthTestWidget::~DepthTestWidget() {
@@ -41,24 +42,33 @@ DepthTestWidget::~DepthTestWidget() {
 void DepthTestWidget::connectSignals() {
     // Connect UI signals to slots
     connect(ui->capture_button, &QPushButton::clicked, this, &DepthTestWidget::captureStereoFrame);
-    
-    // Connect parameter sliders  
-    connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged), 
+
+    // Connect Save Point Cloud button
+    connect(ui->save_pointcloud_button, &QPushButton::clicked, this, &DepthTestWidget::exportPointCloud);
+
+    // Connect export format selection
+    connect(ui->export_format_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DepthTestWidget::updateExportFormat);
+
+    // Connect parameter sliders
+    connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, &DepthTestWidget::updateStereoParameters);
-    connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged), 
+    connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, &DepthTestWidget::updateStereoParameters);
-    connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged), 
+    connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, &DepthTestWidget::updateStereoParameters);
-    
+
     // Connect algorithm selection
-    connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+    connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DepthTestWidget::updateStereoParameters);
-    
+
     // TODO: Add these widgets to .ui file and uncomment:
     // connect(ui->export_button, &QPushButton::clicked, this, &DepthTestWidget::exportDepthMap);
     // connect(ui->preset_fast_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::FAST); });
     // connect(ui->preset_balanced_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::BALANCED); });
     // connect(ui->preset_quality_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::QUALITY); });
+
+    // Note: Point cloud export buttons will be connected in createPointCloudExportPanel()
 }
 
 void DepthTestWidget::showEvent(QShowEvent* event) {
@@ -142,32 +152,6 @@ void DepthTestWidget::captureStereoFrame() {
     qDebug() << "[DepthWidget] captureStereoFrame() completed";
 }
 
-void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
-    current_result_ = result;
-    
-    if (result.success) {
-        processing_status_->setStatus(
-            QString("Depth processing completed in %1ms").arg(result.processing_time_ms, 0, 'f', 1),
-            StatusDisplay::StatusType::SUCCESS
-        );
-        
-        updateDepthVisualization(result);
-        
-        // Update quality metrics
-        QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
-            .arg(result.coverage_ratio * 100, 0, 'f', 1)
-            .arg(result.mean_depth, 0, 'f', 2)
-            .arg(result.std_depth, 0, 'f', 2);
-        quality_metrics_label_->setText(metrics);
-        
-        //export_button_->setEnabled(true);
-    } else {
-        processing_status_->setStatus("Depth processing failed: " + QString::fromStdString(result.error_message),
-                                     StatusDisplay::StatusType::ERROR);
-        //export_button_->setEnabled(false);
-    }
-}
-
 void DepthTestWidget::onAlgorithmChanged(int index) {
     updateStereoParameters();
 }
@@ -219,15 +203,15 @@ void DepthTestWidget::exportDepthMap() {
 
 void DepthTestWidget::updateStereoParameters() {
     if (!depth_processor_) return;
-    
+
     core::StereoConfig config = depth_processor_->getStereoConfig();
-    
+
     // Update config from UI
     config.min_disparity = ui->min_disparity_slider->value();
     config.num_disparities = ui->num_disparities_slider->value();
     config.block_size = ui->block_size_slider->value();
     config.uniqueness_ratio = 10; // Default value - TODO: Add slider to .ui
-    
+
     // Set algorithm from combo box
     switch (ui->algorithm_combo->currentIndex()) {
         case 0:
@@ -249,8 +233,39 @@ void DepthTestWidget::updateStereoParameters() {
             config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
             break;
     }
-    
+
     depth_processor_->configureStereo(config);
+}
+
+void DepthTestWidget::updateExportFormat() {
+    if (!pointcloud_processor_) return;
+
+    // Update export format based on UI selection
+    switch (ui->export_format_combo->currentIndex()) {
+        case 0: // PLY Binary (Recommended)
+            export_format_.format = pointcloud::ExportFormat::Format::PLY_BINARY;
+            break;
+        case 1: // PLY ASCII
+            export_format_.format = pointcloud::ExportFormat::Format::PLY_ASCII;
+            break;
+        case 2: // PCD Binary
+            export_format_.format = pointcloud::ExportFormat::Format::PCD_BINARY;
+            break;
+        case 3: // PCD ASCII
+            export_format_.format = pointcloud::ExportFormat::Format::PCD_ASCII;
+            break;
+        case 4: // OBJ (Mesh)
+            export_format_.format = pointcloud::ExportFormat::Format::OBJ;
+            break;
+        case 5: // XYZ (Points Only)
+            export_format_.format = pointcloud::ExportFormat::Format::XYZ;
+            break;
+        default:
+            export_format_.format = pointcloud::ExportFormat::Format::PLY_BINARY;
+            break;
+    }
+
+    qDebug() << "[DepthWidget] Export format updated to:" << ui->export_format_combo->currentText();
 }
 
 void DepthTestWidget::initializeUI() {
@@ -273,7 +288,10 @@ void DepthTestWidget::initializeUI() {
     
     // Parameter panel
     controls_layout->addWidget(createParameterPanel());
-    
+
+    // Note: Point cloud export is now handled via .ui file (save_pointcloud_button, export_format_combo)
+    // Legacy programmatic point cloud export panel creation removed to avoid UI conflicts
+
     // Spacer
     controls_layout->addStretch();
     
@@ -822,6 +840,345 @@ std::string DepthTestWidget::createDebugDirectory() {
     QDir().mkpath(debug_dir);
     
     return debug_dir.toStdString();
+}
+
+void DepthTestWidget::initializePointCloudProcessor() {
+    pointcloud_processor_ = std::make_unique<pointcloud::PointCloudProcessor>();
+
+    // Initialize with depth processor
+    if (depth_processor_) {
+        std::shared_ptr<stereo::DepthProcessor> stereo_depth_processor;
+        // Note: This might need adaptation depending on the depth processor structure
+        // For now, we'll create a shared pointer wrapper or modify the API
+
+        // TODO: Implement proper depth processor sharing or initialization
+        if (pointcloud_processor_->initialize(stereo_depth_processor)) {
+            qDebug() << "[DepthWidget] Point cloud processor initialized successfully";
+        } else {
+            qWarning() << "[DepthWidget] Failed to initialize point cloud processor";
+        }
+    } else {
+        qWarning() << "[DepthWidget] Cannot initialize point cloud processor - depth processor not available";
+    }
+
+    // Initialize default configurations
+    pointcloud_filter_config_ = pointcloud::PointCloudFilterConfig{};
+    pointcloud_filter_config_.enableStatisticalFilter = true;
+    pointcloud_filter_config_.statisticalNeighbors = 20;
+    pointcloud_filter_config_.statisticalStdRatio = 2.0;
+    pointcloud_filter_config_.computeNormals = true;
+
+    mesh_generation_config_ = pointcloud::MeshGenerationConfig{};
+    mesh_generation_config_.algorithm = pointcloud::MeshGenerationConfig::Algorithm::POISSON;
+    mesh_generation_config_.poissonDepth = 9;
+
+    export_format_ = pointcloud::ExportFormat{};
+    export_format_.format = pointcloud::ExportFormat::Format::PLY_BINARY;
+    export_format_.includeColors = true;
+    export_format_.includeNormals = true;
+    export_format_.scannerInfo = "Unlook 3D Scanner";
+    export_format_.calibrationFile = "/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml";
+    export_format_.precisionMm = 0.005;
+}
+
+QWidget* DepthTestWidget::createPointCloudExportPanel() {
+    QWidget* panel = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(panel);
+
+    QLabel* title = new QLabel("Point Cloud Export");
+    title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SUBTITLE, SupernovaStyle::FontWeight::BOLD));
+    title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
+    layout->addWidget(title);
+
+    // Export format selection
+    QLabel* format_label = new QLabel("Export Format:");
+    format_label->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL));
+    format_label->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
+    layout->addWidget(format_label);
+
+    export_format_combo_ = new QComboBox();
+    export_format_combo_->addItem("PLY Binary", static_cast<int>(pointcloud::ExportFormat::Format::PLY_BINARY));
+    export_format_combo_->addItem("PLY ASCII", static_cast<int>(pointcloud::ExportFormat::Format::PLY_ASCII));
+    export_format_combo_->addItem("PCD Binary", static_cast<int>(pointcloud::ExportFormat::Format::PCD_BINARY));
+    export_format_combo_->addItem("PCD ASCII", static_cast<int>(pointcloud::ExportFormat::Format::PCD_ASCII));
+    export_format_combo_->addItem("OBJ", static_cast<int>(pointcloud::ExportFormat::Format::OBJ));
+    export_format_combo_->addItem("XYZ", static_cast<int>(pointcloud::ExportFormat::Format::XYZ));
+    layout->addWidget(export_format_combo_);
+
+    // Export buttons
+    export_pointcloud_button_ = new widgets::TouchButton("EXPORT POINT CLOUD", widgets::TouchButton::ButtonType::SUCCESS);
+    connect(export_pointcloud_button_, &widgets::TouchButton::clicked, this, &DepthTestWidget::exportPointCloud);
+    layout->addWidget(export_pointcloud_button_);
+
+    export_mesh_button_ = new widgets::TouchButton("EXPORT MESH", widgets::TouchButton::ButtonType::PRIMARY);
+    connect(export_mesh_button_, &widgets::TouchButton::clicked, this, &DepthTestWidget::exportMesh);
+    layout->addWidget(export_mesh_button_);
+
+    // Configuration button
+    configure_export_button_ = new widgets::TouchButton("CONFIGURE", widgets::TouchButton::ButtonType::SECONDARY);
+    connect(configure_export_button_, &widgets::TouchButton::clicked, this, &DepthTestWidget::configurePointCloudExport);
+    layout->addWidget(configure_export_button_);
+
+    // Export status
+    export_status_ = new widgets::StatusDisplay("Export");
+    export_status_->setCompactMode(true);
+    export_status_->setStatus("Ready for export", widgets::StatusDisplay::StatusType::INFO);
+    layout->addWidget(export_status_);
+
+    // Initially disable export buttons
+    export_pointcloud_button_->setEnabled(false);
+    export_mesh_button_->setEnabled(false);
+
+    return panel;
+}
+
+void DepthTestWidget::exportPointCloud() {
+    if (!current_result_.success || current_result_.depth_map.empty()) {
+        QMessageBox::warning(this, "Export Error", "No valid depth map available for point cloud export.");
+        return;
+    }
+
+    if (!pointcloud_processor_) {
+        QMessageBox::warning(this, "Export Error", "Point cloud processor not initialized.");
+        return;
+    }
+
+    export_status_->setStatus("Generating point cloud...", widgets::StatusDisplay::StatusType::PROCESSING);
+    export_status_->startPulsing();
+
+    try {
+        // Export format is already updated via updateExportFormat() slot
+        // when the UI combo box selection changes
+
+        // Generate point cloud from current depth result
+        stereo::PointCloud pointCloud;
+        cv::Mat colorImage; // TODO: Get the actual color image from current capture
+
+        if (!pointcloud_processor_->generatePointCloud(
+                current_result_.depth_map,
+                colorImage,
+                pointCloud,
+                pointcloud_filter_config_)) {
+
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
+            export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            export_status_->stopPulsing();
+            return;
+        }
+
+        // Assess point cloud quality
+        pointcloud::PointCloudQuality quality;
+        if (pointcloud_processor_->assessPointCloudQuality(pointCloud, quality)) {
+            qDebug() << "[DepthWidget] Point cloud quality:"
+                     << "Valid points:" << quality.validPoints
+                     << "Density:" << quality.density
+                     << "Valid ratio:" << (quality.validRatio * 100) << "%";
+        }
+
+        // Generate filename with timestamp
+        QString filename = QString("unlook_pointcloud_%1%2")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"))
+            .arg(QString::fromStdString(export_format_.getFileExtension()));
+
+        QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
+        QDir().mkpath(QDir::homePath() + "/unlook_exports");
+
+        // Set timestamp for export
+        export_format_.timestamp = QDateTime::currentDateTime().toString().toStdString();
+
+        // Export point cloud
+        if (pointcloud_processor_->exportPointCloud(pointCloud, filepath.toStdString(), export_format_)) {
+            export_status_->setStatus(QString("Point cloud exported: %1").arg(filename),
+                                     widgets::StatusDisplay::StatusType::SUCCESS);
+
+            // Show success message with quality info
+            QString message = QString("Point cloud exported successfully!\n\n"
+                                     "File: %1\n"
+                                     "Format: %2\n"
+                                     "Points: %3\n"
+                                     "Valid ratio: %4%\n"
+                                     "Density: %5 points/mm³")
+                .arg(filename)
+                .arg(ui->export_format_combo->currentText())
+                .arg(quality.validPoints)
+                .arg(quality.validRatio * 100, 0, 'f', 1)
+                .arg(quality.density, 0, 'f', 2);
+
+            QMessageBox::information(this, "Export Successful", message);
+        } else {
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Export Failed", QString("Failed to export point cloud: %1").arg(error));
+            export_status_->setStatus("Point cloud export failed", widgets::StatusDisplay::StatusType::ERROR);
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Export Failed", QString("Exception during export: %1").arg(e.what()));
+        export_status_->setStatus("Export failed with exception", widgets::StatusDisplay::StatusType::ERROR);
+    }
+
+    export_status_->stopPulsing();
+}
+
+void DepthTestWidget::exportMesh() {
+    if (!current_result_.success || current_result_.depth_map.empty()) {
+        QMessageBox::warning(this, "Export Error", "No valid depth map available for mesh export.");
+        return;
+    }
+
+    if (!pointcloud_processor_) {
+        QMessageBox::warning(this, "Export Error", "Point cloud processor not initialized.");
+        return;
+    }
+
+    export_status_->setStatus("Generating mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
+    export_status_->startPulsing();
+
+    try {
+        // First generate point cloud
+        stereo::PointCloud pointCloud;
+        cv::Mat colorImage; // TODO: Get the actual color image
+
+        if (!pointcloud_processor_->generatePointCloud(
+                current_result_.depth_map,
+                colorImage,
+                pointCloud,
+                pointcloud_filter_config_)) {
+
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
+            export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            export_status_->stopPulsing();
+            return;
+        }
+
+        // Generate mesh
+        std::vector<cv::Vec3f> vertices;
+        std::vector<cv::Vec3i> faces;
+        std::vector<cv::Vec3f> normals;
+
+        if (!pointcloud_processor_->generateMesh(pointCloud, mesh_generation_config_, vertices, faces, normals)) {
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Mesh Generation Failed", error);
+            export_status_->setStatus("Mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            export_status_->stopPulsing();
+            return;
+        }
+
+        // Assess mesh quality
+        pointcloud::MeshQuality quality;
+        if (pointcloud_processor_->assessMeshQuality(vertices, faces, quality)) {
+            qDebug() << "[DepthWidget] Mesh quality:"
+                     << "Vertices:" << quality.numVertices
+                     << "Faces:" << quality.numFaces
+                     << "Watertight:" << quality.isWatertight
+                     << "Surface area:" << quality.surfaceArea << "mm²";
+        }
+
+        // Generate filename
+        QString filename = QString("unlook_mesh_%1.obj")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
+        QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
+
+        // Export mesh (using OBJ format for meshes)
+        pointcloud::ExportFormat meshFormat = export_format_;
+        meshFormat.format = pointcloud::ExportFormat::Format::OBJ;
+        meshFormat.timestamp = QDateTime::currentDateTime().toString().toStdString();
+
+        if (pointcloud_processor_->exportMesh(vertices, faces, normals, filepath.toStdString(), meshFormat)) {
+            export_status_->setStatus(QString("Mesh exported: %1").arg(filename),
+                                     widgets::StatusDisplay::StatusType::SUCCESS);
+
+            // Show success message with quality info
+            QString message = QString("Mesh exported successfully!\n\n"
+                                     "File: %1\n"
+                                     "Vertices: %2\n"
+                                     "Faces: %3\n"
+                                     "Surface area: %4 mm²\n"
+                                     "Watertight: %5")
+                .arg(filename)
+                .arg(quality.numVertices)
+                .arg(quality.numFaces)
+                .arg(quality.surfaceArea, 0, 'f', 2)
+                .arg(quality.isWatertight ? "Yes" : "No");
+
+            QMessageBox::information(this, "Export Successful", message);
+        } else {
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Export Failed", QString("Failed to export mesh: %1").arg(error));
+            export_status_->setStatus("Mesh export failed", widgets::StatusDisplay::StatusType::ERROR);
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Export Failed", QString("Exception during mesh export: %1").arg(e.what()));
+        export_status_->setStatus("Mesh export failed with exception", widgets::StatusDisplay::StatusType::ERROR);
+    }
+
+    export_status_->stopPulsing();
+}
+
+void DepthTestWidget::configurePointCloudExport() {
+    // TODO: Implement configuration dialog for point cloud filtering and mesh generation parameters
+    QMessageBox::information(this, "Configuration",
+                             "Point cloud export configuration dialog will be implemented here.\n\n"
+                             "Current settings:\n"
+                             "- Statistical filter: Enabled\n"
+                             "- Mesh algorithm: Poisson reconstruction\n"
+                             "- Normal computation: Enabled");
+}
+
+void DepthTestWidget::configureMeshGeneration() {
+    // TODO: Implement mesh generation configuration dialog
+    QMessageBox::information(this, "Mesh Configuration",
+                             "Mesh generation configuration dialog will be implemented here.");
+}
+
+// Update the onDepthResultReceived method to enable export buttons
+void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
+    current_result_ = result;
+
+    if (result.success) {
+        processing_status_->setStatus(
+            QString("Depth processing completed in %1ms").arg(result.processing_time_ms, 0, 'f', 1),
+            widgets::StatusDisplay::StatusType::SUCCESS
+        );
+
+        updateDepthVisualization(result);
+
+        // Update quality metrics
+        QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
+            .arg(result.coverage_ratio * 100, 0, 'f', 1)
+            .arg(result.mean_depth, 0, 'f', 2)
+            .arg(result.std_depth, 0, 'f', 2);
+        quality_metrics_label_->setText(metrics);
+
+        // Enable point cloud export button from UI
+        ui->save_pointcloud_button->setEnabled(true);
+        ui->export_format_combo->setEnabled(true);
+
+        // Enable legacy point cloud export buttons (if they exist)
+        if (export_pointcloud_button_) {
+            export_pointcloud_button_->setEnabled(true);
+        }
+        if (export_mesh_button_) {
+            export_mesh_button_->setEnabled(true);
+        }
+
+    } else {
+        processing_status_->setStatus("Depth processing failed: " + QString::fromStdString(result.error_message),
+                                     widgets::StatusDisplay::StatusType::ERROR);
+
+        // Disable export buttons on failure
+        ui->save_pointcloud_button->setEnabled(false);
+        ui->export_format_combo->setEnabled(false);
+
+        if (export_pointcloud_button_) {
+            export_pointcloud_button_->setEnabled(false);
+        }
+        if (export_mesh_button_) {
+            export_mesh_button_->setEnabled(false);
+        }
+    }
 }
 
 } // namespace gui
