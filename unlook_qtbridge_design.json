@@ -1,0 +1,373 @@
+{
+  "metaInfo": {
+    "version": "1.0",
+    "type": "QtQuick.Controls",
+    "generator": "Claude Code - Unlook Scanner Export",
+    "description": "Qt Bridge compatible design export for Figma integration"
+  },
+  "rootElement": {
+    "id": "unlookMainWindow",
+    "type": "ApplicationWindow",
+    "width": 1824,
+    "height": 1026,
+    "title": "Unlook 3D Scanner v1.0",
+    "color": "#000000",
+    "children": [
+      {
+        "id": "titleBar",
+        "type": "Rectangle",
+        "anchors": {
+          "top": "parent.top",
+          "left": "parent.left", 
+          "right": "parent.right"
+        },
+        "height": 84,
+        "color": "#1A2B2A",
+        "children": [
+          {
+            "id": "titleText",
+            "type": "Text",
+            "anchors": {
+              "left": "parent.left",
+              "verticalCenter": "parent.verticalCenter",
+              "leftMargin": 24
+            },
+            "text": "UNLOOK 3D SCANNER",
+            "font": {
+              "family": "Inter",
+              "pixelSize": 24,
+              "weight": "Bold"
+            },
+            "color": "#00E5CC"
+          },
+          {
+            "id": "versionText",
+            "type": "Text", 
+            "anchors": {
+              "left": "titleText.right",
+              "verticalCenter": "parent.verticalCenter",
+              "leftMargin": 16
+            },
+            "text": "v1.0 Professional",
+            "font": {
+              "family": "Inter",
+              "pixelSize": 12
+            },
+            "color": "#B3B3B3"
+          },
+          {
+            "id": "backButton",
+            "type": "Rectangle",
+            "anchors": {
+              "right": "fullscreenButton.left",
+              "verticalCenter": "parent.verticalCenter",
+              "rightMargin": 8
+            },
+            "width": 120,
+            "height": 48,
+            "radius": 8,
+            "color": "#00B8A3",
+            "children": [
+              {
+                "id": "backButtonText",
+                "type": "Text",
+                "anchors": {
+                  "centerIn": "parent"
+                },
+                "text": "← BACK",
+                "font": {
+                  "family": "Inter",
+                  "pixelSize": 14,
+                  "weight": "Bold"
+                },
+                "color": "#FFFFFF"
+              }
+            ]
+          },
+          {
+            "id": "fullscreenButton",
+            "type": "Rectangle",
+            "anchors": {
+              "right": "parent.right",
+              "verticalCenter": "parent.verticalCenter", 
+              "rightMargin": 24
+            },
+            "width": 120,
+            "height": 48,
+            "radius": 8,
+            "color": "#00B8A3",
+            "children": [
+              {
+                "id": "fullscreenButtonText",
+                "type": "Text",
+                "anchors": {
+                  "centerIn": "parent"
+                },
+                "text": "⛶ FULLSCREEN",
+                "font": {
+                  "family": "Inter",
+                  "pixelSize": 14,
+                  "weight": "Bold"
+                },
+                "color": "#FFFFFF"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mainMenuScreen",
+        "type": "Rectangle",
+        "anchors": {
+          "top": "titleBar.bottom",
+          "bottom": "statusBar.top",
+          "left": "parent.left",
+          "right": "parent.right"
+        },
+        "color": "#000000",
+        "children": [
+          {
+            "id": "menuGrid",
+            "type": "Grid",
+            "anchors": {
+              "centerIn": "parent"
+            },
+            "columns": 2,
+            "rows": 2,
+            "spacing": 24,
+            "children": [
+              {
+                "id": "cameraPreviewButton",
+                "type": "Rectangle",
+                "width": 312,
+                "height": 86,
+                "radius": 8,
+                "color": "#00E5CC",
+                "children": [
+                  {
+                    "id": "cameraPreviewText",
+                    "type": "Text",
+                    "anchors": {
+                      "centerIn": "parent"
+                    },
+                    "text": "📹 CAMERA PREVIEW",
+                    "font": {
+                      "family": "Inter",
+                      "pixelSize": 16,
+                      "weight": "Bold"
+                    },
+                    "color": "#000000"
+                  }
+                ]
+              },
+              {
+                "id": "depthTestButton",
+                "type": "Rectangle",
+                "width": 312,
+                "height": 86,
+                "radius": 8,
+                "color": "#00E5CC",
+                "children": [
+                  {
+                    "id": "depthTestText",
+                    "type": "Text",
+                    "anchors": {
+                      "centerIn": "parent"
+                    },
+                    "text": "🔍 DEPTH TEST", 
+                    "font": {
+                      "family": "Inter",
+                      "pixelSize": 16,
+                      "weight": "Bold"
+                    },
+                    "color": "#000000"
+                  }
+                ]
+              },
+              {
+                "id": "optionsButton",
+                "type": "Rectangle",
+                "width": 312,
+                "height": 86,
+                "radius": 8,
+                "color": "#00B8A3",
+                "children": [
+                  {
+                    "id": "optionsText",
+                    "type": "Text",
+                    "anchors": {
+                      "centerIn": "parent"
+                    },
+                    "text": "⚙️ OPTIONS",
+                    "font": {
+                      "family": "Inter",
+                      "pixelSize": 16,
+                      "weight": "Bold"
+                    },
+                    "color": "#FFFFFF"
+                  }
+                ]
+              },
+              {
+                "id": "exitButton",
+                "type": "Rectangle",
+                "width": 312,
+                "height": 86,
+                "radius": 8,
+                "color": "#FF9800",
+                "children": [
+                  {
+                    "id": "exitText",
+                    "type": "Text",
+                    "anchors": {
+                      "centerIn": "parent"
+                    },
+                    "text": "🚪 EXIT",
+                    "font": {
+                      "family": "Inter",
+                      "pixelSize": 16,
+                      "weight": "Bold"
+                    },
+                    "color": "#000000"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "statusBar",
+        "type": "Rectangle",
+        "anchors": {
+          "bottom": "parent.bottom",
+          "left": "parent.left",
+          "right": "parent.right"
+        },
+        "height": 54,
+        "color": "#1A2B2A",
+        "children": [
+          {
+            "id": "systemStatus",
+            "type": "Rectangle",
+            "anchors": {
+              "left": "parent.left",
+              "verticalCenter": "parent.verticalCenter",
+              "leftMargin": 24
+            },
+            "width": 120,
+            "height": 32,
+            "radius": 16,
+            "color": "#4CAF50",
+            "children": [
+              {
+                "id": "systemStatusText",
+                "type": "Text",
+                "anchors": {
+                  "centerIn": "parent"
+                },
+                "text": "System: OK",
+                "font": {
+                  "family": "Inter",
+                  "pixelSize": 12
+                },
+                "color": "#FFFFFF"
+              }
+            ]
+          },
+          {
+            "id": "cameraStatus",
+            "type": "Rectangle",
+            "anchors": {
+              "left": "systemStatus.right",
+              "verticalCenter": "parent.verticalCenter",
+              "leftMargin": 8
+            },
+            "width": 120,
+            "height": 32,
+            "radius": 16,
+            "color": "#2196F3",
+            "children": [
+              {
+                "id": "cameraStatusText",
+                "type": "Text",
+                "anchors": {
+                  "centerIn": "parent"
+                },
+                "text": "Cameras: Ready",
+                "font": {
+                  "family": "Inter",
+                  "pixelSize": 12
+                },
+                "color": "#FFFFFF"
+              }
+            ]
+          },
+          {
+            "id": "timestampText",
+            "type": "Text",
+            "anchors": {
+              "right": "parent.right",
+              "verticalCenter": "parent.verticalCenter",
+              "rightMargin": 24
+            },
+            "text": "2025-09-09 15:46:00",
+            "font": {
+              "family": "Inter", 
+              "pixelSize": 12
+            },
+            "color": "#B3B3B3"
+          }
+        ]
+      }
+    ]
+  },
+  "designTokens": {
+    "colors": {
+      "primary": "#00E5CC",
+      "secondary": "#00B8A3",
+      "accent": "#FF6B35", 
+      "background": "#000000",
+      "surface": "#1A2B2A",
+      "textPrimary": "#FFFFFF",
+      "textSecondary": "#B3B3B3",
+      "success": "#4CAF50",
+      "warning": "#FF9800",
+      "error": "#F44336"
+    },
+    "typography": {
+      "fontFamily": "Inter",
+      "sizes": {
+        "large": 24,
+        "heading": 18,
+        "body": 14,
+        "small": 12
+      }
+    },
+    "spacing": {
+      "xs": 4,
+      "sm": 8,
+      "md": 16,
+      "lg": 24,
+      "xl": 32
+    },
+    "borderRadius": {
+      "sm": 4,
+      "md": 8,
+      "lg": 16
+    }
+  },
+  "components": {
+    "TouchButton": {
+      "width": 312,
+      "height": 86,
+      "borderRadius": 8,
+      "minTouchTarget": 48
+    },
+    "StatusIndicator": {
+      "height": 32,
+      "borderRadius": 16,
+      "padding": "8px 16px"
+    }
+  }
+}

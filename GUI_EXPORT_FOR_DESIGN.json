@@ -1,0 +1,668 @@
+{
+  "unlook_gui_structure": {
+    "version": "1.0",
+    "description": "Complete GUI structure export for Figma/Qt Designer visual editing",
+    "design_system": {
+      "name": "Supernova-tech",
+      "colors": {
+        "primary": "#00E5CC",
+        "secondary": "#00B8A3", 
+        "accent": "#FF6B35",
+        "background": "#000000",
+        "surface": "#1A2B2A",
+        "text_primary": "#FFFFFF",
+        "text_secondary": "#B3B3B3",
+        "success": "#4CAF50",
+        "warning": "#FF9800",
+        "error": "#F44336"
+      },
+      "fonts": {
+        "primary": "Inter",
+        "fallbacks": ["Roboto", "Arial", "sans-serif"],
+        "sizes": {
+          "large": "24px",
+          "heading": "18px", 
+          "body": "14px",
+          "small": "12px"
+        }
+      },
+      "spacing": {
+        "padding_small": "8px",
+        "padding_medium": "16px", 
+        "padding_large": "24px",
+        "margin_small": "4px",
+        "margin_medium": "8px",
+        "margin_large": "16px"
+      }
+    },
+    "responsive_design": {
+      "breakpoints": {
+        "small": "≤800px wide (like 840x480)",
+        "medium": "800-1200px wide",
+        "large": "≥1200px wide"
+      },
+      "button_sizes": {
+        "main": "312x86px",
+        "secondary": "150x60px", 
+        "compact": "120x48px"
+      },
+      "touch_targets": "minimum 48px"
+    },
+    "main_window": {
+      "type": "QMainWindow",
+      "title": "Unlook 3D Scanner v1.0",
+      "fullscreen": true,
+      "minimum_size": "95% of screen size",
+      "layout": {
+        "type": "QVBoxLayout",
+        "components": [
+          {
+            "name": "title_bar",
+            "type": "QWidget",
+            "height": "84px (responsive)",
+            "layout": "QHBoxLayout",
+            "background": "#1A2B2A",
+            "components": [
+              {
+                "name": "title_label", 
+                "type": "QLabel",
+                "text": "UNLOOK 3D SCANNER",
+                "font": "Inter 24px Bold",
+                "color": "#00E5CC"
+              },
+              {
+                "name": "version_label",
+                "type": "QLabel", 
+                "text": "v1.0 Professional",
+                "font": "Inter 12px",
+                "color": "#B3B3B3"
+              },
+              {
+                "name": "spacer",
+                "type": "QSpacerItem",
+                "expand": true
+              },
+              {
+                "name": "back_button",
+                "type": "TouchButton",
+                "text": "← BACK",
+                "size": "120x48px",
+                "style": "secondary",
+                "visible": "only on sub-screens"
+              },
+              {
+                "name": "fullscreen_toggle",
+                "type": "TouchButton", 
+                "text": "⛶ FULLSCREEN",
+                "size": "120x48px",
+                "style": "secondary"
+              }
+            ]
+          },
+          {
+            "name": "central_content",
+            "type": "QStackedWidget",
+            "expand": true,
+            "screens": [
+              {
+                "name": "main_menu_screen",
+                "description": "Main navigation menu with 4 large buttons",
+                "layout": {
+                  "type": "QGridLayout", 
+                  "spacing": "responsive grid spacing",
+                  "centered": true,
+                  "components": [
+                    {
+                      "name": "camera_preview_button",
+                      "type": "TouchButton",
+                      "text": "📹 CAMERA PREVIEW",
+                      "size": "312x86px (main button)",
+                      "style": "primary",
+                      "position": "row 0, col 0"
+                    },
+                    {
+                      "name": "depth_test_button", 
+                      "type": "TouchButton",
+                      "text": "🔍 DEPTH TEST",
+                      "size": "312x86px (main button)",
+                      "style": "primary",
+                      "position": "row 0, col 1"
+                    },
+                    {
+                      "name": "options_button",
+                      "type": "TouchButton",
+                      "text": "⚙️ OPTIONS",
+                      "size": "312x86px (main button)", 
+                      "style": "secondary",
+                      "position": "row 1, col 0"
+                    },
+                    {
+                      "name": "exit_button",
+                      "type": "TouchButton",
+                      "text": "🚪 EXIT",
+                      "size": "312x86px (main button)",
+                      "style": "warning",
+                      "position": "row 1, col 1"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "camera_preview_screen",
+                "description": "Live camera feed with controls",
+                "layout": {
+                  "type": "QHBoxLayout",
+                  "components": [
+                    {
+                      "name": "camera_feeds",
+                      "type": "QVBoxLayout",
+                      "width": "70%",
+                      "components": [
+                        {
+                          "name": "camera_grid",
+                          "type": "QGridLayout",
+                          "components": [
+                            {
+                              "name": "left_camera_preview",
+                              "type": "QLabel", 
+                              "size": "responsive preview size",
+                              "border": "2px solid #00E5CC",
+                              "position": "row 0, col 0"
+                            },
+                            {
+                              "name": "right_camera_preview",
+                              "type": "QLabel",
+                              "size": "responsive preview size", 
+                              "border": "2px solid #00B8A3",
+                              "position": "row 0, col 1"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "camera_status_row",
+                          "type": "QHBoxLayout",
+                          "components": [
+                            {
+                              "name": "fps_status",
+                              "type": "StatusDisplay",
+                              "text": "FPS Counter"
+                            },
+                            {
+                              "name": "sync_status", 
+                              "type": "StatusDisplay",
+                              "text": "Hardware Sync Status"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "control_panel",
+                      "type": "QVBoxLayout", 
+                      "width": "30%",
+                      "background": "#1A2B2A",
+                      "padding": "24px",
+                      "components": [
+                        {
+                          "name": "capture_controls",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "start_capture_button",
+                              "type": "TouchButton",
+                              "text": "▶ START CAPTURE",
+                              "style": "success",
+                              "size": "secondary"
+                            },
+                            {
+                              "name": "stop_capture_button",
+                              "type": "TouchButton", 
+                              "text": "⏹ STOP CAPTURE",
+                              "style": "warning",
+                              "size": "secondary"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "camera_settings",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "exposure_slider",
+                              "type": "ParameterSlider",
+                              "label": "Exposure",
+                              "range": "1000-50000μs"
+                            },
+                            {
+                              "name": "gain_slider",
+                              "type": "ParameterSlider", 
+                              "label": "Gain",
+                              "range": "1.0-16.0"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "depth_test_screen",
+                "description": "Depth processing and visualization",
+                "layout": {
+                  "type": "QHBoxLayout",
+                  "components": [
+                    {
+                      "name": "visualization_panel",
+                      "type": "QVBoxLayout",
+                      "width": "60%",
+                      "components": [
+                        {
+                          "name": "depth_map_display",
+                          "type": "QLabel",
+                          "size": "responsive (500x375 default, 400x300 compact)",
+                          "background": "#000000",
+                          "border": "2px solid #00E5CC",
+                          "placeholder": "No depth map available"
+                        },
+                        {
+                          "name": "quality_metrics",
+                          "type": "QLabel",
+                          "font": "Inter 14px",
+                          "color": "#B3B3B3",
+                          "word_wrap": true,
+                          "padding": "8px"
+                        }
+                      ]
+                    },
+                    {
+                      "name": "controls_panel",
+                      "type": "QVBoxLayout",
+                      "width": "40%", 
+                      "background": "#1A2B2A",
+                      "padding": "24px",
+                      "components": [
+                        {
+                          "name": "capture_section",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "capture_button",
+                              "type": "TouchButton",
+                              "text": "📸 CAPTURE STEREO FRAME",
+                              "style": "primary",
+                              "size": "full width"
+                            },
+                            {
+                              "name": "export_button",
+                              "type": "TouchButton",
+                              "text": "💾 EXPORT PLY",
+                              "style": "success", 
+                              "size": "full width"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "algorithm_section",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "algorithm_selector",
+                              "type": "QComboBox",
+                              "options": ["SGBM", "StereoBM", "Block Matching"]
+                            },
+                            {
+                              "name": "preset_buttons",
+                              "type": "QGridLayout",
+                              "spacing": "responsive",
+                              "components": [
+                                {
+                                  "name": "preset_fast",
+                                  "type": "TouchButton", 
+                                  "text": "Fast",
+                                  "style": "warning",
+                                  "size": "secondary",
+                                  "position": "row 0, col 0"
+                                },
+                                {
+                                  "name": "preset_balanced",
+                                  "type": "TouchButton",
+                                  "text": "Balanced", 
+                                  "style": "primary",
+                                  "size": "secondary",
+                                  "position": "row 0, col 1"
+                                },
+                                {
+                                  "name": "preset_quality",
+                                  "type": "TouchButton",
+                                  "text": "Quality",
+                                  "style": "success",
+                                  "size": "secondary", 
+                                  "position": "row 1, col 0-1 (spans 2 columns)"
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "name": "parameter_sliders",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "num_disparities_slider",
+                              "type": "ParameterSlider",
+                              "label": "Num Disparities",
+                              "range": "16-256"
+                            },
+                            {
+                              "name": "block_size_slider", 
+                              "type": "ParameterSlider",
+                              "label": "Block Size",
+                              "range": "5-21"
+                            }
+                          ]
+                        },
+                        {
+                          "name": "status_section",
+                          "type": "QVBoxLayout",
+                          "components": [
+                            {
+                              "name": "processing_status",
+                              "type": "StatusDisplay",
+                              "text": "Processing Status"
+                            },
+                            {
+                              "name": "capture_status",
+                              "type": "StatusDisplay", 
+                              "text": "Capture Status"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "options_screen",
+                "description": "System configuration and status",
+                "layout": {
+                  "type": "QVBoxLayout",
+                  "components": [
+                    {
+                      "name": "scroll_area",
+                      "type": "QScrollArea",
+                      "widget_resizable": true,
+                      "content": {
+                        "type": "QVBoxLayout",
+                        "spacing": "24px",
+                        "panels": [
+                          {
+                            "name": "system_status_panel",
+                            "background": "#1A2B2A",
+                            "padding": "24px",
+                            "components": [
+                              {
+                                "name": "panel_title",
+                                "text": "System Status",
+                                "font": "Inter 18px Bold",
+                                "color": "#00E5CC"
+                              },
+                              {
+                                "name": "system_status",
+                                "type": "StatusDisplay",
+                                "text": "Overall System"
+                              },
+                              {
+                                "name": "sync_status",
+                                "type": "StatusDisplay", 
+                                "text": "Hardware Synchronization"
+                              }
+                            ]
+                          },
+                          {
+                            "name": "calibration_panel",
+                            "background": "#1A2B2A",
+                            "padding": "24px",
+                            "components": [
+                              {
+                                "name": "panel_title",
+                                "text": "Calibration Status",
+                                "font": "Inter 18px Bold",
+                                "color": "#00E5CC"
+                              },
+                              {
+                                "name": "calibration_status",
+                                "type": "StatusDisplay",
+                                "text": "Stereo Calibration"
+                              }
+                            ]
+                          },
+                          {
+                            "name": "camera_config_panel",
+                            "background": "#1A2B2A", 
+                            "padding": "24px",
+                            "components": [
+                              {
+                                "name": "panel_title",
+                                "text": "Camera Configuration",
+                                "font": "Inter 18px Bold",
+                                "color": "#00E5CC"
+                              },
+                              {
+                                "name": "left_camera_status",
+                                "type": "StatusDisplay",
+                                "text": "LEFT Camera (Master)"
+                              },
+                              {
+                                "name": "right_camera_status",
+                                "type": "StatusDisplay",
+                                "text": "RIGHT Camera (Slave)"
+                              }
+                            ]
+                          },
+                          {
+                            "name": "action_buttons_panel",
+                            "background": "#1A2B2A",
+                            "padding": "24px",
+                            "components": [
+                              {
+                                "name": "panel_title",
+                                "text": "Actions",
+                                "font": "Inter 18px Bold", 
+                                "color": "#00E5CC"
+                              },
+                              {
+                                "name": "button_grid",
+                                "type": "QGridLayout",
+                                "spacing": "responsive",
+                                "components": [
+                                  {
+                                    "name": "refresh_button",
+                                    "type": "TouchButton",
+                                    "text": "REFRESH",
+                                    "style": "primary",
+                                    "size": "main button",
+                                    "position": "row 0, col 0"
+                                  },
+                                  {
+                                    "name": "calibration_button",
+                                    "type": "TouchButton",
+                                    "text": "CALIBRATION", 
+                                    "style": "secondary",
+                                    "size": "main button",
+                                    "position": "row 0, col 1"
+                                  },
+                                  {
+                                    "name": "advanced_button",
+                                    "type": "TouchButton",
+                                    "text": "ADVANCED",
+                                    "style": "secondary",
+                                    "size": "main button",
+                                    "position": "row 1, col 0"
+                                  },
+                                  {
+                                    "name": "reset_button",
+                                    "type": "TouchButton",
+                                    "text": "RESET",
+                                    "style": "warning",
+                                    "size": "main button",
+                                    "position": "row 1, col 1"
+                                  },
+                                  {
+                                    "name": "about_button",
+                                    "type": "TouchButton",
+                                    "text": "ABOUT UNLOOK SCANNER",
+                                    "style": "success",
+                                    "size": "spans 2 columns",
+                                    "position": "row 2, col 0-1"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "status_bar",
+            "type": "QWidget",
+            "height": "54px (responsive)",
+            "background": "#1A2B2A",
+            "layout": "QHBoxLayout",
+            "components": [
+              {
+                "name": "system_status",
+                "type": "StatusDisplay",
+                "text": "System Status"
+              },
+              {
+                "name": "camera_status", 
+                "type": "StatusDisplay",
+                "text": "Camera Status"
+              },
+              {
+                "name": "spacer",
+                "type": "QSpacerItem",
+                "expand": true
+              },
+              {
+                "name": "timestamp",
+                "type": "QLabel",
+                "font": "Inter 12px",
+                "color": "#B3B3B3"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "custom_widgets": {
+      "TouchButton": {
+        "description": "Custom button optimized for touch interfaces",
+        "properties": {
+          "minimum_size": "48x48px",
+          "border_radius": "8px",
+          "font": "Inter Bold",
+          "touch_feedback": "visual highlighting",
+          "types": {
+            "primary": {
+              "background": "#00E5CC",
+              "text_color": "#000000"
+            },
+            "secondary": {
+              "background": "#00B8A3", 
+              "text_color": "#FFFFFF"
+            },
+            "success": {
+              "background": "#4CAF50",
+              "text_color": "#FFFFFF"
+            },
+            "warning": {
+              "background": "#FF9800",
+              "text_color": "#000000"
+            },
+            "error": {
+              "background": "#F44336",
+              "text_color": "#FFFFFF"
+            }
+          }
+        }
+      },
+      "StatusDisplay": {
+        "description": "Status indicator with colored background and pulsing animation",
+        "properties": {
+          "height": "32px",
+          "border_radius": "16px",
+          "font": "Inter 12px",
+          "padding": "8px 16px",
+          "animation": "pulsing for processing states",
+          "types": {
+            "success": {
+              "background": "#4CAF50",
+              "text_color": "#FFFFFF"
+            },
+            "warning": {
+              "background": "#FF9800", 
+              "text_color": "#000000"
+            },
+            "error": {
+              "background": "#F44336",
+              "text_color": "#FFFFFF"
+            },
+            "info": {
+              "background": "#2196F3",
+              "text_color": "#FFFFFF"
+            },
+            "processing": {
+              "background": "#FF6B35",
+              "text_color": "#FFFFFF",
+              "animation": "pulsing"
+            }
+          }
+        }
+      },
+      "ParameterSlider": {
+        "description": "Labeled slider for parameter adjustment",
+        "properties": {
+          "label_font": "Inter 12px",
+          "value_display": "real-time",
+          "slider_color": "#00E5CC",
+          "background": "#1A2B2A",
+          "height": "60px"
+        }
+      }
+    },
+    "design_notes": {
+      "layout_principles": [
+        "Responsive design for 840x480 to 1920x1080",
+        "Touch-first interface with 48px minimum targets",
+        "Grid-based layout with consistent spacing",
+        "Dark theme optimized for industrial environments"
+      ],
+      "color_usage": [
+        "Primary (#00E5CC) for main actions and highlights",
+        "Secondary (#00B8A3) for secondary actions", 
+        "Warning/Error colors for status indication",
+        "Dark background (#000000) with surface (#1A2B2A) for panels"
+      ],
+      "typography": [
+        "Inter font family for consistency",
+        "Bold for headings and button labels",
+        "Regular for body text and status",
+        "Responsive font sizing based on screen size"
+      ],
+      "current_issues_to_fix": [
+        "Text too small on some screens - needs font scaling",
+        "Button overlapping in preset grid - fixed with QGridLayout",
+        "Calibration path display - now shows full path",
+        "Status indicators accuracy - sync status now correct"
+      ]
+    }
+  }
+}
