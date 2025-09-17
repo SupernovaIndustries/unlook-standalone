@@ -1,6 +1,9 @@
+// Point cloud functionality now enabled with proper dependencies
+
 #include "unlook/gui/depth_test_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
 #include "unlook/calibration/CalibrationManager.hpp"
+#include "unlook/stereo/DepthProcessor.hpp"
 #include "ui_depth_test_widget.h"
 #include <QGridLayout>
 #include <QComboBox>
@@ -9,6 +12,8 @@
 #include <QDebug>
 #include <QDir>
 #include <fstream>
+#include <thread>
+#include <chrono>
 #include <opencv2/imgcodecs.hpp>
 
 using namespace unlook::gui::styles;
@@ -33,9 +38,15 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     initializeUI();
     initializeDepthProcessor();
     initializePointCloudProcessor();
+    // initializeVCSELProjector(); // Disabled - causes AS1170 segfault at startup
 }
 
 DepthTestWidget::~DepthTestWidget() {
+    // Ensure VCSEL is shut down safely
+    if (vcsel_projector_) {
+        vcsel_projector_->disableProjection();
+        vcsel_projector_->shutdown();
+    }
     delete ui;
 }
 
@@ -87,7 +98,13 @@ void DepthTestWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     // Stop any ongoing processing
     processing_active_ = false;
-    
+
+    // Ensure VCSEL is disabled when widget is hidden (safety)
+    if (vcsel_projector_ && vcsel_projector_->isProjectionActive()) {
+        qDebug() << "[DepthWidget] Disabling VCSEL projection (widget hidden)";
+        vcsel_projector_->disableProjection();
+    }
+
     // AUTO-STOP LIVE PREVIEW when widget is hidden
     qDebug() << "[DepthWidget] Widget hidden, stopping live preview";
     stopLivePreview();
@@ -95,25 +112,70 @@ void DepthTestWidget::hideEvent(QHideEvent* event) {
 
 void DepthTestWidget::captureStereoFrame() {
     qDebug() << "[DepthWidget] captureStereoFrame() called";
-    
+
     if (!camera_system_) {
         qDebug() << "[DepthWidget] ERROR: camera_system_ is null";
         processing_status_->setStatus("Camera system not initialized", StatusDisplay::StatusType::ERROR);
         return;
     }
-    
+
     if (!camera_system_->isReady()) {
         qDebug() << "[DepthWidget] ERROR: Camera system not ready";
         processing_status_->setStatus("Camera system not ready", StatusDisplay::StatusType::ERROR);
         return;
     }
-    
-    qDebug() << "[DepthWidget] Starting stereo frame capture";
+
+    qDebug() << "[DepthWidget] Starting stereo frame capture with VCSEL";
     processing_active_ = true;
-    capture_status_->setStatus("Capturing stereo frame...", StatusDisplay::StatusType::PROCESSING);
+    capture_status_->setStatus("Activating VCSEL projection...", StatusDisplay::StatusType::PROCESSING);
     capture_status_->startPulsing();
-    
-    // Capture single frame
+
+    // Trigger VCSEL structured light for depth capture
+    bool vcsel_triggered = false;
+    if (vcsel_projector_ && vcsel_projector_->isReady()) {
+        qDebug() << "[DepthWidget] Triggering VCSEL structured light projection";
+
+        // Update VCSEL status
+        if (vcsel_status_) {
+            vcsel_status_->setStatus("VCSEL Active", StatusDisplay::StatusType::WARNING);
+            vcsel_status_->startPulsing();
+        }
+
+        // Trigger VCSEL with camera exposure time (15ms default)
+        vcsel_triggered = vcsel_projector_->triggerStructuredLightCapture(
+            15000,  // 15ms exposure time to match camera
+            [this](hardware::VCSELProjector::PatternType pattern, uint64_t timestamp_ns) {
+                qDebug() << "[DepthWidget] VCSEL projection completed at" << timestamp_ns;
+                // VCSEL projection complete callback
+                if (vcsel_status_) {
+                    QMetaObject::invokeMethod(this, [this]() {
+                        vcsel_status_->setStatus("VCSEL Off", StatusDisplay::StatusType::INFO);
+                        vcsel_status_->stopPulsing();
+                    }, Qt::QueuedConnection);
+                }
+            });
+
+        if (!vcsel_triggered) {
+            qWarning() << "[DepthWidget] Failed to trigger VCSEL projection";
+            if (vcsel_status_) {
+                vcsel_status_->setStatus("VCSEL Trigger Failed", StatusDisplay::StatusType::ERROR);
+                vcsel_status_->stopPulsing();
+            }
+        }
+    } else {
+        qDebug() << "[DepthWidget] VCSEL projector not available, capturing without structured light";
+        if (vcsel_status_) {
+            vcsel_status_->setStatus("VCSEL Not Available", StatusDisplay::StatusType::WARNING);
+        }
+    }
+
+    // Small delay to ensure VCSEL is active before camera capture
+    if (vcsel_triggered) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+
+    // Capture single frame (now with VCSEL projection active if available)
+    capture_status_->setStatus("Capturing stereo frame...", StatusDisplay::StatusType::PROCESSING);
     qDebug() << "[DepthWidget] Calling camera_system_->captureSingle()";
     core::StereoFramePair frame_pair = camera_system_->captureSingle();
     
@@ -238,6 +300,10 @@ void DepthTestWidget::updateStereoParameters() {
 }
 
 void DepthTestWidget::updateExportFormat() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    // Function disabled during build optimization
+    return;
+#else
     if (!pointcloud_processor_) return;
 
     // Update export format based on UI selection
@@ -266,6 +332,7 @@ void DepthTestWidget::updateExportFormat() {
     }
 
     qDebug() << "[DepthWidget] Export format updated to:" << ui->export_format_combo->currentText();
+#endif
 }
 
 void DepthTestWidget::initializeUI() {
@@ -326,7 +393,13 @@ QWidget* DepthTestWidget::createCapturePanel() {
     capture_status_->setCompactMode(true);
     capture_status_->setStatus("Ready", StatusDisplay::StatusType::INFO);
     layout->addWidget(capture_status_);
-    
+
+    // VCSEL status
+    vcsel_status_ = new StatusDisplay("VCSEL");
+    vcsel_status_->setCompactMode(true);
+    vcsel_status_->setStatus("Initializing...", StatusDisplay::StatusType::INFO);
+    layout->addWidget(vcsel_status_);
+
     return panel;
 }
 
@@ -843,6 +916,7 @@ std::string DepthTestWidget::createDebugDirectory() {
 }
 
 void DepthTestWidget::initializePointCloudProcessor() {
+#ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     pointcloud_processor_ = std::make_unique<pointcloud::PointCloudProcessor>();
 
     // Initialize with depth processor
@@ -879,9 +953,67 @@ void DepthTestWidget::initializePointCloudProcessor() {
     export_format_.scannerInfo = "Unlook 3D Scanner";
     export_format_.calibrationFile = "/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml";
     export_format_.precisionMm = 0.005;
+#endif
+}
+
+void DepthTestWidget::initializeVCSELProjector() {
+    vcsel_projector_ = std::make_shared<hardware::VCSELProjector>();
+
+    // Configure VCSEL for depth capture mode
+    hardware::VCSELProjector::ProjectorConfig vcsel_config;
+    vcsel_config.mode = hardware::VCSELProjector::ProjectionMode::DEPTH_CAPTURE;
+    vcsel_config.pattern = hardware::VCSELProjector::PatternType::DOTS_15K;
+    vcsel_config.vcsel_current_ma = 250;  // Safe operating current
+    vcsel_config.flood_current_ma = 150;  // Flood illumination
+    vcsel_config.enable_flood_assist = true;
+    vcsel_config.projection_duration_ms = 50;  // Short burst for safety
+    vcsel_config.max_duty_cycle = 0.3f;  // 30% max duty cycle
+    vcsel_config.enable_thermal_protection = true;
+    vcsel_config.max_temperature_c = 70.0f;
+    vcsel_config.thermal_throttle_temp_c = 65.0f;
+    vcsel_config.enable_camera_sync = true;
+    vcsel_config.sync_tolerance_us = 50;
+
+    // Initialize the VCSEL projector
+    if (vcsel_projector_->initialize(vcsel_config)) {
+        qDebug() << "[DepthWidget] VCSEL projector initialized successfully";
+
+        // Set up callbacks for monitoring
+        vcsel_projector_->setThermalCallback(
+            [this](bool thermal_active, float temperature_c) {
+                QMetaObject::invokeMethod(this, [this, thermal_active, temperature_c]() {
+                    onVCSELThermalEvent(thermal_active, temperature_c);
+                }, Qt::QueuedConnection);
+            });
+
+        vcsel_projector_->setErrorCallback(
+            [this](const std::string& error) {
+                QMetaObject::invokeMethod(this, [this, error]() {
+                    onVCSELError(error);
+                }, Qt::QueuedConnection);
+            });
+
+        // Update status display
+        if (vcsel_status_) {
+            vcsel_status_->setStatus("VCSEL Ready", StatusDisplay::StatusType::SUCCESS);
+        }
+    } else {
+        qWarning() << "[DepthWidget] Failed to initialize VCSEL projector";
+        if (vcsel_status_) {
+            vcsel_status_->setStatus("VCSEL Init Failed", StatusDisplay::StatusType::ERROR);
+        }
+    }
 }
 
 QWidget* DepthTestWidget::createPointCloudExportPanel() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    // Return empty widget during build optimization
+    QWidget* panel = new QWidget();
+    QLabel* label = new QLabel("Point cloud export temporarily disabled");
+    QVBoxLayout* layout = new QVBoxLayout(panel);
+    layout->addWidget(label);
+    return panel;
+#else
     QWidget* panel = new QWidget();
     QVBoxLayout* layout = new QVBoxLayout(panel);
 
@@ -930,9 +1062,15 @@ QWidget* DepthTestWidget::createPointCloudExportPanel() {
     export_mesh_button_->setEnabled(false);
 
     return panel;
+#endif
 }
 
 void DepthTestWidget::exportPointCloud() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    QMessageBox::information(this, "Feature Disabled",
+        "Point cloud export is temporarily disabled during system build optimization.");
+    return;
+#endif
     if (!current_result_.success || current_result_.depth_map.empty()) {
         QMessageBox::warning(this, "Export Error", "No valid depth map available for point cloud export.");
         return;
@@ -1021,6 +1159,11 @@ void DepthTestWidget::exportPointCloud() {
 }
 
 void DepthTestWidget::exportMesh() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    QMessageBox::information(this, "Feature Disabled",
+        "Mesh export is temporarily disabled during system build optimization.");
+    return;
+#endif
     if (!current_result_.success || current_result_.depth_map.empty()) {
         QMessageBox::warning(this, "Export Error", "No valid depth map available for mesh export.");
         return;
@@ -1179,6 +1322,55 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
             export_mesh_button_->setEnabled(false);
         }
     }
+}
+
+void DepthTestWidget::onVCSELThermalEvent(bool thermal_active, float temperature_c) {
+    qDebug() << "[DepthWidget] VCSEL thermal event: active=" << thermal_active
+             << "temperature=" << temperature_c << "°C";
+
+    if (vcsel_status_) {
+        if (thermal_active) {
+            QString msg = QString("VCSEL Thermal Protection: %1°C").arg(temperature_c, 0, 'f', 1);
+            vcsel_status_->setStatus(msg, StatusDisplay::StatusType::WARNING);
+            vcsel_status_->startPulsing();
+
+            // Show warning message if temperature is critical
+            if (temperature_c > 68.0f) {
+                processing_status_->showTemporaryMessage(
+                    "VCSEL temperature high - cooling down",
+                    StatusDisplay::StatusType::WARNING, 5000);
+            }
+        } else {
+            QString msg = QString("VCSEL Temp: %1°C").arg(temperature_c, 0, 'f', 1);
+            vcsel_status_->setStatus(msg, StatusDisplay::StatusType::INFO);
+            vcsel_status_->stopPulsing();
+        }
+    }
+
+    // Disable capture button if thermal protection is active
+    if (thermal_active) {
+        ui->capture_button->setEnabled(false);
+        ui->capture_button->setText("COOLING DOWN...");
+    } else {
+        ui->capture_button->setEnabled(true);
+        ui->capture_button->setText("CAPTURE STEREO FRAME");
+    }
+}
+
+void DepthTestWidget::onVCSELError(const std::string& error) {
+    qWarning() << "[DepthWidget] VCSEL error:" << QString::fromStdString(error);
+
+    if (vcsel_status_) {
+        vcsel_status_->setStatus("VCSEL Error", StatusDisplay::StatusType::ERROR);
+        vcsel_status_->showTemporaryMessage(
+            QString::fromStdString(error),
+            StatusDisplay::StatusType::ERROR, 5000);
+    }
+
+    // Also show in main processing status
+    processing_status_->showTemporaryMessage(
+        QString("VCSEL: %1").arg(QString::fromStdString(error)),
+        StatusDisplay::StatusType::ERROR, 3000);
 }
 
 } // namespace gui

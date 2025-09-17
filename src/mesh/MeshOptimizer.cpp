@@ -857,7 +857,7 @@ bool MeshOptimizer::improveTriangleQuality(std::vector<cv::Vec3f>& vertices,
                 }
 
                 if (count > 0) {
-                    cv::Vec3f centroid = sum / count;
+                    cv::Vec3f centroid = sum / static_cast<float>(count);
                     smoothedVertices[vertexIdx] = vertices[vertexIdx] * 0.8f + centroid * 0.2f;
                     improvedTriangles++;
                 }
@@ -1080,7 +1080,7 @@ bool MeshOptimizer::vertexClusteringDecimation(const std::vector<cv::Vec3f>& ver
             for (int idx : vertexIndices) {
                 centroid += vertices[idx];
             }
-            centroid /= vertexIndices.size();
+            centroid /= static_cast<float>(vertexIndices.size());
 
             int newVertexIndex = decimatedVertices.size();
             decimatedVertices.push_back(centroid);
@@ -1192,7 +1192,7 @@ cv::Vec3f MeshOptimizer::computeLaplacianCoordinate(int vertexIndex,
         }
     }
 
-    cv::Vec3f centroid = sum / adjacency[vertexIndex].size();
+    cv::Vec3f centroid = sum / static_cast<float>(adjacency[vertexIndex].size());
     return centroid - vertices[vertexIndex];
 }
 

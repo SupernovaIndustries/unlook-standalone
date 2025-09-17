@@ -250,7 +250,13 @@ public:
                      const MeshGenerationConfig& meshConfig,
                      std::vector<cv::Vec3f>& vertices,
                      std::vector<cv::Vec3i>& faces,
-                     std::vector<cv::Vec3f>& normals = {});
+                     std::vector<cv::Vec3f>& normals);
+
+    // Overload without normals parameter
+    bool generateMesh(const stereo::PointCloud& pointCloud,
+                     const MeshGenerationConfig& meshConfig,
+                     std::vector<cv::Vec3f>& vertices,
+                     std::vector<cv::Vec3i>& faces);
 
 #ifdef OPEN3D_ENABLED
     /**

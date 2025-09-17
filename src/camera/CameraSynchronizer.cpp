@@ -10,7 +10,7 @@ namespace camera {
 
 // GPIO pins for Raspberry Pi (adjust as needed)
 constexpr int DEFAULT_XVS_PIN = 17;  // GPIO17 for XVS
-constexpr int DEFAULT_XHS_PIN = 27;  // GPIO27 for XHS  
+constexpr int DEFAULT_XHS_PIN = 27;  // GPIO27 for XHS (Camera sync - different from AS1170 strobe GPIO 19)  
 constexpr int DEFAULT_MAS_PIN = 22;  // GPIO22 for Master/Slave
 
 CameraSynchronizer::CameraSynchronizer()

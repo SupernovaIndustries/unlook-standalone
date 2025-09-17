@@ -1,8 +1,9 @@
 #include "unlook/pointcloud/PointCloudProcessor.hpp"
 #include "unlook/calibration/CalibrationManager.hpp"
-#include "unlook/mesh/MeshValidator.hpp"
-#include "unlook/mesh/MeshOptimizer.hpp"
-#include "unlook/mesh/IndustrialMeshExporter.hpp"
+// Temporarily disabled mesh dependencies due to compilation issues
+// #include "unlook/mesh/MeshValidator.hpp"
+// #include "unlook/mesh/MeshOptimizer.hpp"
+// #include "unlook/mesh/IndustrialMeshExporter.hpp"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/calib3d.hpp>
@@ -42,10 +43,10 @@ public:
     std::map<std::string, double> performanceStats;
     bool arm64Optimized = false;
 
-    // Advanced mesh processing components
-    std::unique_ptr<mesh::MeshValidator> meshValidator;
-    std::unique_ptr<mesh::MeshOptimizer> meshOptimizer;
-    std::unique_ptr<mesh::IndustrialMeshExporter> meshExporter;
+    // Advanced mesh processing components (temporarily disabled)
+    // std::unique_ptr<mesh::MeshValidator> meshValidator;
+    // std::unique_ptr<mesh::MeshOptimizer> meshOptimizer;
+    // std::unique_ptr<mesh::IndustrialMeshExporter> meshExporter;
 
     Impl() {
         // Enable ARM64 optimizations if available
@@ -54,16 +55,16 @@ public:
         std::cout << "[PointCloudProcessor] ARM64 optimizations enabled" << std::endl;
 #endif
 
-        // Initialize advanced mesh processing components
-        meshValidator = std::make_unique<mesh::MeshValidator>();
-        meshOptimizer = std::make_unique<mesh::MeshOptimizer>();
-        meshExporter = std::make_unique<mesh::IndustrialMeshExporter>();
+        // Initialize advanced mesh processing components (temporarily disabled)
+        // meshValidator = std::make_unique<mesh::MeshValidator>();
+        // meshOptimizer = std::make_unique<mesh::MeshOptimizer>();
+        // meshExporter = std::make_unique<mesh::IndustrialMeshExporter>();
 
-        // Enable ARM64 optimizations for mesh components
-        if (arm64Optimized) {
-            meshValidator->enableARM64Optimizations(true);
-            meshOptimizer->enableARM64Optimizations(true);
-        }
+        // Enable ARM64 optimizations for mesh components (temporarily disabled)
+        // if (arm64Optimized) {
+        //     meshValidator->enableARM64Optimizations(true);
+        //     meshOptimizer->enableARM64Optimizations(true);
+        // }
     }
 
     void updatePerformanceStats(const std::string& operation, double timeMs) {
@@ -345,6 +346,15 @@ bool PointCloudProcessor::applyOpen3DFiltering(
 }
 #endif
 
+// Overload without normals parameter
+bool PointCloudProcessor::generateMesh(const stereo::PointCloud& pointCloud,
+                                      const MeshGenerationConfig& meshConfig,
+                                      std::vector<cv::Vec3f>& vertices,
+                                      std::vector<cv::Vec3i>& faces) {
+    std::vector<cv::Vec3f> normals;
+    return generateMesh(pointCloud, meshConfig, vertices, faces, normals);
+}
+
 bool PointCloudProcessor::generateMesh(const stereo::PointCloud& pointCloud,
                                       const MeshGenerationConfig& meshConfig,
                                       std::vector<cv::Vec3f>& vertices,
@@ -503,7 +513,7 @@ bool PointCloudProcessor::exportPointCloud(const stereo::PointCloud& pointCloud,
         return false;
     }
 
-    auto startTime = std::chrono::high_resolution_clock::now();
+    [[maybe_unused]] auto startTime = std::chrono::high_resolution_clock::now();
 
     try {
         switch (exportFormat.format) {
@@ -952,7 +962,7 @@ bool PointCloudProcessor::applyFallbackFiltering(stereo::PointCloud& pointCloud,
 }
 
 bool PointCloudProcessor::generateFallbackMesh(const stereo::PointCloud& pointCloud,
-                                             const MeshGenerationConfig& meshConfig,
+                                             const MeshGenerationConfig& [[maybe_unused]] meshConfig,
                                              std::vector<cv::Vec3f>& vertices,
                                              std::vector<cv::Vec3i>& faces,
                                              std::vector<cv::Vec3f>& normals) {
@@ -1210,7 +1220,7 @@ cv::Mat invertTransform(const cv::Mat& transform) {
 bool PointCloudProcessor::generateOptimizedMesh(const stereo::PointCloud& pointCloud,
                                                const MeshGenerationConfig& meshConfig,
                                                bool optimizeForManufacturing,
-                                               double targetPrecision,
+                                               double [[maybe_unused]] targetPrecision,
                                                std::vector<cv::Vec3f>& vertices,
                                                std::vector<cv::Vec3i>& faces,
                                                std::vector<cv::Vec3f>& normals) {
@@ -1229,13 +1239,17 @@ bool PointCloudProcessor::generateOptimizedMesh(const stereo::PointCloud& pointC
         }
 
         if (optimizeForManufacturing) {
-            // Apply manufacturing optimizations
-            mesh::MeshOptimizationResult result;
-            if (!pImpl->meshOptimizer->optimizeForManufacturing(vertices, faces, normals,
-                                                                {{"precision", targetPrecision}}, result)) {
-                pImpl->lastError = "Manufacturing optimization failed: " + pImpl->meshOptimizer->getLastError();
-                return false;
-            }
+            // Manufacturing optimization temporarily disabled
+            pImpl->lastError = "Manufacturing optimization temporarily disabled - mesh module not built";
+            return false;
+
+            // // Apply manufacturing optimizations
+            // mesh::MeshOptimizationResult result;
+            // if (!pImpl->meshOptimizer->optimizeForManufacturing(vertices, faces, normals,
+            //                                                     {{"precision", targetPrecision}}, result)) {
+            //     pImpl->lastError = "Manufacturing optimization failed: " + pImpl->meshOptimizer->getLastError();
+            //     return false;
+            // }
         }
 
         auto endTime = std::chrono::high_resolution_clock::now();
@@ -1262,9 +1276,14 @@ bool PointCloudProcessor::exportIndustrialMesh(const std::vector<cv::Vec3f>& ver
     }
 
     try {
-        mesh::IndustrialExportConfig config;
+        // Mesh export temporarily disabled
+        pImpl->lastError = "Industrial mesh export temporarily disabled - mesh module not built";
+        return false;
 
-        // Set format
+        /* ALL MESH CODE TEMPORARILY DISABLED
+        // mesh::IndustrialExportConfig config;
+
+        // // Set format
         if (format == "STL_ASCII") {
             config.format = mesh::IndustrialExportConfig::Format::STL_ASCII;
         } else if (format == "STL_BINARY") {
@@ -1299,11 +1318,16 @@ bool PointCloudProcessor::exportIndustrialMesh(const std::vector<cv::Vec3f>& ver
         config.requireWatertight = true;
         config.validateBeforeExport = true;
 
-        mesh::ExportResult result;
-        if (!pImpl->meshExporter->exportMesh(vertices, faces, normals, filename, config, result)) {
-            pImpl->lastError = "Industrial mesh export failed: " + pImpl->meshExporter->getLastError();
-            return false;
-        }
+        // Mesh export temporarily disabled
+        pImpl->lastError = "Industrial mesh export temporarily disabled - mesh module not built";
+        return false;
+
+        // mesh::ExportResult result;
+        // if (!pImpl->meshExporter->exportMesh(vertices, faces, normals, filename, config, result)) {
+        //     pImpl->lastError = "Industrial mesh export failed: " + pImpl->meshExporter->getLastError();
+        //     return false;
+        // }
+        */ // END OF DISABLED MESH CODE
 
         return true;
 
@@ -1324,16 +1348,20 @@ bool PointCloudProcessor::validateMeshQuality(const std::vector<cv::Vec3f>& vert
     }
 
     try {
-        mesh::MeshValidationConfig config;
-        config.targetPrecision = targetPrecision;
-        config.requireWatertight = true;
-        config.requireManifold = true;
-        config.minTriangleQuality = 0.3;
+        // mesh::MeshValidationConfig config;
+        // config.targetPrecision = targetPrecision;
+        // config.requireWatertight = true;
+        // config.requireManifold = true;
+        // config.minTriangleQuality = 0.3;
 
-        mesh::MeshQualityMetrics metrics;
-        bool isValid = pImpl->meshValidator->validateMesh(vertices, faces, normals, config, metrics);
+        // Mesh validation temporarily disabled
+        qualityReport = "Mesh validation temporarily disabled - mesh module not built";
 
-        qualityReport = pImpl->meshValidator->generateValidationReport(metrics, config);
+        // mesh::MeshQualityMetrics metrics;
+        // bool isValid = pImpl->meshValidator->validateMesh(vertices, faces, normals, config, metrics);
+        // qualityReport = pImpl->meshValidator->generateValidationReport(metrics, config);
+
+        bool isValid = false;
 
         return isValid;
 
@@ -1355,15 +1383,20 @@ bool PointCloudProcessor::optimizeFor3DPrinting(std::vector<cv::Vec3f>& vertices
     }
 
     try {
-        mesh::MeshOptimizationResult result;
-        if (!pImpl->meshOptimizer->optimizeFor3DPrinting(vertices, faces, normals, targetPrecision, result)) {
-            pImpl->lastError = "3D printing optimization failed: " + pImpl->meshOptimizer->getLastError();
-            optimizationReport = "Optimization failed: " + pImpl->meshOptimizer->getLastError();
-            return false;
-        }
+        // 3D printing optimization temporarily disabled
+        pImpl->lastError = "3D printing optimization temporarily disabled - mesh module not built";
+        optimizationReport = "Optimization temporarily disabled - mesh module not built";
+        return false;
 
-        optimizationReport = result.toString();
-        return true;
+        // mesh::MeshOptimizationResult result;
+        // if (!pImpl->meshOptimizer->optimizeFor3DPrinting(vertices, faces, normals, targetPrecision, result)) {
+        //     pImpl->lastError = "3D printing optimization failed: " + pImpl->meshOptimizer->getLastError();
+        //     optimizationReport = "Optimization failed: " + pImpl->meshOptimizer->getLastError();
+        //     return false;
+        // }
+
+        // optimizationReport = result.toString();
+        // return true;
 
     } catch (const std::exception& e) {
         pImpl->lastError = "3D printing optimization failed: " + std::string(e.what());
@@ -1382,8 +1415,12 @@ std::string PointCloudProcessor::generateManufacturingReport(const std::vector<c
     }
 
     try {
-        mesh::IndustrialExportConfig config;
-        config.material = material;
+        // Manufacturing report temporarily disabled
+        return "Manufacturing report temporarily disabled - mesh module not built";
+
+        /* ALL MESH CODE TEMPORARILY DISABLED
+        // mesh::IndustrialExportConfig config;
+        // config.material = material;
 
         // Apply print settings
         auto it = printSettings.find("layerHeight");
@@ -1401,11 +1438,46 @@ std::string PointCloudProcessor::generateManufacturingReport(const std::vector<c
         ss << std::put_time(std::localtime(&time_t), "%Y-%m-%d %H:%M:%S");
         config.scanDate = ss.str();
 
-        return pImpl->meshExporter->generateManufacturingReport(vertices, faces, normals, config);
+        // Manufacturing report temporarily disabled
+        return "Manufacturing report temporarily disabled - mesh module not built";
+
+        // return pImpl->meshExporter->generateManufacturingReport(vertices, faces, normals, config);
+        */ // END OF DISABLED MESH CODE
 
     } catch (const std::exception& e) {
         return "ERROR: Manufacturing report generation failed: " + std::string(e.what());
     }
+}
+
+// Temporary stub implementations for mesh functions (mesh module disabled)
+bool PointCloudProcessor::assessMeshQuality(const std::vector<cv::Vec3f>& vertices,
+                                           const std::vector<cv::Vec3i>& faces,
+                                           MeshQuality& quality) {
+    // Mesh module temporarily disabled - return basic quality assessment
+    pImpl->lastError = "Mesh assessment temporarily disabled - mesh module not built";
+
+    quality.isWatertight = false;
+    quality.isManifold = false;
+    quality.numVertices = vertices.size();
+    quality.numFaces = faces.size();
+    quality.numEdges = 0;
+    quality.surfaceArea = 0.0;
+    quality.volume = 0.0;
+    quality.meanEdgeLength = 0.0;
+    quality.stdEdgeLength = 0.0;
+    quality.numBoundaryEdges = 0;
+
+    return false; // Indicate that full assessment is not available
+}
+
+bool PointCloudProcessor::exportMesh(const std::vector<cv::Vec3f>& [[maybe_unused]] vertices,
+                                    const std::vector<cv::Vec3i>& [[maybe_unused]] faces,
+                                    const std::vector<cv::Vec3f>& [[maybe_unused]] normals,
+                                    const std::string& [[maybe_unused]] filename,
+                                    const ExportFormat& [[maybe_unused]] exportFormat) {
+    // Mesh module temporarily disabled - cannot export mesh
+    pImpl->lastError = "Mesh export temporarily disabled - mesh module not built";
+    return false;
 }
 
 } // namespace pointcloud

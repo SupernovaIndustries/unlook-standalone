@@ -9,7 +9,10 @@
 
 #include "unlook/camera/camera_system.hpp"
 #include "unlook/api/depth_processor.h"
+#ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
 #include "unlook/pointcloud/PointCloudProcessor.hpp"
+#endif
+#include "unlook/hardware/VCSELProjector.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/parameter_slider.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
@@ -132,6 +135,16 @@ private slots:
      */
     void updateExportFormat();
 
+    /**
+     * @brief Handle VCSEL thermal callback
+     */
+    void onVCSELThermalEvent(bool thermal_active, float temperature_c);
+
+    /**
+     * @brief Handle VCSEL error callback
+     */
+    void onVCSELError(const std::string& error);
+
 private:
     /**
      * @brief Initialize the widget UI
@@ -197,6 +210,11 @@ private:
     void initializePointCloudProcessor();
 
     /**
+     * @brief Initialize VCSEL projector
+     */
+    void initializeVCSELProjector();
+
+    /**
      * @brief Create point cloud export panel
      */
     QWidget* createPointCloudExportPanel();
@@ -204,7 +222,10 @@ private:
     // System integration
     std::shared_ptr<camera::CameraSystem> camera_system_;
     std::unique_ptr<api::DepthProcessor> depth_processor_;
+#ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     std::unique_ptr<pointcloud::PointCloudProcessor> pointcloud_processor_;
+#endif
+    std::shared_ptr<hardware::VCSELProjector> vcsel_projector_;
     
     // UI Layout
     QHBoxLayout* main_layout_;
@@ -217,6 +238,7 @@ private:
     // Only non-.ui widgets kept:
     widgets::StatusDisplay* capture_status_;
     widgets::StatusDisplay* processing_status_;
+    widgets::StatusDisplay* vcsel_status_;
     
     // Visualization
     QLabel* depth_map_display_;
@@ -227,10 +249,12 @@ private:
     bool processing_active_;
     bool live_preview_active_;
 
+#ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     // Point cloud export configuration
     pointcloud::PointCloudFilterConfig pointcloud_filter_config_;
     pointcloud::MeshGenerationConfig mesh_generation_config_;
     pointcloud::ExportFormat export_format_;
+#endif
 
     // Point cloud export UI components
     widgets::TouchButton* export_pointcloud_button_;

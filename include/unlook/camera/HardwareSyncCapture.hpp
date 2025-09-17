@@ -18,6 +18,7 @@
 
 #include <libcamera/libcamera.h>
 #include <opencv2/opencv.hpp>
+#include <unlook/hardware/VCSELProjector.hpp>
 
 namespace unlook {
 namespace camera {
@@ -109,10 +110,22 @@ public:
     void setExposureTime(double exposure_us);
 
     /**
-     * Set manual gain for both cameras  
+     * Set manual gain for both cameras
      * Range: 1.0-16.0x for IMX296 sensors
      */
     void setGain(double gain);
+
+    /**
+     * Set VCSEL projector for synchronized structured light capture
+     * @param projector Shared pointer to VCSEL projector instance
+     */
+    void setVCSELProjector(std::shared_ptr<hardware::VCSELProjector> projector);
+
+    /**
+     * Enable/disable VCSEL projection during capture
+     * @param enable True to enable VCSEL projection with capture
+     */
+    void enableVCSELProjection(bool enable);
 
     /**
      * Get current synchronization statistics
@@ -250,6 +263,11 @@ private:
     // Safe request requeuing with error handling
     void requeueMasterRequest(libcamera::Request* request);
     void requeueSlaveRequest(libcamera::Request* request);
+
+    // VCSEL integration
+    std::shared_ptr<hardware::VCSELProjector> vcsel_projector_;
+    std::atomic<bool> vcsel_enabled_{false};
+    void triggerVCSELIfEnabled();
 };
 
 } // namespace camera

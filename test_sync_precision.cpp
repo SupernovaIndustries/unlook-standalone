@@ -133,7 +133,8 @@ public:
         std::cout << std::endl;
         std::cout << "Hardware Configuration:" << std::endl;
         std::cout << "  XVS GPIO: 17 (External Vertical Sync)" << std::endl;
-        std::cout << "  XHS GPIO: 27 (External Horizontal Sync)" << std::endl;
+        std::cout << "  XHS GPIO: 27 (External Horizontal Sync - camera system)" << std::endl;
+        std::cout << "  AS1170 Strobe GPIO: 19 (LED strobe control)" << std::endl;
         std::cout << "  MAS GPIO: 22 (Master/Slave select)" << std::endl;
         std::cout << "=============================" << std::endl;
     }

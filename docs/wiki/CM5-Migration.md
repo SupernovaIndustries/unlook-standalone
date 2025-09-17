@@ -29,7 +29,7 @@ This guide covers the **complete migration process** from Raspberry Pi CM4 to th
 #### **Physical Compatibility** ✅
 ```yaml
 GPIO Mapping: IDENTICAL to CM4
-I2C Buses: Same configuration (bus 4 for AS1170)
+I2C Buses: Updated for CM5 (bus 1 for AS1170)
 Camera Ports: CSI-0 and CSI-1 unchanged
 Power Requirements: Same 5V 4A minimum
 Mounting: Direct CM4 replacement
@@ -50,10 +50,10 @@ GND: Connected between cameras
 
 #### **LED Controller Migration**
 ```cpp
-// AS1170 LED system - NO CHANGES REQUIRED
-I2C Bus: 4
+// AS1170 LED system - UPDATED FOR CM5 COMPATIBILITY
+I2C Bus: 1
 Address: 0x30
-Strobe GPIO: 27
+Strobe GPIO: 19
 LED1 (VCSEL): Structured light projection
 LED2 (Flood): Stereo illumination
 ```

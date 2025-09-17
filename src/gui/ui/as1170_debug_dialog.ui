@@ -1,0 +1,840 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AS1170DebugDialog</class>
+ <widget class="QDialog" name="AS1170DebugDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>AS1170 LED Debug System</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Background */
+QDialog#AS1170DebugDialog {
+    background-color: #e0e5ec;
+}
+
+/* Tab Widget Styling */
+QTabWidget::pane {
+    border: 1px solid #c0c6d1;
+    background-color: #e0e5ec;
+    border-radius: 8px;
+    margin-top: 5px;
+}
+
+QTabWidget::tab-bar {
+    alignment: center;
+}
+
+QTabBar::tab {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #4a5568;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    margin: 2px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+QTabBar::tab:selected {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #10b981,
+        stop:1 #059669);
+    color: white;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #047857;
+    border-bottom: 2px solid #047857;
+}
+
+QTabBar::tab:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #10b981;
+}
+
+/* Group Box Styling */
+QGroupBox {
+    font-weight: bold;
+    color: #4a5568;
+    font-size: 12px;
+    border: 2px solid #c0c6d1;
+    border-radius: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    background-color: #f8fafc;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 8px 0 8px;
+    background-color: #e0e5ec;
+}
+
+/* Labels */
+QLabel {
+    background: transparent;
+    color: #4a5568;
+}
+
+/* Progress Bar Styling */
+QProgressBar {
+    border: 2px solid #4ade80;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+    background-color: #f1f5f9;
+    color: #1e293b;
+}
+
+QProgressBar::chunk {
+    background-color: #22c55e;
+    border-radius: 3px;
+}
+
+/* Text Edit Styling (for diagnostic log) */
+QTextEdit {
+    border: 2px solid #4a5568;
+    border-radius: 5px;
+    background-color: #1a1a1a;
+    color: #00ff00;
+    font-family: "Courier New", monospace;
+    font-size: 10px;
+    selection-background-color: #333333;
+}
+
+/* Scroll Area Styling */
+QScrollArea {
+    border: none;
+    background-color: transparent;
+}
+
+QScrollBar:vertical {
+    background: #e2e8f0;
+    width: 12px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background: #64748b;
+    border-radius: 6px;
+    min-height: 20px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #475569;
+}
+
+/* Spin Box Styling */
+QSpinBox, QDoubleSpinBox {
+    border: 2px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 4px;
+    background-color: white;
+    selection-background-color: #3b82f6;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 2px solid #10b981;
+}
+
+/* Combo Box Styling */
+QComboBox {
+    border: 2px solid #cbd5e1;
+    border-radius: 4px;
+    padding: 4px;
+    background-color: white;
+    color: #1e293b;
+}
+
+QComboBox:focus {
+    border: 2px solid #10b981;
+}
+
+QComboBox::drop-down {
+    border: none;
+    background-color: #e2e8f0;
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+    width: 20px;
+}
+
+QComboBox::down-arrow {
+    image: none;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #64748b;
+    width: 0px;
+    height: 0px;
+}
+
+/* Status-specific styling for important elements */
+QLabel#emergency_warning {
+    color: #dc2626;
+    font-weight: bold;
+    font-size: 14px;
+    background-color: #fef2f2;
+    border: 2px solid #dc2626;
+    border-radius: 4px;
+    padding: 8px;
+}
+
+QLabel#safety_info {
+    color: #059669;
+    font-weight: bold;
+    background-color: #f0fdf4;
+    border: 1px solid #059669;
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QLabel#thermal_warning {
+    color: #f59e0b;
+    font-weight: bold;
+    background-color: #fffbeb;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    padding: 4px;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>15</number>
+   </property>
+   <property name="topMargin">
+    <number>15</number>
+   </property>
+   <property name="rightMargin">
+    <number>15</number>
+   </property>
+   <property name="bottomMargin">
+    <number>15</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="title_label">
+     <property name="text">
+      <string>AS1170 LED Debug System - Industrial Hardware Validation</string>
+     </property>
+     <property name="font">
+      <font>
+       <pointsize>16</pointsize>
+       <weight>75</weight>
+       <bold>true</bold>
+      </font>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color: #10b981;
+font-weight: 900;
+margin-bottom: 10px;</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="emergency_layout">
+     <item>
+      <spacer name="emergency_left_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="emergency_shutdown_button">
+       <property name="text">
+        <string>🚨 EMERGENCY SHUTDOWN 🚨</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>250</width>
+         <height>50</height>
+        </size>
+       </property>
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">/* Emergency Button Styling */
+QPushButton {
+    background-color: #dc2626;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    border: 3px solid #991b1b;
+    border-radius: 12px;
+    padding: 10px;
+}
+
+QPushButton:hover {
+    background-color: #b91c1c;
+    border: 3px solid #7f1d1d;
+}
+
+QPushButton:pressed {
+    background-color: #7f1d1d;
+    border: 3px solid #450a0a;
+}
+
+QPushButton:focus {
+    outline: 3px solid #fca5a5;
+}</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="emergency_right_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="main_tabs">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <property name="tabPosition">
+      <enum>QTabWidget::North</enum>
+     </property>
+     <property name="usesScrollButtons">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="led_control_tab">
+      <attribute name="title">
+       <string>LED Control</string>
+      </attribute>
+      <layout class="QHBoxLayout" name="led_control_layout">
+       <property name="spacing">
+        <number>20</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="led1_group">
+         <property name="title">
+          <string>LED1 (VCSEL Projector)</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QGroupBox {
+    font-weight: bold;
+    color: #059669;
+    font-size: 14px;
+}</string>
+         </property>
+         <layout class="QVBoxLayout" name="led1_layout">
+          <property name="spacing">
+           <number>15</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="led1_status_placeholder">
+            <property name="text">
+             <string>Status: [StatusDisplay Widget]</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">font-weight: bold; color: #4a5568;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="led1_current_label">
+            <property name="text">
+             <string>Current Control (mA)</string>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="led1_current_slider">
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>250</number>
+            </property>
+            <property name="value">
+             <number>100</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="tickPosition">
+             <enum>QSlider::TicksBelow</enum>
+            </property>
+            <property name="tickInterval">
+             <number>50</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QProgressBar" name="led1_current_indicator">
+            <property name="maximum">
+             <number>250</number>
+            </property>
+            <property name="value">
+             <number>0</number>
+            </property>
+            <property name="format">
+             <string>%v mA</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="led1_button_layout">
+            <item>
+             <widget class="QPushButton" name="led1_enable_button">
+              <property name="text">
+               <string>ENABLE LED1</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>120</width>
+                <height>40</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton {
+    background-color: #059669;
+    color: white;
+    font-weight: bold;
+    border: 2px solid #047857;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QPushButton:hover {
+    background-color: #047857;
+}
+
+QPushButton:pressed {
+    background-color: #065f46;
+}</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="led1_disable_button">
+              <property name="text">
+               <string>DISABLE LED1</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>120</width>
+                <height>40</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton {
+    background-color: #dc2626;
+    color: white;
+    font-weight: bold;
+    border: 2px solid #b91c1c;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QPushButton:hover {
+    background-color: #b91c1c;
+}
+
+QPushButton:pressed {
+    background-color: #991b1b;
+}</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="led1_current_readout">
+            <property name="text">
+             <string>Actual Current: 0 mA</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">font-weight: bold; color: #4a5568;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="led1_safety_warning">
+            <property name="text">
+             <string>⚠️ MAX SAFE CURRENT: 250mA</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">color: #f59e0b;
+font-weight: bold;
+font-size: 10px;
+background-color: #fffbeb;
+border: 1px solid #f59e0b;
+border-radius: 4px;
+padding: 4px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="led2_group">
+         <property name="title">
+          <string>LED2 (Flood Illuminator)</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">QGroupBox {
+    font-weight: bold;
+    color: #0891b2;
+    font-size: 14px;
+}</string>
+         </property>
+         <layout class="QVBoxLayout" name="led2_layout">
+          <property name="spacing">
+           <number>15</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="led2_status_placeholder">
+            <property name="text">
+             <string>Status: [StatusDisplay Widget]</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">font-weight: bold; color: #4a5568;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="led2_current_label">
+            <property name="text">
+             <string>Current Control (mA)</string>
+            </property>
+            <property name="font">
+             <font>
+              <pointsize>11</pointsize>
+              <weight>75</weight>
+              <bold>true</bold>
+             </font>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSlider" name="led2_current_slider">
+            <property name="minimum">
+             <number>0</number>
+            </property>
+            <property name="maximum">
+             <number>250</number>
+            </property>
+            <property name="value">
+             <number>100</number>
+            </property>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="tickPosition">
+             <enum>QSlider::TicksBelow</enum>
+            </property>
+            <property name="tickInterval">
+             <number>50</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QProgressBar" name="led2_current_indicator">
+            <property name="maximum">
+             <number>250</number>
+            </property>
+            <property name="value">
+             <number>0</number>
+            </property>
+            <property name="format">
+             <string>%v mA</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="led2_button_layout">
+            <item>
+             <widget class="QPushButton" name="led2_enable_button">
+              <property name="text">
+               <string>ENABLE LED2</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>120</width>
+                <height>40</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton {
+    background-color: #059669;
+    color: white;
+    font-weight: bold;
+    border: 2px solid #047857;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QPushButton:hover {
+    background-color: #047857;
+}
+
+QPushButton:pressed {
+    background-color: #065f46;
+}</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="led2_disable_button">
+              <property name="text">
+               <string>DISABLE LED2</string>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>120</width>
+                <height>40</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QPushButton {
+    background-color: #dc2626;
+    color: white;
+    font-weight: bold;
+    border: 2px solid #b91c1c;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QPushButton:hover {
+    background-color: #b91c1c;
+}
+
+QPushButton:pressed {
+    background-color: #991b1b;
+}</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="led2_current_readout">
+            <property name="text">
+             <string>Actual Current: 0 mA</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">font-weight: bold; color: #4a5568;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="led2_safety_warning">
+            <property name="text">
+             <string>⚠️ MAX SAFE CURRENT: 250mA</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">color: #f59e0b;
+font-weight: bold;
+font-size: 10px;
+background-color: #fffbeb;
+border: 1px solid #f59e0b;
+border-radius: 4px;
+padding: 4px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="monitoring_tab">
+      <attribute name="title">
+       <string>Real-time Monitoring</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="monitoring_layout">
+       <property name="spacing">
+        <number>20</number>
+       </property>
+       <item>
+        <widget class="QGroupBox" name="temperature_group">
+         <property name="title">
+          <string>Temperature Monitoring</string>
+         </property>
+         <layout class="QVBoxLayout" name="temperature_layout">
+          <item>
+           <widget class="QLabel" name="temperature_status_placeholder">
+            <property name="text">
+             <string>Temperature: [StatusDisplay Widget]</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QProgressBar" name="temperature_indicator">
+            <property name="minimum">
+             <number>-20</number>
+            </property>
+            <property name="maximum">
+             <number>100</number>
+            </property>
+            <property name="value">
+             <number>25</number>
+            </property>
+            <property name="format">
+             <string>%v°C</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="thermal_protection_group">
+         <property name="title">
+          <string>Thermal Protection System</string>
+         </property>
+         <layout class="QVBoxLayout" name="thermal_protection_layout">
+          <item>
+           <widget class="QLabel" name="thermal_protection_status_placeholder">
+            <property name="text">
+             <string>Protection Status: [StatusDisplay Widget]</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="thermal_warning_label">
+            <property name="text">
+             <string>⚠️ Warning: &gt;60°C | 🛑 Shutdown: &gt;75°C</string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">color: #f59e0b;
+font-weight: bold;
+background-color: #fffbeb;
+border: 1px solid #f59e0b;
+border-radius: 4px;
+padding: 4px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="hardware_fault_group">
+         <property name="title">
+          <string>Hardware Fault Detection</string>
+         </property>
+         <layout class="QVBoxLayout" name="hardware_fault_layout">
+          <item>
+           <widget class="QLabel" name="fault_status_placeholder">
+            <property name="text">
+             <string>Fault Status: [StatusDisplay Widget]</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="monitoring_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="status_bar_layout">
+     <item>
+      <widget class="QLabel" name="hardware_status_placeholder">
+       <property name="text">
+        <string>Hardware: [StatusDisplay]</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-weight: bold; padding: 4px;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="i2c_status_placeholder">
+       <property name="text">
+        <string>I2C: [StatusDisplay]</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-weight: bold; padding: 4px;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="safety_status_placeholder">
+       <property name="text">
+        <string>Safety: [StatusDisplay]</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-weight: bold; padding: 4px;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="status_spacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

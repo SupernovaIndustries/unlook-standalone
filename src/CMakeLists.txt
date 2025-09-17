@@ -1,10 +1,13 @@
 # Source directory CMakeLists.txt for Unlook 3D Scanner API
 
-# Build component libraries in dependency order (calibration first, then stereo, then pointcloud, mesh, then validation)
+# Build component libraries in dependency order (calibration first, then stereo, then pointcloud, hardware, mesh, then validation)
 add_subdirectory(calibration)
 add_subdirectory(stereo)
+# Temporarily disable pointcloud module due to mesh dependencies
 add_subdirectory(pointcloud)
-add_subdirectory(mesh)
+add_subdirectory(hardware)
+# Temporarily disable mesh module due to compilation issues
+# add_subdirectory(mesh)
 add_subdirectory(validation)
 
 # Core library sources
@@ -92,8 +95,9 @@ target_link_libraries(unlook
         Threads::Threads
         unlook_stereo       # Link stereo library publicly so GUI can access it
         unlook_calibration  # Link calibration library publicly so GUI can access it
-        unlook_pointcloud   # Link point cloud library publicly so GUI can access it
-        unlook_mesh         # Link mesh library publicly so GUI can access it
+        unlook_hardware     # Link hardware library publicly so GUI can access VCSEL functionality
+        # unlook_pointcloud # Temporarily disabled due to mesh dependencies
+        # unlook_mesh       # Temporarily disabled due to compilation issues
         unlook_validation   # Link validation library publicly so GUI can access it
     PRIVATE
         ${FILESYSTEM_LIB}
@@ -173,15 +177,15 @@ target_include_directories(unlook_depth INTERFACE
 )
 
 # Mesh Processing convenience library
-add_library(unlook_mesh_api INTERFACE)
-target_link_libraries(unlook_mesh_api INTERFACE unlook)
-target_include_directories(unlook_mesh_api INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:include>
-)
+# add_library(unlook_mesh_api INTERFACE)
+# target_link_libraries(unlook_mesh_api INTERFACE unlook)
+# target_include_directories(unlook_mesh_api INTERFACE
+#     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+#     $<INSTALL_INTERFACE:include>
+# )
 
 # Install convenience libraries
-install(TARGETS unlook_camera unlook_depth unlook_mesh_api
+install(TARGETS unlook_camera unlook_depth # unlook_mesh_api
     EXPORT UnlookTargets
     COMPONENT Development
 )

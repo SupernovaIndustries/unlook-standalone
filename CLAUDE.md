@@ -90,8 +90,8 @@ LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:thi
 
 ### LED Controller System
 - **Driver**: AS1170 LED driver
-- **Communication**: I2C bus 4, device ID 0x30
-- **Strobe Control**: GPIO 27
+- **Communication**: I2C bus 1, device ID 0x30
+- **Strobe Control**: GPIO 19
 - **LED1**: ams OSRAM BELAGO1.1 VCSEL dot projector
 - **LED2**: Flood illuminator (current)
 - **Planned Upgrade**: BELAGO1.2 (15k points vs 10k current)
@@ -365,7 +365,7 @@ LD_LIBRARY_PATH must include:
 - third-party/libcamera-sync-fix/build/src/libcamera/base (libcamera-base.so.0.5.1)
 
 // AS1170 LED SYSTEM (TO BE IMPLEMENTED)
-I2C Bus: 4, Address: 0x30, Strobe GPIO: 27
+I2C Bus: 1, Address: 0x30, Strobe GPIO: 19
 LED1 (VCSEL): For structured light projection
 LED2 (Flood): For stereo calibration illumination
 ```
@@ -375,7 +375,7 @@ LED2 (Flood): For stereo calibration illumination
 ### **Phase 1 LED Configuration Plan**
 - **LED1 (VCSEL Projector)**: For structured light projection (Phase 2)
 - **LED2 (Flood Illuminator)**: For stereo calibration illumination
-- **Hardware**: I2C bus 4, address 0x30, GPIO 27 strobe control
+- **Hardware**: I2C bus 1, address 0x30, GPIO 19 strobe control
 - **Timing**: LED-camera synchronization system
 - **Safety**: Temperature monitoring, emergency shutdown, thermal protection
 

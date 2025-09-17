@@ -16,7 +16,7 @@ Baseline: 70.017mm (calibrated)
 
 ### Hardware Synchronization Pins
 - **XVS (GPIO17)**: External Vertical Sync
-- **XHS (GPIO27)**: External Horizontal Sync  
+- **XHS (GPIO27)**: External Horizontal Sync (camera system)  
 - **MAS (GPIO22)**: Master/Slave selection
 - **GND**: Common ground (connected)
 

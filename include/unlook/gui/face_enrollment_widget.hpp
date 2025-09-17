@@ -1,333 +1,267 @@
 #pragma once
 
 #include <QWidget>
-#include <QLabel>
-#include <QStackedWidget>
-#include <QProgressBar>
-#include <QTimer>
-#include <QCheckBox>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QFrame>
-#include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QKeyEvent>
-#include <QShowEvent>
-#include <QHideEvent>
+#include <QGridLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QProgressBar>
+#include <QTextEdit>
+#include <QTimer>
+#include <QPixmap>
+// Note: Using libcamera for camera access, not Qt multimedia
 #include <memory>
-#include <atomic>
 #include <mutex>
+#include <atomic>
 
+// Unlook core systems
 #include "unlook/camera/camera_system.hpp"
+#include "unlook/core/types.hpp"
+
+// Face recognition APIs
+#include "unlook/face/FaceAPI.hpp"
 #include "unlook/face/FaceEnroller.hpp"
-#include "unlook/face/FaceTypes.hpp"
+#include "unlook/face/LivenessDetector.hpp"
+#include "unlook/face/BankingMLValidator.hpp"
+
+// VCSEL hardware integration (temporarily disabled)
+// #include "unlook/hardware/VCSELProjector.hpp"
+// #include "unlook/hardware/AS1170Controller.hpp"
+// #include "unlook/hardware/LEDSyncManager.hpp"
+
+// GUI components
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
-
-// Forward declarations
-QT_BEGIN_NAMESPACE
-namespace Ui { class FaceEnrollmentWidget; }
-QT_END_NAMESPACE
 
 namespace unlook {
 namespace gui {
 
 /**
- * @brief Intel RealSense style facial enrollment widget with banking-grade UX
+ * @brief VCSEL-Integrated Face Enrollment Widget
  *
- * Professional face enrollment system that guides users through a comprehensive
- * enrollment process similar to Intel RealSense ID with banking-grade security
- * and user experience. Integrates seamlessly with the Unlook 3D Scanner's
- * face recognition API and camera system.
+ * Banking-grade facial recognition enrollment system with integrated VCSEL illumination.
+ * Provides Intel RealSense style workflow with industrial safety and security features.
  *
  * Key Features:
- * - Intel RealSense style multi-step workflow
- * - Banking-grade consent and security indicators
- * - Real-time face preview with 3D overlay guidance
- * - Interactive positioning with quality feedback
- * - Multi-sample collection with pose variation requirements
- * - Quality gates and validation checkpoints
- * - Comprehensive error recovery with user-friendly suggestions
- * - Accessibility compliance (high contrast, screen reader support)
- * - Touch-optimized interface for Raspberry Pi touchscreen
- * - ARM64/CM4 performance optimized
- * - GDPR compliance with clear consent flows
- * - Audit trail for banking compliance
+ * - VCSEL-synchronized face capture for enhanced IR feature detection
+ * - Banking-grade security (FAR < 0.001%, FRR < 3%)
+ * - Multi-angle enrollment with adaptive VCSEL illumination
+ * - Real-time liveness detection with depth verification
+ * - Thermal safety monitoring for face-proximity operation
+ * - Supernova-tech UI design with touch optimization
  *
- * Workflow Steps:
- * 1. User ID input and banking-grade consent flow
- * 2. Interactive face positioning guidance with real-time feedback
- * 3. Multi-sample collection with pose variation requirements
- * 4. Quality validation and sample acceptance gates
- * 5. 3D model generation and template creation
- * 6. Enrollment completion with success confirmation
+ * Safety Implementation:
+ * - VCSEL OFF by default, only activated during capture
+ * - Reduced current (250mA) for face proximity safety
+ * - Automatic thermal protection and emergency shutdown
+ * - Eye safety compliance with short burst durations
+ *
+ * Workflow:
+ * 1. Face Detection Phase - Ambient lighting detection
+ * 2. Enrollment Setup - User identity and settings
+ * 3. Multi-Angle Capture - 5-point face capture with VCSEL sync
+ * 4. Quality Verification - Banking-grade template validation
+ * 5. Template Storage - Secure biometric template creation
  */
 class FaceEnrollmentWidget : public QWidget {
     Q_OBJECT
 
 public:
-    /**
-     * @brief Enrollment workflow steps
-     */
-    enum class EnrollmentStep {
-        CONSENT_AND_SETUP,      ///< User ID and consent flow
-        FACE_ENROLLMENT,        ///< Face positioning and sample collection
-        COMPLETION_SUCCESS,     ///< Successful enrollment completion
-        COMPLETION_FAILURE      ///< Failed enrollment with recovery options
+    enum class EnrollmentPhase {
+        INITIALIZATION,     // System initialization and safety checks
+        USER_SETUP,         // User identity and settings configuration
+        FACE_DETECTION,     // Initial face detection and positioning
+        MULTI_ANGLE_CAPTURE, // 5-point face capture with VCSEL
+        QUALITY_VERIFICATION, // Template quality assessment
+        TEMPLATE_STORAGE,   // Secure template creation and storage
+        COMPLETION,         // Enrollment success/failure
+        ERROR_STATE        // Error recovery and troubleshooting
     };
 
-    /**
-     * @brief Enrollment completion status
-     */
-    enum class CompletionStatus {
-        SUCCESS,                ///< Enrollment completed successfully
-        CANCELLED_BY_USER,      ///< User cancelled enrollment
-        TECHNICAL_FAILURE,      ///< Technical failure occurred
-        QUALITY_INSUFFICIENT,   ///< Sample quality insufficient
-        TIMEOUT_EXCEEDED        ///< Enrollment timeout exceeded
+    enum class CaptureAngle {
+        CENTER,            // Center facing capture (primary)
+        LEFT_PROFILE,      // 45° left profile
+        RIGHT_PROFILE,     // 45° right profile
+        SLIGHT_UP,         // 15° upward angle
+        SLIGHT_DOWN        // 15° downward angle
+    };
+
+    struct EnrollmentConfig {
+        // Banking-grade security settings
+        face::BankingSecurityLevel security_level = face::BankingSecurityLevel::MAXIMUM;
+        float false_accept_rate_threshold = 0.00001f;    // 0.001% FAR requirement
+        float false_reject_rate_threshold = 0.03f;       // 3% FRR maximum
+
+        // VCSEL illumination settings
+        bool enable_vcsel_illumination = true;
+        uint16_t vcsel_current_ma = 200;                 // Reduced for face safety
+        uint32_t vcsel_burst_duration_ms = 100;          // Short bursts for eye safety
+        float face_distance_optimal_mm = 300.0f;         // Optimal face distance
+
+        // Enrollment quality requirements
+        uint32_t required_capture_angles = 5;           // Multi-angle requirement
+        float minimum_face_quality = 0.85f;             // Quality threshold
+        float minimum_liveness_score = 0.90f;           // Anti-spoofing threshold
+        bool require_depth_verification = true;         // 3D face verification
+
+        // UI and user experience
+        bool enable_real_time_feedback = true;
+        bool enable_voice_guidance = false;             // Future feature
+        uint32_t capture_timeout_seconds = 30;          // Per-angle timeout
+        bool auto_capture_on_quality = true;            // Auto-capture when quality good
+    };
+
+    struct EnrollmentStatus {
+        EnrollmentPhase current_phase = EnrollmentPhase::INITIALIZATION;
+        CaptureAngle current_angle = CaptureAngle::CENTER;
+        float overall_progress = 0.0f;
+
+        // Capture status
+        std::map<CaptureAngle, bool> angles_captured;
+        std::map<CaptureAngle, float> angle_quality_scores;
+        uint32_t successful_captures = 0;
+        uint32_t failed_attempts = 0;
+
+        // VCSEL status
+        bool vcsel_ready = false;
+        bool vcsel_active = false;
+        float vcsel_temperature_c = 0.0f;
+        bool thermal_protection_active = false;
+
+        // Face detection status
+        bool face_detected = false;
+        face::FaceQuality face_quality = face::FaceQuality::POOR;
+        float liveness_score = 0.0f;
+        bool depth_verification_passed = false;
+
+        // Security validation
+        float biometric_template_quality = 0.0f;
+        bool banking_validation_passed = false;
+
+        // Error state
+        std::string last_error_message;
+        bool has_critical_error = false;
     };
 
     /**
      * @brief Constructor
-     * @param camera_system Shared camera system instance
+     * @param camera_system Shared camera system for stereo capture
      * @param parent Parent widget
      */
     explicit FaceEnrollmentWidget(std::shared_ptr<camera::CameraSystem> camera_system,
-                                 QWidget* parent = nullptr);
+                                  QWidget* parent = nullptr);
 
     /**
-     * @brief Destructor
+     * @brief Destructor with safety shutdown
      */
     ~FaceEnrollmentWidget();
 
     /**
-     * @brief Initialize enrollment widget
-     * @return True if initialization successful
+     * @brief Initialize face enrollment system with VCSEL integration
+     * @param config Enrollment configuration
+     * @return true if initialization successful
      */
-    bool initialize();
+    bool initialize(const EnrollmentConfig& config = EnrollmentConfig{});
 
     /**
-     * @brief Check if widget is initialized and ready
-     * @return True if ready for enrollment
+     * @brief Start enrollment process for new user
+     * @param user_id Unique user identifier
+     * @param display_name User display name
      */
-    bool isReady() const;
+    void startEnrollment(const std::string& user_id, const std::string& display_name);
 
     /**
-     * @brief Start new enrollment session
-     * @param user_id Optional pre-filled user ID
-     * @return True if enrollment started successfully
-     */
-    bool startEnrollment(const QString& user_id = QString());
-
-    /**
-     * @brief Cancel current enrollment session
+     * @brief Cancel current enrollment process
      */
     void cancelEnrollment();
 
     /**
-     * @brief Get current enrollment progress
-     * @return Current progress percentage (0-100)
+     * @brief Get current enrollment status
      */
-    int getCurrentProgress() const;
+    EnrollmentStatus getEnrollmentStatus() const;
 
     /**
-     * @brief Check if enrollment is currently active
-     * @return True if enrollment is in progress
+     * @brief Emergency shutdown - immediate VCSEL disable
      */
-    bool isEnrollmentActive() const;
-
-    /**
-     * @brief Enable/disable accessibility features
-     * @param enable Enable accessibility mode
-     * @param high_contrast Enable high contrast mode
-     * @param large_text Enable large text mode
-     */
-    void setAccessibilityMode(bool enable,
-                             bool high_contrast = true,
-                             bool large_text = false);
-
-    /**
-     * @brief Enable/disable voice guidance
-     * @param enable Enable voice guidance for accessibility
-     */
-    void setVoiceGuidanceEnabled(bool enable);
-
-    /**
-     * @brief Set enrollment configuration
-     * @param banking_grade Enable banking-grade enrollment
-     * @param required_samples Number of samples required
-     * @param timeout_seconds Enrollment timeout in seconds
-     */
-    void setEnrollmentConfiguration(bool banking_grade = true,
-                                   int required_samples = 5,
-                                   int timeout_seconds = 300);
-
-protected:
-    /**
-     * @brief Handle show events
-     */
-    void showEvent(QShowEvent* event) override;
-
-    /**
-     * @brief Handle hide events
-     */
-    void hideEvent(QHideEvent* event) override;
-
-    /**
-     * @brief Handle key press events (accessibility support)
-     */
-    void keyPressEvent(QKeyEvent* event) override;
+    void emergencyShutdown();
 
 signals:
     /**
      * @brief Enrollment completed successfully
-     * @param user_id Enrolled user ID
-     * @param template_id Generated biometric template ID
-     * @param quality_score Final enrollment quality score (0-100)
+     * @param user_id User identifier
+     * @param template_quality Final template quality score
      */
-    void enrollmentCompleted(const QString& user_id,
-                           const QString& template_id,
-                           float quality_score);
+    void enrollmentCompleted(const std::string& user_id, float template_quality);
 
     /**
-     * @brief Enrollment cancelled or failed
-     * @param user_id User ID that was being enrolled
-     * @param status Completion status
-     * @param error_message Human-readable error message
+     * @brief Enrollment failed
+     * @param user_id User identifier
+     * @param error_message Detailed error description
      */
-    void enrollmentFailed(const QString& user_id,
-                         CompletionStatus status,
-                         const QString& error_message);
+    void enrollmentFailed(const std::string& user_id, const std::string& error_message);
 
     /**
-     * @brief Enrollment progress updated
-     * @param progress Progress percentage (0-100)
-     * @param step Current enrollment step
-     * @param message Current status message
+     * @brief Enrollment phase changed
+     * @param phase New enrollment phase
      */
-    void enrollmentProgressChanged(int progress,
-                                  EnrollmentStep step,
-                                  const QString& message);
+    void phaseChanged(EnrollmentPhase phase);
 
     /**
-     * @brief Request to navigate back to main menu
+     * @brief Face quality updated
+     * @param quality Current face quality assessment
      */
-    void backToMainMenuRequested();
+    void faceQualityChanged(face::FaceQuality quality);
 
     /**
-     * @brief Request to test authentication with enrolled template
-     * @param user_id User ID to test authentication for
+     * @brief VCSEL status changed
+     * @param active VCSEL activation state
+     * @param temperature Current temperature
      */
-    void testAuthenticationRequested(const QString& user_id);
+    void vcselStatusChanged(bool active, float temperature);
 
 private slots:
     /**
-     * @brief Handle consent form validation
+     * @brief Handle camera frame updates for face detection
      */
-    void validateConsentForm();
+    void onCameraFrameUpdate();
 
     /**
-     * @brief Handle user ID input changes
+     * @brief Handle VCSEL temperature monitoring
      */
-    void onUserIdInputChanged();
+    void onVCSELTemperatureUpdate();
 
     /**
-     * @brief Handle consent checkbox changes
+     * @brief Process face enrollment step
      */
-    void onConsentCheckboxChanged();
+    void processEnrollmentStep();
 
     /**
-     * @brief Start enrollment process after consent
+     * @brief Handle capture button press
      */
-    void onStartEnrollmentClicked();
+    void onCaptureButtonPressed();
 
     /**
-     * @brief Handle manual capture button
+     * @brief Handle angle navigation buttons
      */
-    void onManualCaptureClicked();
+    void onNextAnglePressed();
+    void onPreviousAnglePressed();
 
     /**
-     * @brief Handle skip sample button
+     * @brief Handle enrollment restart
      */
-    void onSkipSampleClicked();
+    void onRestartEnrollment();
 
     /**
-     * @brief Handle cancel enrollment button
+     * @brief Handle emergency stop
      */
-    void onCancelEnrollmentClicked();
-
-    /**
-     * @brief Handle finish button on completion page
-     */
-    void onFinishClicked();
-
-    /**
-     * @brief Handle test authentication button
-     */
-    void onTestAuthenticationClicked();
-
-    /**
-     * @brief Handle camera frame updates
-     */
-    void onCameraFrameReceived(const core::StereoFramePair& frame_pair);
-
-    /**
-     * @brief Handle enrollment progress updates from FaceEnroller
-     */
-    void onEnrollmentProgressUpdated(const face::EnrollmentProgress& progress);
-
-    /**
-     * @brief Handle face enroller frame processing
-     */
-    void onFaceEnrollerFrameProcessed(const cv::Mat& preview_frame,
-                                     const face::EnrollmentProgress& progress);
-
-    /**
-     * @brief Update real-time preview and guidance
-     */
-    void updatePreviewAndGuidance();
-
-    /**
-     * @brief Update enrollment timeout
-     */
-    void onEnrollmentTimeout();
-
-    /**
-     * @brief Update quality metrics display
-     */
-    void updateQualityMetrics(const face::EnrollmentProgress& progress);
-
-    /**
-     * @brief Update pose instruction
-     */
-    void updatePoseInstruction(const face::EnrollmentProgress& progress);
-
-    /**
-     * @brief Update security status indicators
-     */
-    void updateSecurityStatus();
-
-    /**
-     * @brief Handle accessibility shortcuts
-     */
-    void handleAccessibilityShortcut(int key);
+    void onEmergencyStop();
 
 private:
     /**
-     * @brief Initialize UI components
+     * @brief Setup UI layout with Supernova styling
      */
-    void initializeUI();
-
-    /**
-     * @brief Initialize face enroller
-     */
-    void initializeFaceEnroller();
-
-    /**
-     * @brief Connect signals and slots
-     */
-    void connectSignals();
+    void setupUI();
 
     /**
      * @brief Apply Supernova-tech styling
@@ -335,248 +269,136 @@ private:
     void applySupernovanStyling();
 
     /**
-     * @brief Navigate to specific enrollment step
+     * @brief Initialize hardware systems
      */
-    void navigateToStep(EnrollmentStep step);
+    bool initializeHardware();
 
     /**
-     * @brief Start camera preview for enrollment
+     * @brief Initialize face recognition pipeline
      */
-    void startCameraPreview();
+    bool initializeFaceRecognition();
 
     /**
-     * @brief Stop camera preview
+     * @brief Setup VCSEL projector for face operations
      */
-    void stopCameraPreview();
+    bool initializeVCSEL();
 
     /**
-     * @brief Update UI elements with enrollment progress
+     * @brief Update UI for current enrollment phase
      */
-    void updateProgressDisplay(const face::EnrollmentProgress& progress);
+    void updateUIForPhase(EnrollmentPhase phase);
 
     /**
-     * @brief Update instruction text based on enrollment state
+     * @brief Update progress indicators
      */
-    void updateInstructionText(const face::EnrollmentProgress& progress);
+    void updateProgress();
 
     /**
-     * @brief Generate user guidance message
+     * @brief Update face detection visualization
      */
-    QString generateGuidanceMessage(const face::EnrollmentProgress& progress);
+    void updateFaceDetectionUI();
 
     /**
-     * @brief Update quality status indicators
+     * @brief Update VCSEL status indicators
      */
-    void updateQualityStatusIndicators(const face::EnrollmentProgress& progress);
+    void updateVCSELStatus();
 
     /**
-     * @brief Display face preview with overlay guidance
+     * @brief Process face detection and quality assessment
      */
-    void displayPreviewWithOverlay(const cv::Mat& preview_frame);
+    void processFaceDetection(const core::StereoFramePair& frame_pair);
 
     /**
-     * @brief Handle enrollment completion
+     * @brief Capture face data for current angle with VCSEL sync
      */
-    void handleEnrollmentCompletion(const face::EnrollmentProgress& progress);
+    bool captureFaceAngle(CaptureAngle angle);
 
     /**
-     * @brief Handle enrollment failure
+     * @brief Validate captured face template quality
      */
-    void handleEnrollmentFailure(face::FaceResultCode error_code,
-                                const std::string& error_message);
+    bool validateFaceTemplate(const face::FaceTemplate& face_template);
 
     /**
-     * @brief Generate completion statistics
+     * @brief Generate final biometric template
      */
-    void updateCompletionStatistics(const face::EnrollmentSession& session);
+    bool generateBiometricTemplate();
 
     /**
-     * @brief Reset widget state for new enrollment
+     * @brief Handle enrollment error
      */
-    void resetEnrollmentState();
+    void handleEnrollmentError(const std::string& error_message);
 
     /**
-     * @brief Validate user input before starting enrollment
+     * @brief Safe VCSEL activation with monitoring
      */
-    bool validateUserInput();
+    bool activateVCSELSafe();
 
     /**
-     * @brief Add audit trail entry
+     * @brief Safe VCSEL deactivation
      */
-    void addAuditTrailEntry(const QString& event, const QString& details);
-
-    /**
-     * @brief Update accessibility features
-     */
-    void updateAccessibilityFeatures();
-
-    /**
-     * @brief Speak text using voice guidance (if enabled)
-     */
-    void speakGuidanceText(const QString& text);
-
-    /**
-     * @brief Convert quality score to user-friendly text
-     */
-    QString qualityScoreToText(float score);
-
-    /**
-     * @brief Convert face result code to user-friendly message
-     */
-    QString faceResultCodeToMessage(face::FaceResultCode code);
-
-    /**
-     * @brief Generate recovery suggestions for errors
-     */
-    QString generateRecoverySuggestion(face::FaceResultCode error_code);
-
-    /**
-     * @brief Apply banking-grade security styling
-     */
-    void applyBankingSecurityStyling();
-
-    /**
-     * @brief Update consent form validation
-     */
-    void updateConsentFormValidation();
-
-    /**
-     * @brief Format time duration for display
-     */
-    QString formatDuration(int seconds);
+    void deactivateVCSELSafe();
 
     // UI Components
-    Ui::FaceEnrollmentWidget *ui;
+    QVBoxLayout* main_layout_;
+    QHBoxLayout* top_bar_layout_;
+    QGridLayout* content_layout_;
+    QHBoxLayout* controls_layout_;
 
-    // System integration
+    // Status and monitoring displays
+    widgets::StatusDisplay* enrollment_status_display_;
+    widgets::StatusDisplay* vcsel_status_display_;
+    widgets::StatusDisplay* face_quality_display_;
+    QProgressBar* overall_progress_bar_;
+    QProgressBar* angle_progress_bar_;
+
+    // Face capture and preview
+    QLabel* camera_preview_label_;
+    QLabel* face_detection_overlay_;
+    QLabel* instruction_label_;
+    QTextEdit* feedback_text_;
+
+    // Control buttons
+    widgets::TouchButton* capture_button_;
+    widgets::TouchButton* next_angle_button_;
+    widgets::TouchButton* previous_angle_button_;
+    widgets::TouchButton* restart_button_;
+    widgets::TouchButton* emergency_stop_button_;
+
+    // Angle indicator buttons
+    std::map<CaptureAngle, widgets::TouchButton*> angle_indicator_buttons_;
+
+    // Core system integrations
     std::shared_ptr<camera::CameraSystem> camera_system_;
+    // std::unique_ptr<hardware::VCSELProjector> vcsel_projector_;  // Temporarily disabled
+    // std::unique_ptr<hardware::AS1170Controller> as1170_controller_;  // Temporarily disabled
+
+    // Face recognition pipeline
     std::unique_ptr<face::FaceEnroller> face_enroller_;
+    std::unique_ptr<face::LivenessDetector> liveness_detector_;
+    std::unique_ptr<face::BankingMLValidator> banking_validator_;
 
-    // State management
-    std::atomic<bool> is_initialized_{false};
+    // Configuration and state
+    EnrollmentConfig config_;
+    mutable std::mutex status_mutex_;
+    EnrollmentStatus status_;
     std::atomic<bool> enrollment_active_{false};
-    std::atomic<bool> camera_preview_active_{false};
-    EnrollmentStep current_step_;
-    CompletionStatus completion_status_;
+    std::atomic<bool> emergency_shutdown_active_{false};
 
-    // Enrollment session data
-    mutable std::mutex enrollment_mutex_;
-    std::unique_ptr<face::EnrollmentSession> current_session_;
-    QString current_user_id_;
-    std::chrono::system_clock::time_point enrollment_start_time_;
+    // Enrollment data
+    std::string current_user_id_;
+    std::string current_display_name_;
+    std::map<CaptureAngle, face::FaceTemplate> captured_templates_;
+    face::CompositeFaceTemplate final_template_;
 
-    // Configuration
-    bool banking_grade_mode_;
-    int required_samples_;
-    int enrollment_timeout_seconds_;
-    bool accessibility_mode_;
-    bool high_contrast_mode_;
-    bool voice_guidance_enabled_;
+    // Monitoring and safety
+    QTimer* frame_update_timer_;
+    QTimer* vcsel_monitoring_timer_;
+    QTimer* enrollment_timeout_timer_;
 
-    // Real-time processing
-    std::mutex preview_mutex_;
-    cv::Mat current_preview_frame_;
-    bool has_current_preview_{false};
-
-    // Timers
-    std::unique_ptr<QTimer> preview_update_timer_;
-    std::unique_ptr<QTimer> enrollment_timeout_timer_;
-    std::unique_ptr<QTimer> quality_update_timer_;
-
-    // Status tracking
-    face::EnrollmentProgress last_progress_;
-    int samples_captured_;
-    float overall_quality_score_;
-    std::vector<QString> quality_issues_;
-
-    // Audit trail (banking compliance)
-    QStringList audit_trail_entries_;
-
-    // Performance tracking
-    std::chrono::system_clock::time_point last_frame_time_;
-    std::atomic<double> average_fps_{0.0};
-
-    // Voice guidance (accessibility)
-    std::unique_ptr<QTimer> voice_guidance_timer_;
-    QString last_spoken_text_;
-
-    // Constants
-    static constexpr int PREVIEW_UPDATE_INTERVAL_MS = 33;  // ~30 FPS
-    static constexpr int QUALITY_UPDATE_INTERVAL_MS = 100;  // 10 Hz
-    static constexpr int DEFAULT_ENROLLMENT_TIMEOUT_S = 300;  // 5 minutes
-    static constexpr int DEFAULT_REQUIRED_SAMPLES = 5;
-    static constexpr float MIN_BANKING_QUALITY_SCORE = 0.85f;
-    static constexpr float MIN_INDUSTRIAL_QUALITY_SCORE = 0.75f;
-
-    // Disable copy constructor and assignment
-    FaceEnrollmentWidget(const FaceEnrollmentWidget&) = delete;
-    FaceEnrollmentWidget& operator=(const FaceEnrollmentWidget&) = delete;
-};
-
-/**
- * @brief Face enrollment guidance and user experience utilities
- */
-class EnrollmentGuidanceHelper {
-public:
-    /**
-     * @brief Generate optimal guidance text for current enrollment state
-     * @param progress Current enrollment progress
-     * @param is_banking_mode Whether banking-grade mode is enabled
-     * @return User-friendly guidance text
-     */
-    static QString generateGuidanceText(const face::EnrollmentProgress& progress,
-                                       bool is_banking_mode = true);
-
-    /**
-     * @brief Generate quality feedback text
-     * @param quality_score Current quality score (0-1)
-     * @param issues List of quality issues
-     * @return User-friendly quality feedback
-     */
-    static QString generateQualityFeedback(float quality_score,
-                                          const std::vector<std::string>& issues);
-
-    /**
-     * @brief Generate pose instruction text
-     * @param current_sample Current sample number
-     * @param total_samples Total samples required
-     * @param pose_coverage Current pose coverage (0-1)
-     * @return Pose instruction text
-     */
-    static QString generatePoseInstruction(int current_sample,
-                                          int total_samples,
-                                          float pose_coverage);
-
-    /**
-     * @brief Convert enrollment state to user-friendly text
-     * @param state Current enrollment state
-     * @return User-friendly state description
-     */
-    static QString enrollmentStateToText(face::EnrollmentState state);
-
-    /**
-     * @brief Generate error recovery suggestions
-     * @param error_code Error code that occurred
-     * @param consecutive_failures Number of consecutive failures
-     * @return Recovery suggestion text
-     */
-    static QString generateRecoverySuggestions(face::FaceResultCode error_code,
-                                              int consecutive_failures);
-
-    /**
-     * @brief Format quality score for display
-     * @param score Quality score (0-1)
-     * @param show_percentage Show as percentage
-     * @return Formatted quality score text
-     */
-    static QString formatQualityScore(float score, bool show_percentage = true);
-
-    /**
-     * @brief Get banking-grade compliance indicators
-     * @param session Current enrollment session
-     * @return List of compliance status indicators
-     */
-    static QStringList getBankingComplianceIndicators(const face::EnrollmentSession& session);
+    // Thread safety
+    mutable std::mutex camera_mutex_;
+    mutable std::mutex vcsel_mutex_;
+    mutable std::mutex ui_update_mutex_;
 };
 
 } // namespace gui

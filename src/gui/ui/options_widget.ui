@@ -256,6 +256,61 @@ QPushButton:pressed {
          </widget>
         </item>
         <item>
+         <widget class="QPushButton" name="as1170_debug_button">
+          <property name="text">
+           <string>AS1170 LED DEBUG SYSTEM</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>250</width>
+            <height>60</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <pointsize>12</pointsize>
+            <weight>75</weight>
+            <bold>true</bold>
+           </font>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">/* Neomorphism Button - Debug Style */
+QPushButton {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f0f0f0,
+        stop:1 #cacaca);
+    color: #dc2626;
+    border: none;
+    border-radius: 30px;
+    padding: 20px;
+    font-weight: 900;
+    text-transform: uppercase;
+    border-left: 3px solid #ffffff;
+    border-top: 3px solid #ffffff;
+    border-right: 3px solid #bebebe;
+    border-bottom: 3px solid #bebebe;
+}
+
+QPushButton:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #f5f5f5,
+        stop:1 #d0d0d0);
+    color: #b91c1c;
+}
+
+QPushButton:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #cacaca,
+        stop:1 #e5e5e5);
+    border-left: 3px solid #bebebe;
+    border-top: 3px solid #bebebe;
+    border-right: 3px solid #ffffff;
+    border-bottom: 3px solid #ffffff;
+}</string>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QLabel" name="system_label">
           <property name="text">
            <string>System Information</string>

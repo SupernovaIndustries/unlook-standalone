@@ -24,7 +24,7 @@ namespace gui {
 class CameraPreviewWidget;
 class DepthTestWidget;
 class OptionsWidget;
-class FaceEnrollmentWidget;
+// class FaceEnrollmentWidget; // VCSEL-integrated face enrollment  // Temporarily disabled
 
 /**
  * @brief Main window for Unlook 3D Scanner with fullscreen touch interface
@@ -45,7 +45,7 @@ public:
         MAIN_MENU,
         CAMERA_PREVIEW,
         DEPTH_TEST,
-        FACE_ENROLLMENT,
+        FACE_ENROLLMENT, // VCSEL-integrated face enrollment
         OPTIONS
     };
     
@@ -88,9 +88,9 @@ private slots:
     void showDepthTest();
     
     /**
-     * @brief Navigate to face enrollment screen
+     * @brief Navigate to face enrollment screen with VCSEL integration (temporarily disabled)
      */
-    void showFaceEnrollment();
+    // void showFaceEnrollment();
 
     /**
      * @brief Navigate to options screen
@@ -171,7 +171,7 @@ private:
     // Screen widgets
     std::unique_ptr<CameraPreviewWidget> camera_preview_widget_;
     std::unique_ptr<DepthTestWidget> depth_test_widget_;
-    std::unique_ptr<FaceEnrollmentWidget> face_enrollment_widget_;
+    // std::unique_ptr<FaceEnrollmentWidget> face_enrollment_widget_; // VCSEL-integrated  // Temporarily disabled
     std::unique_ptr<OptionsWidget> options_widget_;
     
     // System integration

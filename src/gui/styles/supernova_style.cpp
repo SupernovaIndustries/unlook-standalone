@@ -134,12 +134,12 @@ QString SupernovaStyle::getTouchButtonStyle(const QColor& background,
         }
         
         QPushButton:hover {
-            %7
+            background: %7;
             border: 2px solid %8;
         }
-        
+
         QPushButton:pressed {
-            %9
+            background: %9;
         }
         
         QPushButton:disabled {
@@ -282,7 +282,7 @@ QString SupernovaStyle::generateButtonHoverStyle(const QColor& base_color) {
         hover_color = QColor(0x00, 0xD4, 0xBB);
     }
     
-    return QString("background: %1;").arg(colorToString(hover_color));
+    return colorToString(hover_color);
 }
 
 QString SupernovaStyle::generateButtonPressedStyle(const QColor& base_color) {
@@ -304,7 +304,7 @@ QString SupernovaStyle::generateButtonPressedStyle(const QColor& base_color) {
         pressed_color = QColor(0x00, 0x8B, 0x7A);
     }
     
-    return QString("background: %1;").arg(colorToString(pressed_color));
+    return colorToString(pressed_color);
 }
 
 } // namespace styles

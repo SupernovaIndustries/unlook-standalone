@@ -1041,7 +1041,10 @@ void DepthProcessor::createLidarLikeDepthMap(const cv::Mat& inputDepth, cv::Mat&
         cv::morphologyEx(depthSquared, localStdDev, cv::MORPH_DILATE, kernel);
 
         // Identify outliers (> 3 sigma from local mean)
-        cv::Mat outlierMask = cv::abs(outputDepth - localMean) > 3 * cv::sqrt(localStdDev - localMean.mul(localMean));
+        cv::Mat variance = localStdDev - localMean.mul(localMean);
+        cv::Mat stdDev;
+        cv::sqrt(variance, stdDev);
+        cv::Mat outlierMask = cv::abs(outputDepth - localMean) > 3 * stdDev;
 
         // Apply median filter ONLY to outliers
         cv::Mat medianFiltered;

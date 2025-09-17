@@ -44,7 +44,7 @@ const std::string RIGHT_CAMERA_PATH = "/base/soc/i2c0mux/i2c@0/imx296@1a"; // Ca
 
 // Hardware sync GPIO pins
 constexpr int XVS_GPIO_PIN = 17;  // External Vertical Sync
-constexpr int XHS_GPIO_PIN = 27;  // External Horizontal Sync
+constexpr int XHS_GPIO_PIN = 27;  // External Horizontal Sync (Camera system - different from AS1170 strobe GPIO 19)
 
 // Implementation structure with real libcamera integration
 struct CameraSystem::CameraImpl {

@@ -262,9 +262,9 @@ struct LEDConfig {
     double pulse_duration_us;   ///< Pulse duration in microseconds
     
     LEDConfig()
-        : i2c_bus(4)
+        : i2c_bus(1)
         , i2c_address(0x30)
-        , strobe_gpio(27)
+        , strobe_gpio(19)
         , max_current_ma(1000.0)
         , pulse_duration_us(1000.0) {}
 };

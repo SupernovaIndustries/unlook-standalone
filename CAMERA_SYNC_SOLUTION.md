@@ -39,7 +39,8 @@ Camera 0: /base/soc/i2c0mux/i2c@0/imx296@1a = RIGHT/SLAVE
 
 // Synchronization Pins
 XVS: GPIO 17 (External Vertical Sync) - frame synchronization
-XHS: GPIO 27 (External Horizontal Sync) - line synchronization
+XHS: GPIO 27 (External Horizontal Sync) - line synchronization (camera system)
+AS1170 Strobe: GPIO 19 (LED strobe control) - separate from camera sync
 MAS: GPIO 22 (Master/Slave select) - soldered on camera sink
 
 // Specifications

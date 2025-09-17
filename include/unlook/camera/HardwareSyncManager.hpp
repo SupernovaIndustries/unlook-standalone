@@ -17,7 +17,7 @@ namespace camera {
  * 
  * Pin Configuration:
  * - XVS (GPIO 17): External Vertical Sync - frame synchronization
- * - XHS (GPIO 27): External Horizontal Sync - line synchronization  
+ * - XHS (GPIO 27): External Horizontal Sync - line synchronization (Camera system)  
  * - MAS (GPIO 22): Master/Slave selection (soldered on camera sink)
  * 
  * Synchronization precision target: <1ms per frame

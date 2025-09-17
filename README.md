@@ -174,8 +174,8 @@ namespace unlook {
 - **2x Global Shutter Camera Raspberry Pi IMX296** (1456x1088)
 - **6mm focal length lenses** (industrial grade recommended)
 - **Rigid stereo mount** with 70mm baseline (thermal stability critical)
-- **AS1170 LED Controller** with VCSEL projector (I2C bus 4, address 0x30)
-- **GPIO Connections** for camera sync (XVS: GPIO 17, XHS: GPIO 27, MAS: GPIO 22)
+- **AS1170 LED Controller** with VCSEL projector (I2C bus 1, address 0x30)
+- **GPIO Connections** for camera sync (XVS: GPIO 17, XHS: GPIO 27, MAS: GPIO 22) and LED strobe (GPIO 19)
 
 ### **Optional Hardware**
 - **Raspberry Pi Official Touchscreen** (7" or 11" recommended)

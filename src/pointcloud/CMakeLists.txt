@@ -106,11 +106,11 @@ endif()
 # Compiler-specific optimizations
 target_compile_features(unlook_pointcloud PUBLIC cxx_std_17)
 
-# Set compiler flags for point cloud processing
+# Set compiler flags for point cloud processing (allow unused parameter warnings for fallback implementations)
 target_compile_options(unlook_pointcloud
     PRIVATE
-        $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -O3 -ffast-math -march=native>
-        $<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -O3 -ffast-math -march=native>
+        $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -O3 -ffast-math -march=native -Wno-unused-parameter>
+        $<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -O3 -ffast-math -march=native -Wno-unused-parameter>
         $<$<CXX_COMPILER_ID:MSVC>:/W4 /O2>
 )
 
@@ -119,7 +119,7 @@ set_property(TARGET unlook_pointcloud PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 # Installation
 install(TARGETS unlook_pointcloud
-    EXPORT unlook-targets
+    EXPORT UnlookTargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

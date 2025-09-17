@@ -1,6 +1,7 @@
 #include "unlook/gui/main_window.hpp"
 #include "unlook/gui/camera_preview_widget.hpp"
 #include "unlook/gui/depth_test_widget.hpp"
+// #include "unlook/gui/face_enrollment_widget.hpp"  // Temporarily disabled
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
 #include "unlook/gui/styles/display_metrics.hpp"
@@ -214,6 +215,10 @@ void UnlookMainWindow::showDepthTest() {
     navigateToScreen(Screen::DEPTH_TEST);
 }
 
+// void UnlookMainWindow::showFaceEnrollment() {
+//     navigateToScreen(Screen::FACE_ENROLLMENT);
+// }
+
 void UnlookMainWindow::showOptions() {
     navigateToScreen(Screen::OPTIONS);
 }
@@ -288,6 +293,7 @@ void UnlookMainWindow::initializeAdditionalComponents() {
     // Connect UI signals to slots
     connect(ui->camera_preview_button, &QPushButton::clicked, this, &UnlookMainWindow::showCameraPreview);
     connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showDepthTest);
+    // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
     connect(ui->back_button, &QPushButton::clicked, this, &UnlookMainWindow::showMainMenu);
@@ -410,7 +416,16 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             ui->screen_stack->setCurrentWidget(depth_test_widget_.get());
             ui->title_label->setText("DEPTH TEST");
             break;
-            
+
+        // case Screen::FACE_ENROLLMENT:
+        //     if (!face_enrollment_widget_) {
+        //         face_enrollment_widget_ = std::make_unique<FaceEnrollmentWidget>(camera_system_);
+        //         ui->screen_stack->addWidget(face_enrollment_widget_.get());
+        //     }
+        //     ui->screen_stack->setCurrentWidget(face_enrollment_widget_.get());
+        //     ui->title_label->setText("FACE ENROLLMENT");
+        //     break;
+
         case Screen::OPTIONS:
             if (!options_widget_) {
                 options_widget_ = std::make_unique<OptionsWidget>(camera_system_);

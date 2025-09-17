@@ -77,7 +77,7 @@ Timeout Config: timeout.yaml MUST be exported before CameraManager
 ### LED Controller System (TO BE IMPLEMENTED)
 ```cpp
 // AS1170 LED SYSTEM
-I2C Bus: 4, Address: 0x30, Strobe GPIO: 27
+I2C Bus: 1, Address: 0x30, Strobe GPIO: 19
 LED1 (VCSEL): For structured light projection (Phase 2)
 LED2 (Flood): For stereo calibration illumination
 Timing: Synchronized with camera capture

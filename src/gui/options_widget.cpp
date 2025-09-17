@@ -1,9 +1,11 @@
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
+#include "unlook/gui/as1170_debug_dialog.hpp"
 #include "ui_options_widget.h"
 #include <QGridLayout>
 #include <QMessageBox>
 #include <QApplication>
+#include <QDebug>
 
 using namespace unlook::gui::styles;
 using namespace unlook::gui::widgets;
@@ -21,8 +23,9 @@ OptionsWidget::OptionsWidget(std::shared_ptr<camera::CameraSystem> camera_system
     
     // Connect signals
     connectSignals();
-    
-    initializeUI();
+
+    // Initialize UI components
+    // initializeUI(); // Disabled - using .ui file layout only
 }
 
 OptionsWidget::~OptionsWidget() {
@@ -34,13 +37,14 @@ void OptionsWidget::connectSignals() {
     // connect(ui->calibration_validation_button, &QPushButton::clicked, this, &OptionsWidget::performCalibrationValidation);
     connect(ui->advanced_camera_button, &QPushButton::clicked, this, &OptionsWidget::openAdvancedCameraSettings);
     connect(ui->reset_defaults_button, &QPushButton::clicked, this, &OptionsWidget::resetToDefaults);
+    connect(ui->as1170_debug_button, &QPushButton::clicked, this, &OptionsWidget::openAS1170DebugSystem);
     // connect(ui->export_logs_button, &QPushButton::clicked, this, &OptionsWidget::exportSystemLogs);
     // connect(ui->system_diagnostics_button, &QPushButton::clicked, this, &OptionsWidget::runSystemDiagnostics);
 }
 
 void OptionsWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
-    refreshSystemStatus();
+    // refreshSystemStatus(); // Disabled - using .ui file widgets only
 }
 
 void OptionsWidget::refreshSystemStatus() {
@@ -109,30 +113,31 @@ void OptionsWidget::showAboutDialog() {
 }
 
 void OptionsWidget::initializeUI() {
-    main_layout_ = new QVBoxLayout(this);
-    main_layout_->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
+    // Use layout from .ui file - don't create a new one
+    // main_layout_ = new QVBoxLayout(this);
+    // main_layout_->setSpacing(SupernovaStyle::Spacing::MARGIN_MEDIUM);
     
     // Create scroll area for content
-    scroll_area_ = new QScrollArea();
-    scroll_area_->setWidgetResizable(true);
-    scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    
-    content_widget_ = new QWidget();
-    QVBoxLayout* content_layout = new QVBoxLayout(content_widget_);
-    content_layout->setSpacing(SupernovaStyle::Spacing::MARGIN_LARGE);
-    
+    // scroll_area_ = new QScrollArea();
+    // scroll_area_->setWidgetResizable(true);
+    // scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    // scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+    // content_widget_ = new QWidget();
+    // QVBoxLayout* content_layout = new QVBoxLayout(content_widget_);
+    // content_layout->setSpacing(SupernovaStyle::Spacing::MARGIN_LARGE);
+
     // Add content panels
-    content_layout->addWidget(createSystemStatusPanel());
-    content_layout->addWidget(createCalibrationPanel());
-    content_layout->addWidget(createCameraConfigPanel());
-    content_layout->addWidget(createSystemInfoPanel());
-    content_layout->addWidget(createActionButtonsPanel());
+    // content_layout->addWidget(createSystemStatusPanel());
+    // content_layout->addWidget(createCalibrationPanel());
+    // content_layout->addWidget(createCameraConfigPanel());
+    // content_layout->addWidget(createSystemInfoPanel());
+    // content_layout->addWidget(createActionButtonsPanel());
     
-    content_layout->addStretch();
-    
-    scroll_area_->setWidget(content_widget_);
-    main_layout_->addWidget(scroll_area_);
+    // content_layout->addStretch();
+
+    // scroll_area_->setWidget(content_widget_);
+    // main_layout_->addWidget(scroll_area_);
 }
 
 QWidget* OptionsWidget::createSystemStatusPanel() {
@@ -379,6 +384,23 @@ void OptionsWidget::updateStatusDisplays() {
     
     // Update version information
     version_info_label_->setText("Unlook 3D Scanner v1.0 - Professional Edition");
+}
+
+void OptionsWidget::openAS1170DebugSystem() {
+    // Create and show AS1170 debug dialog
+    AS1170DebugDialog* debug_dialog = new AS1170DebugDialog(this);
+
+    // Set dialog as modal for safety (prevents interaction with main system during debug)
+    debug_dialog->setModal(true);
+
+    // Show dialog and handle result
+    int result = debug_dialog->exec();
+
+    // Clean up dialog
+    debug_dialog->deleteLater();
+
+    // Log debug session completion
+    qDebug() << "[OptionsWidget] AS1170 debug session completed with result:" << result;
 }
 
 } // namespace gui

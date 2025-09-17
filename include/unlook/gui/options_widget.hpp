@@ -78,6 +78,11 @@ private slots:
      */
     void showAboutDialog();
 
+    /**
+     * @brief Open AS1170 LED debug system
+     */
+    void openAS1170DebugSystem();
+
 private:
     /**
      * @brief Initialize the widget UI

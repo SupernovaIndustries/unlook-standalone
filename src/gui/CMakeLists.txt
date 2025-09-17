@@ -24,6 +24,7 @@ set(GUI_SOURCES
     camera_preview_widget.cpp
     depth_test_widget.cpp
     options_widget.cpp
+    as1170_debug_dialog.cpp
     widgets/parameter_slider.cpp
     widgets/status_display.cpp
     widgets/touch_button.cpp
@@ -37,6 +38,7 @@ set(GUI_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/camera_preview_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/depth_test_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/options_widget.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/as1170_debug_dialog.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/parameter_slider.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/status_display.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/touch_button.hpp
@@ -49,6 +51,7 @@ set(GUI_UI_FILES
     ui/camera_preview_widget.ui
     ui/depth_test_widget.ui
     ui/options_widget.ui
+    ui/as1170_debug_dialog.ui
 )
 
 # Resource files
@@ -90,6 +93,8 @@ target_link_libraries(unlook_scanner PRIVATE
     unlook                          # Core Unlook library (includes stereo and calibration)
     unlook_stereo                   # Explicitly link stereo library
     unlook_calibration              # Explicitly link calibration library
+    unlook_pointcloud               # Point cloud processing library
+    unlook_hardware                 # AS1170 VCSEL hardware control library (required for debug dialog)
     unlook_validation               # Explicitly link validation library
     ${OpenCV_LIBS}                  # Explicitly link OpenCV (including ximgproc, photo)
     Qt5::Core
