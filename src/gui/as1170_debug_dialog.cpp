@@ -39,33 +39,33 @@ AS1170DebugDialog::AS1170DebugDialog(QWidget* parent)
     SupernovaStyle::applyStyle(this);
 
     // Initialize UI components
-    // initializeUI(); // Disabled - using .ui file layout only
+    initializeUI(); // Re-enabled - fix for segfault
 
     // Connect signals
-    // connectSignals(); // Disabled - using .ui file widgets only
+    connectSignals(); // Re-enabled - fix for segfault
 
-    // Initialize hardware controller - DISABLED to prevent dual instances causing I2C conflict
-    // initializeAS1170Controller(); // DISABLED - creating second AS1170Controller instance causes segfault due to I2C conflict
+    // Initialize hardware controller using singleton to prevent I2C conflicts
+    initializeAS1170Controller();
 
     // Log initialization
     // logDiagnosticMessage("AS1170 Debug Dialog initialized", "INFO"); // Disabled - widgets not created
 }
 
 AS1170DebugDialog::~AS1170DebugDialog() {
-    // Ensure safe shutdown - DISABLED to prevent nullptr access
-    // shutdownAS1170Controller(); // DISABLED - as1170_controller_ is nullptr to prevent I2C conflict
+    // Ensure safe shutdown using singleton instance
+    shutdownAS1170Controller();
     delete ui;
 }
 
 void AS1170DebugDialog::showEvent(QShowEvent* event) {
     QDialog::showEvent(event);
 
-    // Start hardware monitoring when dialog is shown - DISABLED to prevent segfault
-    // if (as1170_controller_ && as1170_controller_->isInitialized()) {
-    //     monitoring_active_.store(true);
-    //     // status_update_timer_->start(STATUS_UPDATE_INTERVAL_MS); // Disabled - using .ui file widgets
-    //     // logDiagnosticMessage("Hardware monitoring started", "INFO"); // Disabled - widgets not created
-    // } // DISABLED - as1170_controller_ is nullptr to prevent I2C conflict
+    // Start hardware monitoring when dialog is shown using singleton
+    if (as1170_controller_ && as1170_controller_->isInitialized()) {
+        monitoring_active_.store(true);
+        // status_update_timer_->start(STATUS_UPDATE_INTERVAL_MS); // Disabled - using .ui file widgets
+        // logDiagnosticMessage("Hardware monitoring started", "INFO"); // Disabled - widgets not created
+    }
 }
 
 void AS1170DebugDialog::closeEvent(QCloseEvent* event) {
@@ -74,72 +74,81 @@ void AS1170DebugDialog::closeEvent(QCloseEvent* event) {
     status_update_timer_->stop();
     continuous_strobe_timer_->stop();
 
-    // Ensure LEDs are safely disabled - DISABLED to prevent nullptr access
-    // if (as1170_controller_ && as1170_controller_->isInitialized()) {
-    //     as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::BOTH, false);
-    //     // logDiagnosticMessage("LEDs safely disabled on dialog close", "INFO"); // Disabled - widgets not created
-    // } // DISABLED - as1170_controller_ is nullptr to prevent I2C conflict
+    // Ensure LEDs are safely disabled using singleton instance
+    if (as1170_controller_ && as1170_controller_->isInitialized()) {
+        as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::BOTH, false);
+        // logDiagnosticMessage("LEDs safely disabled on dialog close", "INFO"); // Disabled - widgets not created
+    }
 
     QDialog::closeEvent(event);
 }
 
 void AS1170DebugDialog::initializeUI() {
-    // Use layout from .ui file - don't create a new one
-    // main_layout_ = new QVBoxLayout(this);
-    // main_layout_->setSpacing(10);
-    // main_layout_->setContentsMargins(15, 15, 15, 15);
+    // The .ui file already provides the main layout, so we work with existing widgets
 
-    // Create title label
-    QLabel* title_label = new QLabel("AS1170 LED Debug System");
-    title_label->setStyleSheet("font-size: 18px; font-weight: bold; color: #10b981; margin-bottom: 10px;");
-    title_label->setAlignment(Qt::AlignCenter);
-    // main_layout_->addWidget(title_label); // Using .ui file layout
+    // Get references to UI elements from the .ui file
+    main_tabs_ = ui->main_tabs;
 
-    // Create emergency shutdown button (always visible at top)
-    emergency_shutdown_button_ = new TouchButton("EMERGENCY SHUTDOWN");
-    // emergency_shutdown_button_->setIcon(QIcon(":/icons/emergency.svg")); // Icon disabled for now
-    emergency_shutdown_button_->setMinimumSize(200, 50);
-    emergency_shutdown_button_->setStyleSheet(
-        "background-color: #dc2626; color: white; font-weight: bold; font-size: 14px; "
-        "border: 2px solid #991b1b; border-radius: 8px;"
-        "TouchButton:hover { background-color: #b91c1c; }"
-        "TouchButton:pressed { background-color: #7f1d1d; }"
-    );
+    // Emergency shutdown button is handled directly through ui->emergency_shutdown_button
+    emergency_shutdown_button_ = nullptr; // Will use ui->emergency_shutdown_button directly
 
-    QHBoxLayout* emergency_layout = new QHBoxLayout();
-    emergency_layout->addStretch();
-    emergency_layout->addWidget(emergency_shutdown_button_);
-    emergency_layout->addStretch();
-    // main_layout_->addLayout(emergency_layout); // Using .ui file layout
-
-    // Create main tabs
-    main_tabs_ = new QTabWidget();
-    main_tabs_->setTabPosition(QTabWidget::North);
-    main_tabs_->setUsesScrollButtons(true);
-
-    // Add tabs
-    main_tabs_->addTab(createLEDControlTab(), "LED Control");
-    main_tabs_->addTab(createStrobeControlTab(), "Strobe Control");
-    main_tabs_->addTab(createI2CDiagnosticsTab(), "I2C Diagnostics");
-    main_tabs_->addTab(createMonitoringTab(), "Real-time Monitoring");
-    main_tabs_->addTab(createSafetySystemsTab(), "Safety Systems");
-    main_tabs_->addTab(createSynchronizationTab(), "LED Synchronization");
-
-    // main_layout_->addWidget(main_tabs_); // Using .ui file layout
-
-    // Create status bar
-    QHBoxLayout* status_layout = new QHBoxLayout();
-
+    // Initialize status display widgets (replace placeholders in .ui file)
     hardware_status_ = new StatusDisplay("Hardware");
     i2c_status_ = new StatusDisplay("I2C");
     safety_status_ = new StatusDisplay("Safety");
 
-    status_layout->addWidget(hardware_status_);
-    status_layout->addWidget(i2c_status_);
-    status_layout->addWidget(safety_status_);
-    status_layout->addStretch();
+    // For now, just use the placeholder labels - replacing widgets can be done later
+    // The basic functionality will work without custom StatusDisplay widgets
+    // hardware_status_, i2c_status_, safety_status_ are created but not inserted yet
 
-    // main_layout_->addLayout(status_layout); // Using .ui file layout
+    // Initialize LED control widgets from .ui file
+    led1_current_indicator_ = ui->led1_current_indicator;
+    led2_current_indicator_ = ui->led2_current_indicator;
+    temperature_indicator_ = ui->temperature_indicator;
+
+    // LED buttons are handled directly through ui-> widgets (they are QPushButton, not TouchButton)
+    led1_enable_button_ = nullptr; // Will use ui->led1_enable_button directly
+    led1_disable_button_ = nullptr; // Will use ui->led1_disable_button directly
+    led2_enable_button_ = nullptr; // Will use ui->led2_enable_button directly
+    led2_disable_button_ = nullptr; // Will use ui->led2_disable_button directly
+
+    // Create ParameterSlider wrappers for existing QSlider widgets
+    led1_current_slider_ = new ParameterSlider("Current (mA)", 0, MAX_SAFE_CURRENT_MA, 100);
+    led2_current_slider_ = new ParameterSlider("Current (mA)", 0, MAX_SAFE_CURRENT_MA, 100);
+
+    // For now, keep the basic sliders from .ui file and don't replace them
+    // The ParameterSlider widgets are created but not inserted
+    // This avoids potential crashes during widget replacement
+
+    // Initialize status displays for LEDs (replace placeholders)
+    led1_status_ = new StatusDisplay("LED1 Status");
+    led2_status_ = new StatusDisplay("LED2 Status");
+    temperature_status_ = new StatusDisplay("Temperature");
+    thermal_protection_status_ = new StatusDisplay("Thermal Protection");
+    fault_status_ = new StatusDisplay("Fault Status");
+
+    // For now, keep the placeholder labels from .ui file
+    // Custom StatusDisplay widgets are created but not inserted to avoid crashes
+    // The basic functionality will work with the existing placeholder labels
+
+    // Initialize remaining widgets that aren't in the basic .ui file
+    // These will be null for now to prevent segfaults, but the basic functionality will work
+    single_strobe_button_ = nullptr;
+    continuous_strobe_button_ = nullptr;
+    strobe_duration_slider_ = nullptr;
+    strobe_frequency_slider_ = nullptr;
+    strobe_status_ = nullptr;
+    i2c_test_button_ = nullptr;
+    i2c_reset_button_ = nullptr;
+    i2c_address_status_ = nullptr;
+    reset_hardware_button_ = nullptr;
+    run_diagnostics_button_ = nullptr;
+    sync_validation_button_ = nullptr;
+    depth_integration_test_button_ = nullptr;
+    sync_status_ = nullptr;
+    diagnostic_log_ = nullptr;
+    export_log_button_ = nullptr;
+    clear_log_button_ = nullptr;
 }
 
 QWidget* AS1170DebugDialog::createLEDControlTab() {
@@ -567,67 +576,91 @@ QWidget* AS1170DebugDialog::createDiagnosticLoggingPanel() {
 }
 
 void AS1170DebugDialog::connectSignals() {
-    // Emergency shutdown (highest priority)
-    connect(emergency_shutdown_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::emergencyShutdown);
+    // Emergency shutdown (highest priority) - use QPushButton from .ui file
+    if (ui->emergency_shutdown_button) {
+        connect(ui->emergency_shutdown_button, &QPushButton::clicked,
+                this, &AS1170DebugDialog::emergencyShutdown);
+    }
 
-    // LED1 controls
-    if (led1_enable_button_) {
-        connect(led1_enable_button_, &TouchButton::clicked,
+    // LED1 controls - use QPushButton widgets from .ui file
+    if (ui->led1_enable_button) {
+        connect(ui->led1_enable_button, &QPushButton::clicked,
                 this, &AS1170DebugDialog::enableLED1);
     }
-    if (led1_disable_button_) {
-        connect(led1_disable_button_, &TouchButton::clicked,
+    if (ui->led1_disable_button) {
+        connect(ui->led1_disable_button, &QPushButton::clicked,
                 this, &AS1170DebugDialog::disableLED1);
     }
-    if (led1_current_slider_) {
-        connect(led1_current_slider_, QOverload<double>::of(&ParameterSlider::valueChanged),
-                this, [this](double value) { setLED1Current(static_cast<int>(value)); });
+    // Connect to basic QSlider from .ui file instead of custom ParameterSlider
+    if (ui->led1_current_slider) {
+        connect(ui->led1_current_slider, QOverload<int>::of(&QSlider::valueChanged),
+                this, [this](int value) { setLED1Current(value); });
     }
 
-    // LED2 controls
-    if (led2_enable_button_) {
-        connect(led2_enable_button_, &TouchButton::clicked,
+    // LED2 controls - use QPushButton widgets from .ui file
+    if (ui->led2_enable_button) {
+        connect(ui->led2_enable_button, &QPushButton::clicked,
                 this, &AS1170DebugDialog::enableLED2);
     }
-    if (led2_disable_button_) {
-        connect(led2_disable_button_, &TouchButton::clicked,
+    if (ui->led2_disable_button) {
+        connect(ui->led2_disable_button, &QPushButton::clicked,
                 this, &AS1170DebugDialog::disableLED2);
     }
-    if (led2_current_slider_) {
-        connect(led2_current_slider_, QOverload<double>::of(&ParameterSlider::valueChanged),
-                this, [this](double value) { setLED2Current(static_cast<int>(value)); });
+    // Connect to basic QSlider from .ui file instead of custom ParameterSlider
+    if (ui->led2_current_slider) {
+        connect(ui->led2_current_slider, QOverload<int>::of(&QSlider::valueChanged),
+                this, [this](int value) { setLED2Current(value); });
     }
 
-    // Strobe controls
-    connect(single_strobe_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::triggerSingleStrobe);
-    connect(continuous_strobe_button_, &TouchButton::clicked,
-            this, [this]() { setContinuousStrobe(!continuous_strobe_active_.load()); });
+    // Strobe controls - these don't exist in basic .ui file, so skip for now
+    if (single_strobe_button_) {
+        connect(single_strobe_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::triggerSingleStrobe);
+    }
+    if (continuous_strobe_button_) {
+        connect(continuous_strobe_button_, &TouchButton::clicked,
+                this, [this]() { setContinuousStrobe(!continuous_strobe_active_.load()); });
+    }
 
-    // I2C diagnostics
-    connect(i2c_test_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::testI2CCommunication);
-    connect(i2c_reset_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::resetHardware);
+    // I2C diagnostics - these don't exist in basic .ui file, so skip for now
+    if (i2c_test_button_) {
+        connect(i2c_test_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::testI2CCommunication);
+    }
+    if (i2c_reset_button_) {
+        connect(i2c_reset_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::resetHardware);
+    }
 
-    // Safety system controls
-    connect(reset_hardware_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::resetHardware);
-    connect(run_diagnostics_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::runFullDiagnostics);
+    // Safety system controls - these don't exist in basic .ui file, so skip for now
+    if (reset_hardware_button_) {
+        connect(reset_hardware_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::resetHardware);
+    }
+    if (run_diagnostics_button_) {
+        connect(run_diagnostics_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::runFullDiagnostics);
+    }
 
-    // Synchronization testing
-    connect(sync_validation_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::validateLEDSynchronization);
-    connect(depth_integration_test_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::testDepthCaptureIntegration);
+    // Synchronization testing - these don't exist in basic .ui file, so skip for now
+    if (sync_validation_button_) {
+        connect(sync_validation_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::validateLEDSynchronization);
+    }
+    if (depth_integration_test_button_) {
+        connect(depth_integration_test_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::testDepthCaptureIntegration);
+    }
 
-    // Logging controls
-    connect(export_log_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::exportDiagnosticsLog);
-    connect(clear_log_button_, &TouchButton::clicked,
-            this, &AS1170DebugDialog::clearDiagnosticsLog);
+    // Logging controls - these don't exist in basic .ui file, so skip for now
+    if (export_log_button_) {
+        connect(export_log_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::exportDiagnosticsLog);
+    }
+    if (clear_log_button_) {
+        connect(clear_log_button_, &TouchButton::clicked,
+                this, &AS1170DebugDialog::clearDiagnosticsLog);
+    }
 
     // Parameter sliders
     if (strobe_duration_slider_) {
@@ -648,7 +681,8 @@ void AS1170DebugDialog::connectSignals() {
 
 bool AS1170DebugDialog::initializeAS1170Controller() {
     try {
-        as1170_controller_ = std::make_shared<hardware::AS1170Controller>();
+        // Use singleton instance to prevent I2C conflicts
+        as1170_controller_ = hardware::AS1170Controller::getInstance();
 
         // Configure for debug mode
         hardware::AS1170Controller::AS1170Config config;
