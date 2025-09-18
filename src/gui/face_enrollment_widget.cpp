@@ -508,7 +508,8 @@ bool FaceEnrollmentWidget::initializeVCSEL() {
         as1170_config.enable_thermal_protection = true;
         as1170_config.max_temperature_c = 65.0f; // Lower limit for face proximity
 
-        as1170_controller_ = std::make_unique<hardware::AS1170Controller>();
+        // Use singleton instance to prevent I2C conflicts
+        as1170_controller_ = hardware::AS1170Controller::getInstance();
         if (!as1170_controller_->initialize(as1170_config)) {
             qCritical() << "[FaceEnrollmentWidget] AS1170 controller initialization failed";
             return false;

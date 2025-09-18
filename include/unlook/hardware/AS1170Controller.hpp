@@ -109,6 +109,13 @@ public:
     ~AS1170Controller();
 
     /**
+     * Get singleton instance of AS1170Controller
+     * Ensures only one instance exists to prevent I2C bus conflicts
+     * @return shared_ptr to the singleton instance
+     */
+    static std::shared_ptr<AS1170Controller> getInstance();
+
+    /**
      * Initialize AS1170 controller with hardware detection and setup
      * Follows exact OSRAM initialization sequence with 250mA adaptation
      * @param config Hardware configuration parameters

@@ -370,7 +370,7 @@ private:
     // Core system integrations
     std::shared_ptr<camera::CameraSystem> camera_system_;
     // std::unique_ptr<hardware::VCSELProjector> vcsel_projector_;  // Temporarily disabled
-    // std::unique_ptr<hardware::AS1170Controller> as1170_controller_;  // Temporarily disabled
+    std::shared_ptr<hardware::AS1170Controller> as1170_controller_;  // Singleton instance
 
     // Face recognition pipeline
     std::unique_ptr<face::FaceEnroller> face_enroller_;

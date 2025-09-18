@@ -26,6 +26,18 @@ AS1170Controller::~AS1170Controller() {
     //     shutdown();
 }
 
+std::shared_ptr<AS1170Controller> AS1170Controller::getInstance() {
+    static std::shared_ptr<AS1170Controller> instance = nullptr;
+    static std::mutex instance_mutex;
+
+    std::lock_guard<std::mutex> lock(instance_mutex);
+    if (!instance) {
+        // Create new instance using private constructor access
+        instance = std::shared_ptr<AS1170Controller>(new AS1170Controller());
+    }
+    return instance;
+}
+
 bool AS1170Controller::initialize(const AS1170Config& config) {
     std::lock_guard<std::mutex> lock(mutex_);
 
@@ -450,8 +462,8 @@ bool AS1170Controller::initializeGPIO() {
 }
 
 bool AS1170Controller::detectI2CAddress() {
-    // Final configuration: primary address 0x30, fallback 0x31
-    std::vector<uint8_t> addresses_to_try = {config_.i2c_address, 0x31, 0x30};
+    // Final configuration: ONLY 0x30 address - no fallbacks
+    std::vector<uint8_t> addresses_to_try = {0x30};
 
     for (uint8_t addr : addresses_to_try) {
         if (ioctl(i2c_fd_, I2C_SLAVE, addr) >= 0) {

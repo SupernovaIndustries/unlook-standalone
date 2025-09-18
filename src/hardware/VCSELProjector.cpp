@@ -697,8 +697,8 @@ VCSELProjector::DiagnosticResult VCSELProjector::runDiagnostics() {
 bool VCSELProjector::initializeHardwareComponents() {
     core::Logger::getInstance().info("Initializing hardware components...");
 
-    // Initialize AS1170 controller
-    as1170_controller_ = std::make_shared<AS1170Controller>();
+    // Initialize AS1170 controller using singleton to prevent I2C conflicts
+    as1170_controller_ = AS1170Controller::getInstance();
     AS1170Controller::AS1170Config as1170_config;
     as1170_config.target_current_ma = std::max(config_.vcsel_current_ma, config_.flood_current_ma);
 

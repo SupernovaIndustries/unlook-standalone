@@ -38,7 +38,7 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     initializeUI();
     initializeDepthProcessor();
     initializePointCloudProcessor();
-    // initializeVCSELProjector(); // Disabled - causes AS1170 segfault at startup
+    initializeVCSELProjector(); // Re-enabled with singleton AS1170Controller fix
 }
 
 DepthTestWidget::~DepthTestWidget() {
