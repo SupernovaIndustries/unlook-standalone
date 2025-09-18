@@ -4,6 +4,7 @@
 #include "unlook/gui/styles/supernova_style.hpp"
 #include "unlook/calibration/CalibrationManager.hpp"
 #include "unlook/stereo/DepthProcessor.hpp"
+#include "unlook/hardware/AS1170Controller.hpp"
 #include "ui_depth_test_widget.h"
 #include <QGridLayout>
 #include <QComboBox>
@@ -127,6 +128,34 @@ void DepthTestWidget::captureStereoFrame() {
 
     qDebug() << "[DepthWidget] Starting stereo frame capture with VCSEL";
     processing_active_ = true;
+
+    // SYNCHRONIZATION STEP 1: Activate LEDs for optimal illumination
+    qDebug() << "[DepthWidget] Activating AS1170 LEDs for depth capture";
+    capture_status_->setStatus("Activating LED illumination...", StatusDisplay::StatusType::PROCESSING);
+
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    bool leds_activated = false;
+    if (as1170) {
+        // Initialize if not already done
+        if (!as1170->isInitialized()) {
+            qDebug() << "[DepthWidget] Initializing AS1170 controller";
+            as1170->initialize();
+        }
+
+        // Activate both LED1 (VCSEL) and LED2 (Flood) at 150mA for optimal depth capture illumination
+        bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
+        bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+
+        leds_activated = led1_success && led2_success;
+        if (leds_activated) {
+            qDebug() << "[DepthWidget] Both LEDs activated successfully at 150mA for depth capture";
+        } else {
+            qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
+        }
+    } else {
+        qWarning() << "[DepthWidget] AS1170Controller not available";
+    }
+
     capture_status_->setStatus("Activating VCSEL projection...", StatusDisplay::StatusType::PROCESSING);
     capture_status_->startPulsing();
 
@@ -208,7 +237,21 @@ void DepthTestWidget::captureStereoFrame() {
         qDebug() << "[DepthWidget] ERROR: Failed to capture synchronized frames";
         capture_status_->setStatus("Failed to capture synchronized frames", StatusDisplay::StatusType::ERROR);
     }
-    
+
+    // SYNCHRONIZATION STEP 2: Deactivate LEDs after capture and processing complete
+    qDebug() << "[DepthWidget] Deactivating AS1170 LEDs after depth capture";
+    if (as1170) {
+        // Deactivate both LEDs
+        bool led1_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        bool led2_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+
+        if (led1_off && led2_off) {
+            qDebug() << "[DepthWidget] Both LEDs deactivated successfully after depth capture";
+        } else {
+            qWarning() << "[DepthWidget] LED deactivation failed - LED1:" << led1_off << "LED2:" << led2_off;
+        }
+    }
+
     capture_status_->stopPulsing();
     processing_active_ = false;
     qDebug() << "[DepthWidget] captureStereoFrame() completed";
