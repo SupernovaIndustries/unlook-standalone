@@ -1,12 +1,14 @@
 #include "unlook/gui/camera_preview_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
 #include "unlook/gui/styles/display_metrics.hpp"
+#include "unlook/hardware/AS1170Controller.hpp"
 #include <QTimer>
 #include <QPixmap>
 #include <QDateTime>
 #include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QPushButton>
 #include <opencv2/imgproc.hpp>
 
 #include "ui_camera_preview_widget.h"
@@ -116,6 +118,10 @@ void CameraPreviewWidget::connectSignals() {
     connect(ui->start_capture_button, &QPushButton::clicked, this, &CameraPreviewWidget::startCapture);
     connect(ui->stop_capture_button, &QPushButton::clicked, this, &CameraPreviewWidget::stopCapture);
     connect(ui->swap_cameras_button, &QPushButton::clicked, this, &CameraPreviewWidget::swapCameraDisplays);
+
+    // Connect LED test buttons
+    connect(ui->led_test_on_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOn);
+    connect(ui->led_test_off_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOff);
     
     // Connect sliders
     connect(ui->left_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
@@ -253,6 +259,57 @@ void CameraPreviewWidget::toggleRightAutoGain() {
     // TODO_UI: Add auto gain button to .ui file
     // ui->right_auto_gain_button->setText(new_auto ? "Auto ON" : "Auto OFF");
     ui->right_gain_slider->setEnabled(!new_auto);
+}
+
+void CameraPreviewWidget::onLEDTestOn() {
+    qDebug() << "[CameraPreview] LED Test ON - activating both LEDs at 150mA";
+
+    // Get AS1170 controller instance
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    if (!as1170) {
+        qWarning() << "[CameraPreview] Failed to get AS1170 controller instance";
+        return;
+    }
+
+    // Initialize if not already done
+    if (!as1170->isInitialized()) {
+        qDebug() << "[CameraPreview] Initializing AS1170 controller";
+        if (!as1170->initialize()) {
+            qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
+            return;
+        }
+    }
+
+    // Activate both LEDs at 150mA
+    bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
+    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+
+    if (led1_success && led2_success) {
+        qDebug() << "[CameraPreview] Both LEDs activated successfully at 150mA";
+    } else {
+        qWarning() << "[CameraPreview] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
+    }
+}
+
+void CameraPreviewWidget::onLEDTestOff() {
+    qDebug() << "[CameraPreview] LED Test OFF - deactivating both LEDs";
+
+    // Get AS1170 controller instance
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    if (!as1170) {
+        qWarning() << "[CameraPreview] Failed to get AS1170 controller instance";
+        return;
+    }
+
+    // Deactivate both LEDs
+    bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+
+    if (led1_success && led2_success) {
+        qDebug() << "[CameraPreview] Both LEDs deactivated successfully";
+    } else {
+        qWarning() << "[CameraPreview] LED deactivation failed - LED1:" << led1_success << "LED2:" << led2_success;
+    }
 }
 
 void CameraPreviewWidget::swapCameraDisplays() {

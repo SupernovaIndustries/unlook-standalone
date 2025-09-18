@@ -125,6 +125,16 @@ private slots:
     void toggleRightAutoGain();
     
     /**
+     * @brief Turn on both LEDs at 150mA for camera visibility testing
+     */
+    void onLEDTestOn();
+
+    /**
+     * @brief Turn off both LEDs
+     */
+    void onLEDTestOff();
+
+    /**
      * @brief Swap left and right camera displays
      */
     void swapCameraDisplays();
