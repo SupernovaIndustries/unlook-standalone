@@ -311,6 +311,12 @@ private:
     // Error handling
     void setErrorState(const std::string& error);
     void clearErrorState();
+
+    /**
+     * Debug function to dump all AS1170 registers
+     * @param context Description of when this dump was taken
+     */
+    void debugAllRegisters(const std::string& context);
     std::string getLastI2CError() const;
 };
 

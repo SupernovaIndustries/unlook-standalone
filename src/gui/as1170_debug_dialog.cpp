@@ -45,10 +45,12 @@ AS1170DebugDialog::AS1170DebugDialog(QWidget* parent)
     connectSignals(); // Re-enabled - fix for segfault
 
     // Initialize hardware controller using singleton to prevent I2C conflicts
-    initializeAS1170Controller();
+    qDebug() << "[AS1170Debug] Constructor: About to initialize AS1170 Controller";
+    bool init_result = initializeAS1170Controller();
+    qDebug() << "[AS1170Debug] Constructor: AS1170 initialization result:" << init_result;
 
     // Log initialization
-    // logDiagnosticMessage("AS1170 Debug Dialog initialized", "INFO"); // Disabled - widgets not created
+    qDebug() << "[AS1170Debug] AS1170 Debug Dialog constructor completed";
 }
 
 AS1170DebugDialog::~AS1170DebugDialog() {
@@ -680,33 +682,30 @@ void AS1170DebugDialog::connectSignals() {
 }
 
 bool AS1170DebugDialog::initializeAS1170Controller() {
+    qDebug() << "[AS1170Debug] Initializing AS1170 Controller...";
+
     try {
         // Use singleton instance to prevent I2C conflicts
         as1170_controller_ = hardware::AS1170Controller::getInstance();
+        qDebug() << "[AS1170Debug] AS1170Controller singleton obtained";
 
         // Configure for debug mode
         hardware::AS1170Controller::AS1170Config config;
         config.i2c_bus = 1;
         config.i2c_address = 0x30;
-        config.strobe_gpio = 19;
+        config.strobe_gpio = 588; // GPIO 19 logical = GPIO 588 physical on CM5 (569+19)
         config.target_current_ma = MAX_SAFE_CURRENT_MA;
         config.flash_mode = hardware::AS1170Controller::FlashMode::FLASH_MODE;
         config.enable_thermal_protection = true;
         config.max_temperature_c = THERMAL_SHUTDOWN_TEMP_C;
 
+        qDebug() << "[AS1170Debug] Configuration: I2C Bus" << config.i2c_bus
+                 << "Address 0x" << QString::number(config.i2c_address, 16)
+                 << "GPIO" << config.strobe_gpio << "Current" << config.target_current_ma << "mA";
+
         if (as1170_controller_->initialize(config)) {
             hardware_initialized_.store(true);
-
-            // Set thermal callback
-            // as1170_controller_->setThermalCallback(
-            //     [this](bool thermal_active, float temperature_c) {
-            //         QMetaObject::invokeMethod(this, [this, thermal_active, temperature_c]() {
-            //             onThermalProtectionTriggered(thermal_active, temperature_c);
-            //         });
-            //     }
-            // ); // Disabled - widgets not created
-
-            // logDiagnosticMessage("AS1170 controller initialized successfully", "SUCCESS"); // Disabled - widgets not created
+            qDebug() << "[AS1170Debug] AS1170 Controller initialized successfully - hardware_initialized_ = true";
 
             if (hardware_status_) {
                 hardware_status_->setStatus("Initialized", StatusDisplay::StatusType::SUCCESS);
@@ -714,7 +713,7 @@ bool AS1170DebugDialog::initializeAS1170Controller() {
 
             return true;
         } else {
-            // logDiagnosticMessage("Failed to initialize AS1170 controller", "ERROR"); // Disabled - widgets not created
+            qDebug() << "[AS1170Debug] Failed to initialize AS1170 controller - hardware_initialized_ = false";
 
             if (hardware_status_) {
                 hardware_status_->setStatus("Init Failed", StatusDisplay::StatusType::ERROR);
@@ -723,7 +722,7 @@ bool AS1170DebugDialog::initializeAS1170Controller() {
             return false;
         }
     } catch (const std::exception& e) {
-        // logDiagnosticMessage(QString("AS1170 initialization exception: %1").arg(e.what()), "ERROR"); // Disabled - widgets not created
+        qDebug() << "[AS1170Debug] AS1170 initialization exception:" << e.what();
 
         if (hardware_status_) {
             hardware_status_->setStatus("Exception", StatusDisplay::StatusType::ERROR);
@@ -773,102 +772,168 @@ void AS1170DebugDialog::emergencyShutdown() {
 }
 
 void AS1170DebugDialog::enableLED1() {
-    if (!as1170_controller_ || !hardware_initialized_.load()) {
-        logDiagnosticMessage("Cannot enable LED1: Hardware not initialized", "ERROR");
+    qDebug() << "[AS1170Debug] enableLED1() called";
+
+    if (!as1170_controller_) {
+        qDebug() << "[AS1170Debug] ERROR: as1170_controller_ is null";
+        QMessageBox::warning(this, "Error", "AS1170 Controller not available");
         return;
     }
 
-    int current_ma = led1_current_slider_ ? static_cast<int>(led1_current_slider_->getValue()) : 100;
+    if (!hardware_initialized_.load()) {
+        qDebug() << "[AS1170Debug] ERROR: hardware not initialized";
+        QMessageBox::warning(this, "Error", "Hardware not initialized");
+        return;
+    }
+
+    // Use slider from .ui file instead of custom widget
+    int current_ma = ui->led1_current_slider ? ui->led1_current_slider->value() : 100;
+    qDebug() << "[AS1170Debug] LED1 current setting:" << current_ma << "mA";
 
     if (!validateCurrentSetting(current_ma)) {
+        qDebug() << "[AS1170Debug] Current validation failed";
         return;
     }
 
+    qDebug() << "[AS1170Debug] Attempting to enable LED1 at" << current_ma << "mA";
     if (as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, current_ma)) {
-        logDiagnosticMessage(QString("LED1 enabled at %1mA").arg(current_ma), "SUCCESS");
-        if (led1_status_) {
-            led1_status_->setStatus("Enabled", StatusDisplay::StatusType::SUCCESS);
+        qDebug() << "[AS1170Debug] LED1 enabled successfully";
+        QMessageBox::information(this, "Success", QString("LED1 enabled at %1mA").arg(current_ma));
+
+        // Update current indicator
+        if (led1_current_indicator_) {
+            led1_current_indicator_->setValue(current_ma);
         }
     } else {
-        logDiagnosticMessage("Failed to enable LED1", "ERROR");
-        if (led1_status_) {
-            led1_status_->setStatus("Enable Failed", StatusDisplay::StatusType::ERROR);
-        }
+        qDebug() << "[AS1170Debug] Failed to enable LED1";
+        QMessageBox::warning(this, "Error", "Failed to enable LED1");
     }
 }
 
 void AS1170DebugDialog::disableLED1() {
+    qDebug() << "[AS1170Debug] disableLED1() called";
+
     if (!as1170_controller_) {
+        qDebug() << "[AS1170Debug] ERROR: as1170_controller_ is null";
+        QMessageBox::warning(this, "Error", "AS1170 Controller not available");
         return;
     }
 
+    qDebug() << "[AS1170Debug] Attempting to disable LED1";
     if (as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false)) {
-        logDiagnosticMessage("LED1 disabled", "INFO");
-        if (led1_status_) {
-            led1_status_->setStatus("Disabled", StatusDisplay::StatusType::INFO);
+        qDebug() << "[AS1170Debug] LED1 disabled successfully";
+        QMessageBox::information(this, "Success", "LED1 disabled");
+
+        // Update current indicator
+        if (led1_current_indicator_) {
+            led1_current_indicator_->setValue(0);
         }
     } else {
-        logDiagnosticMessage("Failed to disable LED1", "ERROR");
+        qDebug() << "[AS1170Debug] Failed to disable LED1";
+        QMessageBox::warning(this, "Error", "Failed to disable LED1");
     }
 }
 
 void AS1170DebugDialog::enableLED2() {
-    if (!as1170_controller_ || !hardware_initialized_.load()) {
-        logDiagnosticMessage("Cannot enable LED2: Hardware not initialized", "ERROR");
+    qDebug() << "[AS1170Debug] enableLED2() called";
+
+    if (!as1170_controller_) {
+        qDebug() << "[AS1170Debug] ERROR: as1170_controller_ is null";
+        QMessageBox::warning(this, "Error", "AS1170 Controller not available");
         return;
     }
 
-    int current_ma = led2_current_slider_ ? static_cast<int>(led2_current_slider_->getValue()) : 100;
+    if (!hardware_initialized_.load()) {
+        qDebug() << "[AS1170Debug] ERROR: hardware not initialized";
+        QMessageBox::warning(this, "Error", "Hardware not initialized");
+        return;
+    }
+
+    // Use slider from .ui file instead of custom widget
+    int current_ma = ui->led2_current_slider ? ui->led2_current_slider->value() : 100;
+    qDebug() << "[AS1170Debug] LED2 current setting:" << current_ma << "mA";
 
     if (!validateCurrentSetting(current_ma)) {
+        qDebug() << "[AS1170Debug] Current validation failed";
         return;
     }
 
+    qDebug() << "[AS1170Debug] Attempting to enable LED2 at" << current_ma << "mA";
     if (as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, current_ma)) {
-        logDiagnosticMessage(QString("LED2 enabled at %1mA").arg(current_ma), "SUCCESS");
-        if (led2_status_) {
-            led2_status_->setStatus("Enabled", StatusDisplay::StatusType::SUCCESS);
+        qDebug() << "[AS1170Debug] LED2 enabled successfully";
+        QMessageBox::information(this, "Success", QString("LED2 enabled at %1mA").arg(current_ma));
+
+        // Update current indicator
+        if (led2_current_indicator_) {
+            led2_current_indicator_->setValue(current_ma);
         }
     } else {
-        logDiagnosticMessage("Failed to enable LED2", "ERROR");
-        if (led2_status_) {
-            led2_status_->setStatus("Enable Failed", StatusDisplay::StatusType::ERROR);
-        }
+        qDebug() << "[AS1170Debug] Failed to enable LED2";
+        QMessageBox::warning(this, "Error", "Failed to enable LED2");
     }
 }
 
 void AS1170DebugDialog::disableLED2() {
+    qDebug() << "[AS1170Debug] disableLED2() called";
+
     if (!as1170_controller_) {
+        qDebug() << "[AS1170Debug] ERROR: as1170_controller_ is null";
+        QMessageBox::warning(this, "Error", "AS1170 Controller not available");
         return;
     }
 
+    qDebug() << "[AS1170Debug] Attempting to disable LED2";
     if (as1170_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false)) {
-        logDiagnosticMessage("LED2 disabled", "INFO");
-        if (led2_status_) {
-            led2_status_->setStatus("Disabled", StatusDisplay::StatusType::INFO);
+        qDebug() << "[AS1170Debug] LED2 disabled successfully";
+        QMessageBox::information(this, "Success", "LED2 disabled");
+
+        // Update current indicator
+        if (led2_current_indicator_) {
+            led2_current_indicator_->setValue(0);
         }
     } else {
-        logDiagnosticMessage("Failed to disable LED2", "ERROR");
+        qDebug() << "[AS1170Debug] Failed to disable LED2";
+        QMessageBox::warning(this, "Error", "Failed to disable LED2");
     }
 }
 
 void AS1170DebugDialog::setLED1Current(int current_ma) {
+    qDebug() << "[AS1170Debug] setLED1Current() called with" << current_ma << "mA";
+
     if (!validateCurrentSetting(current_ma)) {
+        qDebug() << "[AS1170Debug] Current validation failed for LED1";
         return;
     }
 
     if (as1170_controller_ && as1170_controller_->setLEDCurrent(hardware::AS1170Controller::LEDChannel::LED1, current_ma)) {
-        logDiagnosticMessage(QString("LED1 current set to %1mA").arg(current_ma), "INFO");
+        qDebug() << "[AS1170Debug] LED1 current set to" << current_ma << "mA successfully";
+
+        // Update current indicator
+        if (led1_current_indicator_) {
+            led1_current_indicator_->setValue(current_ma);
+        }
+    } else {
+        qDebug() << "[AS1170Debug] Failed to set LED1 current to" << current_ma << "mA";
     }
 }
 
 void AS1170DebugDialog::setLED2Current(int current_ma) {
+    qDebug() << "[AS1170Debug] setLED2Current() called with" << current_ma << "mA";
+
     if (!validateCurrentSetting(current_ma)) {
+        qDebug() << "[AS1170Debug] Current validation failed for LED2";
         return;
     }
 
     if (as1170_controller_ && as1170_controller_->setLEDCurrent(hardware::AS1170Controller::LEDChannel::LED2, current_ma)) {
-        logDiagnosticMessage(QString("LED2 current set to %1mA").arg(current_ma), "INFO");
+        qDebug() << "[AS1170Debug] LED2 current set to" << current_ma << "mA successfully";
+
+        // Update current indicator
+        if (led2_current_indicator_) {
+            led2_current_indicator_->setValue(current_ma);
+        }
+    } else {
+        qDebug() << "[AS1170Debug] Failed to set LED2 current to" << current_ma << "mA";
     }
 }
 

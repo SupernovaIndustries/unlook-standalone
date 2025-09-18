@@ -8,6 +8,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 #include <thread>
 #include <algorithm>
 #include <cmath>
@@ -55,8 +56,10 @@ bool AS1170Controller::initialize(const AS1170Config& config) {
     //     emergency_shutdown_.store(false);
 
     core::Logger::getInstance().info("Initializing AS1170 LED Controller...");
+    std::stringstream hex_stream;
+    hex_stream << std::hex << config_.i2c_address;
     core::Logger::getInstance().info("FINAL Hardware Configuration: I2C Bus " + std::to_string(config_.i2c_bus) +
-                      ", Address 0x" + std::to_string(config_.i2c_address) +
+                      ", Address 0x" + hex_stream.str() +
                       ", GPIO " + std::to_string(config_.strobe_gpio) +
                       ", Current " + std::to_string(config_.target_current_ma) + "mA");
 
@@ -94,7 +97,18 @@ bool AS1170Controller::initialize(const AS1170Config& config) {
     // updateStatus(); // Keep commented to avoid widget access
 
     core::Logger::getInstance().info("AS1170 Controller initialized successfully");
-    core::Logger::getInstance().info("Detected device at I2C address 0x" + std::to_string(status_.detected_address));
+
+    // Debug: Check status_.detected_address value before display
+    uint8_t addr_copy;
+    {
+        std::lock_guard<std::mutex> status_lock(status_mutex_);
+        addr_copy = status_.detected_address;
+    }
+    core::Logger::getInstance().info("DEBUG: status_.detected_address value is: " + std::to_string(addr_copy));
+
+    std::stringstream detected_hex;
+    detected_hex << std::hex << (int)addr_copy;
+    core::Logger::getInstance().info("Detected device at I2C address 0x" + detected_hex.str());
 
     return true;
 }
@@ -155,10 +169,39 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
     if (channel == LEDChannel::LED1 || channel == LEDChannel::BOTH) {
         uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
+
+        core::Logger::getInstance().info("LED1 Debug: enable=" + std::string(enable ? "true" : "false") +
+                                        ", current_ma=" + std::to_string(current_ma) +
+                                        ", current_reg=0x" + std::to_string(current_reg));
+
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, current_reg)) {
-            core::Logger::getInstance().error("Failed to set LED1 current");
+            core::Logger::getInstance().error("Failed to set LED1 current register");
             success = false;
         } else {
+            core::Logger::getInstance().info("LED1 current register written successfully");
+
+            // READBACK VERIFICATION - verify the register was actually written
+            uint8_t readback_value;
+            if (readRegister(AS1170Register::CURRENT_SET_LED1, readback_value)) {
+                core::Logger::getInstance().info("LED1 register readback: 0x" + std::to_string(readback_value) +
+                                                " (expected: 0x" + std::to_string(current_reg) + ")");
+                if (readback_value != current_reg) {
+                    core::Logger::getInstance().error("LED1 register readback MISMATCH!");
+                }
+            } else {
+                core::Logger::getInstance().error("Failed to read back LED1 register");
+            }
+
+            // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
+            if (enable && current_reg > 0) {
+                core::Logger::getInstance().info("LED1 activated in TORCH MODE (continuous operation)");
+
+                // DEBUG: Read ALL AS1170 registers to check for faults
+                debugAllRegisters("LED1 ENABLED");
+            } else if (!enable) {
+                core::Logger::getInstance().info("LED1 deactivated in TORCH MODE");
+            }
+
             std::lock_guard<std::mutex> status_lock(status_mutex_);
             status_.led1_current_ma = enable ? current_ma : 0;
         }
@@ -166,10 +209,39 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
     if (channel == LEDChannel::LED2 || channel == LEDChannel::BOTH) {
         uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
+
+        core::Logger::getInstance().info("LED2 Debug: enable=" + std::string(enable ? "true" : "false") +
+                                        ", current_ma=" + std::to_string(current_ma) +
+                                        ", current_reg=0x" + std::to_string(current_reg));
+
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, current_reg)) {
-            core::Logger::getInstance().error("Failed to set LED2 current");
+            core::Logger::getInstance().error("Failed to set LED2 current register");
             success = false;
         } else {
+            core::Logger::getInstance().info("LED2 current register written successfully");
+
+            // READBACK VERIFICATION - verify the register was actually written
+            uint8_t readback_value;
+            if (readRegister(AS1170Register::CURRENT_SET_LED2, readback_value)) {
+                core::Logger::getInstance().info("LED2 register readback: 0x" + std::to_string(readback_value) +
+                                                " (expected: 0x" + std::to_string(current_reg) + ")");
+                if (readback_value != current_reg) {
+                    core::Logger::getInstance().error("LED2 register readback MISMATCH!");
+                }
+            } else {
+                core::Logger::getInstance().error("Failed to read back LED2 register");
+            }
+
+            // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
+            if (enable && current_reg > 0) {
+                core::Logger::getInstance().info("LED2 activated in TORCH MODE (continuous operation)");
+
+                // DEBUG: Read ALL AS1170 registers to check for faults
+                debugAllRegisters("LED2 ENABLED");
+            } else if (!enable) {
+                core::Logger::getInstance().info("LED2 deactivated in TORCH MODE");
+            }
+
             std::lock_guard<std::mutex> status_lock(status_mutex_);
             status_.led2_current_ma = enable ? current_ma : 0;
         }
@@ -258,18 +330,40 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
         return false;
     }
 
-    // Non-blocking strobe generation using GPIO
+    // Generate GPIO strobe pulse for LED activation
+    core::Logger::getInstance().info("GPIO strobe: Setting GPIO " + std::to_string(config_.strobe_gpio) + " HIGH");
     if (!setGPIOValue(config_.strobe_gpio, true)) {
         core::Logger::getInstance().error("Failed to set strobe GPIO high");
         return false;
     }
 
-    // Use high-precision sleep for microsecond timing
-    //     std::this_thread::sleep_for(std::chrono::microseconds(duration_us));
+    // Verify GPIO is actually HIGH
+    std::string gpio_value_path = "/sys/class/gpio/gpio" + std::to_string(config_.strobe_gpio) + "/value";
+    std::ifstream value_file(gpio_value_path);
+    if (value_file.is_open()) {
+        std::string value;
+        std::getline(value_file, value);
+        core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) + " physical state: " + value);
+        value_file.close();
+    }
 
+    // Use high-precision sleep for microsecond timing
+    core::Logger::getInstance().info("GPIO strobe: Holding HIGH for " + std::to_string(duration_us) + " microseconds");
+    std::this_thread::sleep_for(std::chrono::microseconds(duration_us));
+
+    core::Logger::getInstance().info("GPIO strobe: Setting GPIO " + std::to_string(config_.strobe_gpio) + " LOW");
     if (!setGPIOValue(config_.strobe_gpio, false)) {
         core::Logger::getInstance().error("Failed to set strobe GPIO low");
         return false;
+    }
+
+    // Verify GPIO is actually LOW
+    value_file.open(gpio_value_path);
+    if (value_file.is_open()) {
+        std::string value;
+        std::getline(value_file, value);
+        core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) + " final state: " + value);
+        value_file.close();
     }
 
     // Update strobe counter
@@ -281,6 +375,38 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
     // TODO: Fix formatted logging
     core::Logger::getInstance().debug("Strobe pulse generated");
     return true;
+}
+
+void AS1170Controller::debugAllRegisters(const std::string& context) {
+    core::Logger::getInstance().info("=== AS1170 REGISTER DUMP [" + context + "] ===");
+
+    // All AS1170 registers according to manufacturer specs
+    std::vector<std::pair<std::string, uint8_t>> registers = {
+        {"UNUSED_0x00", 0x00},
+        {"LED1_CURRENT", 0x01},  // CORRECTED: LED1 is register 0x01
+        {"LED2_CURRENT", 0x02},  // CORRECTED: LED2 is register 0x02
+        {"PRIVACY_CURRENT", 0x03},
+        {"PRIVACY_PWM", 0x04},
+        {"FLASH_TIMER", 0x05},
+        {"CONTROL", 0x06},
+        {"STROBE_SIGNALLING", 0x07},
+        {"FAULT_STATUS", 0x08}  // IMPORTANT: Check for hardware faults
+    };
+
+    for (const auto& reg : registers) {
+        uint8_t value;
+        if (readRegister(static_cast<AS1170Register>(reg.second), value)) {
+            std::stringstream hex_val;
+            hex_val << "0x" << std::hex << std::setfill('0') << std::setw(2) << (int)value;
+            core::Logger::getInstance().info("  " + reg.first + " (0x" +
+                                           std::to_string(reg.second) + "): " + hex_val.str());
+        } else {
+            core::Logger::getInstance().error("  " + reg.first + " (0x" +
+                                            std::to_string(reg.second) + "): READ FAILED");
+        }
+    }
+
+    core::Logger::getInstance().info("=== END REGISTER DUMP ===");
 }
 
 void AS1170Controller::emergencyShutdown() {
@@ -474,9 +600,11 @@ bool AS1170Controller::detectI2CAddress() {
                     std::lock_guard<std::mutex> status_lock(status_mutex_);
                     status_.detected_address = addr;
                 }
-                // TODO: Fix formatted logging
-                core::Logger::getInstance().info("AS1170 detected at I2C address");
-                // Original params: addr, device_id
+                // Debug: Log the detected address immediately
+                std::stringstream debug_hex;
+                debug_hex << std::hex << addr;
+                core::Logger::getInstance().info("AS1170 detected at I2C address 0x" + debug_hex.str());
+                core::Logger::getInstance().info("Status detected_address set to: " + std::to_string(addr));
                 return true;
             }
         }
@@ -486,11 +614,11 @@ bool AS1170Controller::detectI2CAddress() {
 }
 
 bool AS1170Controller::configureAS1170Registers() {
-    core::Logger::getInstance().info("Configuring AS1170 registers following OSRAM sequence (250mA adaptation)");
+    core::Logger::getInstance().info("Configuring AS1170 registers for TORCH MODE (250mA adaptation)");
 
     // Following exact OSRAM initialization sequence with 250mA adaptation
 
-    // 1. Configure strobe signalling (Reg.0x07): level sensitive, external strobe enabled
+    // 1. Configure strobe signalling (Reg.0x07): not needed for TORCH MODE but set for compatibility
     if (!writeRegisterWithRetry(AS1170Register::STROBE_SIGNALLING, 0xC0)) {
         core::Logger::getInstance().error("Failed to configure strobe signalling");
         return false;
@@ -516,10 +644,61 @@ bool AS1170Controller::configureAS1170Registers() {
         return false;
     }
 
-    // 5. Configure control register (Reg.0x06): flash mode, out_on=1, auto_strobe=1
-    // 0x1b = mode=11 (flash mode) + out_on=1 + auto_strobe=1
-    if (!writeRegisterWithRetry(AS1170Register::CONTROL, 0x1B)) {
-        core::Logger::getInstance().error("Failed to configure control register");
+    // 5. Configure control register (Reg.0x06): Set TORCH MODE for continuous LED operation
+    core::Logger::getInstance().info("Reading current AS1170 control register state");
+
+    uint8_t current_control;
+    if (!readRegister(AS1170Register::CONTROL, current_control)) {
+        core::Logger::getInstance().error("Failed to read current control register state");
+        return false;
+    }
+
+    std::stringstream current_hex;
+    current_hex << "0x" << std::hex << (int)current_control;
+    core::Logger::getInstance().info("Current control register value: " + current_hex.str());
+
+    // Configure for TORCH mode (continuous LED operation) per specifiche produttore
+    // TORCH MODE: 0x1A = mode=10 (TORCH) + out_on=1 + auto_strobe=1 per specifiche AS1170
+    uint8_t target_control = 0x1A;  // 0x1A = 00011010 = mode=10 (TORCH) + out_on=1 + auto_strobe=1
+
+    std::stringstream target_hex;
+    target_hex << "0x" << std::hex << (int)target_control;
+    core::Logger::getInstance().info("Target control register value: " + target_hex.str());
+
+    // Try writing the control register
+    bool control_written = false;
+    for (int attempt = 0; attempt < 3 && !control_written; attempt++) {
+        core::Logger::getInstance().info("Control register write attempt " + std::to_string(attempt + 1));
+
+        if (writeRegisterWithRetry(AS1170Register::CONTROL, target_control)) {
+            // Wait for register to settle
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+            // Verify the write
+            uint8_t control_readback;
+            if (readRegister(AS1170Register::CONTROL, control_readback)) {
+                std::stringstream readback_hex;
+                readback_hex << "0x" << std::hex << (int)control_readback;
+                core::Logger::getInstance().info("Control register readback: " + readback_hex.str() +
+                    " (target: " + target_hex.str() + ")");
+
+                // Check if control register matches target (0x1A for TORCH mode)
+                if (control_readback == target_control) {  // Exact match required
+                    control_written = true;
+                    core::Logger::getInstance().info("Control register configured successfully for TORCH MODE");
+                } else {
+                    core::Logger::getInstance().warning("Control register critical bits not set correctly, retrying...");
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+            } else {
+                core::Logger::getInstance().error("Failed to read back control register");
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+    }
+
+    if (!control_written) {
+        core::Logger::getInstance().error("Failed to configure control register after 3 attempts");
         return false;
     }
 
@@ -527,7 +706,7 @@ bool AS1170Controller::configureAS1170Registers() {
         std::lock_guard<std::mutex> status_lock(status_mutex_);
         status_.led1_current_ma = config_.target_current_ma;
         status_.led2_current_ma = config_.target_current_ma;
-        status_.current_mode = FlashMode::FLASH_MODE;
+        status_.current_mode = FlashMode::TORCH_MODE;  // Updated to TORCH_MODE for continuous operation
     }
 
     core::Logger::getInstance().info("AS1170 registers configured successfully");
@@ -635,11 +814,21 @@ bool AS1170Controller::exportGPIO(uint32_t gpio) {
     }
 
     export_file << gpio;
-    //     export_file.close();
+    export_file.close();
 
-    // Wait for GPIO to be exported
-    //     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Wait for GPIO to be exported (critical for timing)
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+    // Verify that GPIO was exported successfully
+    std::string gpio_path = "/sys/class/gpio/gpio" + std::to_string(gpio);
+    std::ifstream test_file(gpio_path + "/value");
+    if (!test_file.is_open()) {
+        core::Logger::getInstance().error("GPIO " + std::to_string(gpio) + " export failed - GPIO path not created");
+        return false;
+    }
+    test_file.close();
+
+    core::Logger::getInstance().info("GPIO " + std::to_string(gpio) + " exported successfully");
     return true;
 }
 
@@ -655,17 +844,21 @@ void AS1170Controller::unexportGPIO(uint32_t gpio) {
 
 bool AS1170Controller::setGPIODirection(uint32_t gpio, const std::string& direction) {
     std::string direction_path = "/sys/class/gpio/gpio" + std::to_string(gpio) + "/direction";
-    std::ofstream direction_file(direction_path);
 
+    core::Logger::getInstance().info("Setting GPIO " + std::to_string(gpio) + " direction to: " + direction);
+    core::Logger::getInstance().info("Direction file path: " + direction_path);
+
+    std::ofstream direction_file(direction_path);
     if (!direction_file.is_open()) {
-        // TODO: Fix formatted logging
-        core::Logger::getInstance().error("Failed to open GPIO direction file");
+        core::Logger::getInstance().error("Failed to open GPIO direction file: " + direction_path);
+        core::Logger::getInstance().error("Check if GPIO " + std::to_string(gpio) + " was exported successfully");
         return false;
     }
 
     direction_file << direction;
-    //     direction_file.close();
+    direction_file.close();
 
+    core::Logger::getInstance().info("GPIO " + std::to_string(gpio) + " direction set to " + direction + " successfully");
     return true;
 }
 
@@ -786,7 +979,7 @@ bool AS1170Controller::validateConfiguration(const AS1170Config& config) const {
         return false;
     }
 
-    if (config.strobe_gpio > 40) { // Raspberry Pi GPIO limit
+    if (config.strobe_gpio > 1024) { // CM5 has GPIO up to 588, allow margin for future expansion
         // TODO: Fix formatted logging
         core::Logger::getInstance().error("Invalid strobe GPIO");
         return false;
