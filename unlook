@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Unlook 3D Scanner Launcher Script
+# This script sets up the correct library paths and launches the scanner GUI
+
+# Get the directory where this script is located (resolve symlinks)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# Set up library paths
+export LD_LIBRARY_PATH="$SCRIPT_DIR/build/src:$SCRIPT_DIR/build/src/pointcloud:$SCRIPT_DIR/third-party/libcamera-sync-fix/build/src/libcamera:$SCRIPT_DIR/third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH"
+
+# Launch the scanner GUI
+exec "$SCRIPT_DIR/build/src/gui/unlook_scanner" "$@"

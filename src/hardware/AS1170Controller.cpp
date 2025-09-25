@@ -170,9 +170,11 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
     if (channel == LEDChannel::LED1 || channel == LEDChannel::BOTH) {
         uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
 
+        std::stringstream hex_ss;
+        hex_ss << std::hex << (int)current_reg;
         core::Logger::getInstance().info("LED1 Debug: enable=" + std::string(enable ? "true" : "false") +
                                         ", current_ma=" + std::to_string(current_ma) +
-                                        ", current_reg=0x" + std::to_string(current_reg));
+                                        ", current_reg=0x" + hex_ss.str());
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED1 current register");
@@ -183,8 +185,11 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
             // READBACK VERIFICATION - verify the register was actually written
             uint8_t readback_value;
             if (readRegister(AS1170Register::CURRENT_SET_LED1, readback_value)) {
-                core::Logger::getInstance().info("LED1 register readback: 0x" + std::to_string(readback_value) +
-                                                " (expected: 0x" + std::to_string(current_reg) + ")");
+                std::stringstream readback_hex, expected_hex;
+                readback_hex << std::hex << (int)readback_value;
+                expected_hex << std::hex << (int)current_reg;
+                core::Logger::getInstance().info("LED1 register readback: 0x" + readback_hex.str() +
+                                                " (expected: 0x" + expected_hex.str() + ")");
                 if (readback_value != current_reg) {
                     core::Logger::getInstance().error("LED1 register readback MISMATCH!");
                 }
@@ -210,9 +215,11 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
     if (channel == LEDChannel::LED2 || channel == LEDChannel::BOTH) {
         uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
 
+        std::stringstream hex_ss2;
+        hex_ss2 << std::hex << (int)current_reg;
         core::Logger::getInstance().info("LED2 Debug: enable=" + std::string(enable ? "true" : "false") +
                                         ", current_ma=" + std::to_string(current_ma) +
-                                        ", current_reg=0x" + std::to_string(current_reg));
+                                        ", current_reg=0x" + hex_ss2.str());
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED2 current register");
@@ -223,8 +230,11 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
             // READBACK VERIFICATION - verify the register was actually written
             uint8_t readback_value;
             if (readRegister(AS1170Register::CURRENT_SET_LED2, readback_value)) {
-                core::Logger::getInstance().info("LED2 register readback: 0x" + std::to_string(readback_value) +
-                                                " (expected: 0x" + std::to_string(current_reg) + ")");
+                std::stringstream readback_hex2, expected_hex2;
+                readback_hex2 << std::hex << (int)readback_value;
+                expected_hex2 << std::hex << (int)current_reg;
+                core::Logger::getInstance().info("LED2 register readback: 0x" + readback_hex2.str() +
+                                                " (expected: 0x" + expected_hex2.str() + ")");
                 if (readback_value != current_reg) {
                     core::Logger::getInstance().error("LED2 register readback MISMATCH!");
                 }

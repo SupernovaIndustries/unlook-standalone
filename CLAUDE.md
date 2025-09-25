@@ -141,8 +141,11 @@ make -j$(nproc)
 # Set up library path for third-party libcamera-sync (REQUIRED)
 export LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH
 
-# Main scanner GUI (correct executable name)
-./build/src/gui/unlook_scanner
+# Main scanner GUI (use unlook command from anywhere)
+unlook
+
+# Legacy method (if needed)
+LD_LIBRARY_PATH=build/src:build/src/pointcloud:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./build/src/gui/unlook_scanner
 
 # Example applications
 ./build/examples/camera_example
@@ -150,9 +153,6 @@ export LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcam
 
 # Hardware sync validation
 ./build/test_hardware_sync_new
-
-# Alternative: Run with LD_LIBRARY_PATH inline
-LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./build/src/gui/unlook_scanner
 ```
 
 ### Testing and Validation
