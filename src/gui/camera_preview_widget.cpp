@@ -292,6 +292,14 @@ void CameraPreviewWidget::onLEDTestOn() {
 
     if (led1_success && led2_success) {
         qDebug() << "[CameraPreview] Both LEDs activated successfully at 150mA";
+
+        // Sync sliders to reflect LED state (150mA)
+        ui->led1_current_slider->setValue(150);
+        ui->led2_current_slider->setValue(150);
+        ui->led1_current_value->setText("150 mA");
+        ui->led2_current_value->setText("150 mA");
+
+        qDebug() << "[CameraPreview] LED sliders synchronized to 150mA";
     } else {
         qWarning() << "[CameraPreview] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
     }
@@ -313,6 +321,14 @@ void CameraPreviewWidget::onLEDTestOff() {
 
     if (led1_success && led2_success) {
         qDebug() << "[CameraPreview] Both LEDs deactivated successfully";
+
+        // Sync sliders to reflect LED state (0mA = OFF)
+        ui->led1_current_slider->setValue(0);
+        ui->led2_current_slider->setValue(0);
+        ui->led1_current_value->setText("0 mA");
+        ui->led2_current_value->setText("0 mA");
+
+        qDebug() << "[CameraPreview] LED sliders synchronized to 0mA";
     } else {
         qWarning() << "[CameraPreview] LED deactivation failed - LED1:" << led1_success << "LED2:" << led2_success;
     }
