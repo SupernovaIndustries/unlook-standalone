@@ -122,8 +122,14 @@ void CameraPreviewWidget::connectSignals() {
     // Connect LED test buttons
     connect(ui->led_test_on_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOn);
     connect(ui->led_test_off_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOff);
-    
-    // Connect sliders
+
+    // Connect LED current sliders
+    connect(ui->led1_current_slider, QOverload<int>::of(&QSlider::valueChanged),
+            this, &CameraPreviewWidget::onLED1CurrentChanged);
+    connect(ui->led2_current_slider, QOverload<int>::of(&QSlider::valueChanged),
+            this, &CameraPreviewWidget::onLED2CurrentChanged);
+
+    // Connect camera sliders
     connect(ui->left_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
             this, [this](int value) { onLeftExposureChanged(static_cast<double>(value)); });
     connect(ui->right_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
@@ -309,6 +315,80 @@ void CameraPreviewWidget::onLEDTestOff() {
         qDebug() << "[CameraPreview] Both LEDs deactivated successfully";
     } else {
         qWarning() << "[CameraPreview] LED deactivation failed - LED1:" << led1_success << "LED2:" << led2_success;
+    }
+}
+
+void CameraPreviewWidget::onLED1CurrentChanged(int current_ma) {
+    qDebug() << "[CameraPreview] LED1 current changed to:" << current_ma << "mA";
+
+    // Update the display label
+    ui->led1_current_value->setText(QString::number(current_ma) + " mA");
+
+    // Get AS1170 controller instance
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    if (!as1170) {
+        qWarning() << "[CameraPreview] Failed to get AS1170 controller instance";
+        return;
+    }
+
+    // Initialize if not already done
+    if (!as1170->isInitialized()) {
+        qDebug() << "[CameraPreview] Initializing AS1170 controller";
+        if (!as1170->initialize()) {
+            qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
+            return;
+        }
+    }
+
+    // Set LED1 current (0 = OFF, >0 = ON at specified current)
+    bool success;
+    if (current_ma == 0) {
+        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+    } else {
+        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, current_ma);
+    }
+
+    if (success) {
+        qDebug() << "[CameraPreview] LED1 current updated successfully to" << current_ma << "mA";
+    } else {
+        qWarning() << "[CameraPreview] Failed to update LED1 current to" << current_ma << "mA";
+    }
+}
+
+void CameraPreviewWidget::onLED2CurrentChanged(int current_ma) {
+    qDebug() << "[CameraPreview] LED2 current changed to:" << current_ma << "mA";
+
+    // Update the display label
+    ui->led2_current_value->setText(QString::number(current_ma) + " mA");
+
+    // Get AS1170 controller instance
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    if (!as1170) {
+        qWarning() << "[CameraPreview] Failed to get AS1170 controller instance";
+        return;
+    }
+
+    // Initialize if not already done
+    if (!as1170->isInitialized()) {
+        qDebug() << "[CameraPreview] Initializing AS1170 controller";
+        if (!as1170->initialize()) {
+            qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
+            return;
+        }
+    }
+
+    // Set LED2 current (0 = OFF, >0 = ON at specified current)
+    bool success;
+    if (current_ma == 0) {
+        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+    } else {
+        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, current_ma);
+    }
+
+    if (success) {
+        qDebug() << "[CameraPreview] LED2 current updated successfully to" << current_ma << "mA";
+    } else {
+        qWarning() << "[CameraPreview] Failed to update LED2 current to" << current_ma << "mA";
     }
 }
 

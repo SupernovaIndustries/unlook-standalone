@@ -135,6 +135,16 @@ private slots:
     void onLEDTestOff();
 
     /**
+     * @brief Handle LED1 current change
+     */
+    void onLED1CurrentChanged(int current_ma);
+
+    /**
+     * @brief Handle LED2 current change
+     */
+    void onLED2CurrentChanged(int current_ma);
+
+    /**
      * @brief Swap left and right camera displays
      */
     void swapCameraDisplays();
