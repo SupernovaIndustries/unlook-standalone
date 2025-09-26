@@ -571,10 +571,11 @@ void DepthTestWidget::updateDepthVisualization(const core::DepthResult& result) 
     cv::Mat visualization = depth_processor_->visualizeDepthMap(result.depth_map, min_depth, max_depth);
 
     if (!visualization.empty() && ui && ui->depth_image_label) {
-        // Ensure we have a valid 3-channel 8-bit image for Qt
+        // CRITICAL FIX: Create deep copy to prevent dangling pointer in Qt rendering
+        // The original shallow copy caused segfault when visualization went out of scope
         cv::Mat display_image;
         if (visualization.channels() == 3 && visualization.type() == CV_8UC3) {
-            display_image = visualization;
+            display_image = visualization.clone();  // Deep copy for safety
         } else {
             // Convert to proper format if needed
             if (visualization.channels() == 1) {

@@ -460,3 +460,4 @@ libcamera-hello --list-cameras
 - Performance tests validate real-time requirements
 - Memory tests use AddressSanitizer and Valgrind
 - tu buildi, io testo con LD_LIBRARY_PATH=src:../third-party/libcamera-sync-fix/build/src/libcamera:../third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LIBRARY_PATH ./src/gui/unlook_scanner , non cercare di runnare tu il test gui
+- per favore non testare piu con (QT_QPA_PLATFORM=offscreen LD_LIBRARY_PATH=build/src:build/src/pointcloud:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build… e (LD_LIBRARY_PATH=build/src:build/src/pointcloud:third-party/libcamera-sync-fix/build/src/libcamera:third-party/libcamera-sync-fix/build/src/libcamera/base:$LD_LI…
