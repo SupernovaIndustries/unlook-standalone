@@ -1000,20 +1000,36 @@ void DepthTestWidget::initializePointCloudProcessor() {
 #ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     pointcloud_processor_ = std::make_unique<pointcloud::PointCloudProcessor>();
 
-    // Initialize with depth processor
-    if (depth_processor_) {
-        std::shared_ptr<stereo::DepthProcessor> stereo_depth_processor;
-        // Note: This might need adaptation depending on the depth processor structure
-        // For now, we'll create a shared pointer wrapper or modify the API
+    // CRITICAL FIX: Create and initialize a stereo::DepthProcessor with same calibration
+    // The pointcloud processor requires a stereo::DepthProcessor, not api::DepthProcessor
+    try {
+        // Create shared CalibrationManager with same calibration file
+        auto calibration_manager = std::make_shared<calibration::CalibrationManager>();
+        std::string calibration_file = "/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml";
 
-        // TODO: Implement proper depth processor sharing or initialization
-        if (pointcloud_processor_->initialize(stereo_depth_processor)) {
-            qDebug() << "[DepthWidget] Point cloud processor initialized successfully";
+        if (calibration_manager->loadCalibration(calibration_file)) {
+            qDebug() << "[DepthWidget] CalibrationManager loaded successfully for point cloud processor";
+
+            // Create and initialize stereo::DepthProcessor
+            auto stereo_depth_processor = std::make_shared<stereo::DepthProcessor>();
+
+            if (stereo_depth_processor->initialize(calibration_manager)) {
+                qDebug() << "[DepthWidget] stereo::DepthProcessor initialized successfully";
+
+                // Now initialize pointcloud processor with proper stereo depth processor
+                if (pointcloud_processor_->initialize(stereo_depth_processor)) {
+                    qDebug() << "[DepthWidget] Point cloud processor initialized successfully with stereo depth processor";
+                } else {
+                    qWarning() << "[DepthWidget] Failed to initialize point cloud processor with stereo depth processor";
+                }
+            } else {
+                qWarning() << "[DepthWidget] Failed to initialize stereo::DepthProcessor";
+            }
         } else {
-            qWarning() << "[DepthWidget] Failed to initialize point cloud processor";
+            qWarning() << "[DepthWidget] Failed to load calibration for point cloud processor";
         }
-    } else {
-        qWarning() << "[DepthWidget] Cannot initialize point cloud processor - depth processor not available";
+    } catch (const std::exception& e) {
+        qWarning() << "[DepthWidget] Exception during point cloud processor initialization:" << e.what();
     }
 
     // Initialize default configurations
