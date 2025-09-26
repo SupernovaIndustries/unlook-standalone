@@ -248,6 +248,7 @@ private:
     core::DepthResult current_result_;
     bool processing_active_;
     bool live_preview_active_;
+    std::string current_debug_directory_;  // Store current debug directory for image loading
 
 #ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     // Point cloud export configuration

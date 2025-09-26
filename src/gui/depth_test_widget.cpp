@@ -29,6 +29,7 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     , camera_system_(camera_system)
     , processing_active_(false)
     , live_preview_active_(false)
+    , current_debug_directory_("")
 {
     // Setup UI from .ui file
     ui->setupUi(this);
@@ -228,7 +229,9 @@ void DepthTestWidget::captureStereoFrame() {
             // AUTO DEBUG SAVE: Save debug images for every depth processing
             saveDebugImages(frame_pair, result);
             
+            qDebug() << "[DepthWidget] About to call onDepthResultReceived()";
             onDepthResultReceived(result);
+            qDebug() << "[DepthWidget] onDepthResultReceived() completed successfully";
         } else {
             qDebug() << "[DepthWidget] ERROR: depth_processor_ is null";
             capture_status_->setStatus("Depth processor not initialized", StatusDisplay::StatusType::ERROR);
@@ -238,6 +241,7 @@ void DepthTestWidget::captureStereoFrame() {
         capture_status_->setStatus("Failed to capture synchronized frames", StatusDisplay::StatusType::ERROR);
     }
 
+    qDebug() << "[DepthWidget] Starting LED deactivation sequence";
     // SYNCHRONIZATION STEP 2: Deactivate LEDs after capture and processing complete
     qDebug() << "[DepthWidget] Deactivating AS1170 LEDs after depth capture";
     if (as1170) {
@@ -551,63 +555,49 @@ QWidget* DepthTestWidget::createVisualizationPanel() {
 void DepthTestWidget::updateDepthVisualization(const core::DepthResult& result) {
     if (result.depth_map.empty()) return;
 
-    // Use dynamic depth range instead of fixed 0-1000mm to prevent visualization issues
+    // Use actual depth range from data without artificial limitations
     double min_depth, max_depth;
     cv::minMaxLoc(result.depth_map, &min_depth, &max_depth, nullptr, nullptr, result.depth_map > 0);
 
-    // Ensure valid depth range for face scanning (use robust range if available)
+    // Only fallback if completely invalid data
     if (min_depth <= 0 || max_depth <= 0 || min_depth >= max_depth) {
-        // Fallback to face scanning range for invalid depth maps
-        min_depth = 400.0;   // Minimum face distance
-        max_depth = 4000.0;  // Maximum face distance (4m limit)
-    } else if (max_depth > 4000.0) {
-        // Clamp visualization to 4m maximum
-        max_depth = 4000.0;
+        min_depth = 0.0;
+        max_depth = 1000.0;  // Generic fallback only for invalid data
     }
 
     qDebug() << "[DepthWidget] Dynamic depth visualization range:" << min_depth << "-" << max_depth << "mm";
 
-    // Create visualization using depth processor with dynamic range
-    cv::Mat visualization = depth_processor_->visualizeDepthMap(result.depth_map, min_depth, max_depth);
+    // ROBUST SOLUTION: Load saved debug image instead of Qt-OpenCV direct integration
+    // This eliminates all memory management issues that were causing segfaults
+    if (ui && ui->depth_image_label && !current_debug_directory_.empty()) {
+        QString debug_image_path = QString::fromStdString(current_debug_directory_) + "/11_depth_lidar_like.png";
 
-    if (!visualization.empty() && ui && ui->depth_image_label) {
-        // CRITICAL FIX: Create deep copy to prevent dangling pointer in Qt rendering
-        // The original shallow copy caused segfault when visualization went out of scope
-        cv::Mat display_image;
-        if (visualization.channels() == 3 && visualization.type() == CV_8UC3) {
-            display_image = visualization.clone();  // Deep copy for safety
-        } else {
-            // Convert to proper format if needed
-            if (visualization.channels() == 1) {
-                cv::cvtColor(visualization, display_image, cv::COLOR_GRAY2BGR);
-            } else {
-                visualization.convertTo(display_image, CV_8UC3);
-            }
-        }
+        qDebug() << "[DepthWidget] Loading debug image for display:" << debug_image_path;
 
-        // Safety check for image data and dimensions
-        if (display_image.data && display_image.cols > 0 && display_image.rows > 0) {
-            // CRITICAL FIX: Create QImage with deep copy to prevent dangling pointer segfault
-            // The original code caused segfault because QImage held a pointer to cv::Mat data
-            // that was deallocated when display_image went out of scope
-            QImage qimg(display_image.data, display_image.cols, display_image.rows,
-                       display_image.step, QImage::Format_RGB888);
+        // Load the saved debug image directly - no memory management issues
+        QPixmap depth_pixmap(debug_image_path);
 
-            // Make a deep copy to ensure data ownership and prevent segfault
-            QImage qimg_copy = qimg.copy();
-            QPixmap pixmap = QPixmap::fromImage(qimg_copy.rgbSwapped());
-
+        if (!depth_pixmap.isNull()) {
             // Scale to fit display using .ui label with size validation
             QSize label_size = ui->depth_image_label->size();
             if (label_size.width() > 0 && label_size.height() > 0) {
-                pixmap = pixmap.scaled(label_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-                ui->depth_image_label->setPixmap(pixmap);
+                QPixmap scaled_pixmap = depth_pixmap.scaled(label_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                ui->depth_image_label->setPixmap(scaled_pixmap);
                 ui->depth_image_label->setText(""); // Clear the "No Depth Data" text
+                qDebug() << "[DepthWidget] Debug image loaded and displayed successfully";
+            } else {
+                qWarning() << "[DepthWidget] Invalid label size for display";
             }
+        } else {
+            qWarning() << "[DepthWidget] Failed to load debug image:" << debug_image_path;
+
+            // Fallback: Show placeholder text
+            ui->depth_image_label->setText("Debug image not available");
         }
     } else {
-        qWarning() << "[DepthWidget] Visualization failed: empty=" << visualization.empty()
-                   << "ui_valid=" << (ui != nullptr) << "label_valid=" << (ui && ui->depth_image_label != nullptr);
+        qWarning() << "[DepthWidget] Cannot display: ui_valid=" << (ui != nullptr)
+                   << "label_valid=" << (ui && ui->depth_image_label != nullptr)
+                   << "debug_dir_available=" << !current_debug_directory_.empty();
     }
 }
 
@@ -703,7 +693,10 @@ void DepthTestWidget::saveDebugImages(const core::StereoFramePair& frame_pair, c
     try {
         // Create debug directory with timestamp
         std::string debug_dir = createDebugDirectory();
-        
+
+        // Store debug directory for visualization access
+        current_debug_directory_ = debug_dir;
+
         qDebug() << "[DepthWidget] Saving debug images to:" << QString::fromStdString(debug_dir);
         
         // Save original stereo frames
@@ -1154,78 +1147,124 @@ QWidget* DepthTestWidget::createPointCloudExportPanel() {
 }
 
 void DepthTestWidget::exportPointCloud() {
+    qDebug() << "[DepthWidget] ===== PLY EXPORT START =====";
 #ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    qDebug() << "[DepthWidget] PLY export disabled at compile time";
     QMessageBox::information(this, "Feature Disabled",
         "Point cloud export is temporarily disabled during system build optimization.");
     return;
 #endif
+
+    qDebug() << "[DepthWidget] Checking current depth result...";
     if (!current_result_.success || current_result_.depth_map.empty()) {
+        qDebug() << "[DepthWidget] PLY export failed: No valid depth map";
         QMessageBox::warning(this, "Export Error", "No valid depth map available for point cloud export.");
         return;
     }
 
+    qDebug() << "[DepthWidget] Checking pointcloud processor...";
     if (!pointcloud_processor_) {
+        qDebug() << "[DepthWidget] PLY export failed: Point cloud processor not initialized";
         QMessageBox::warning(this, "Export Error", "Point cloud processor not initialized.");
         return;
     }
 
-    export_status_->setStatus("Generating point cloud...", widgets::StatusDisplay::StatusType::PROCESSING);
-    export_status_->startPulsing();
+    qDebug() << "[DepthWidget] Setting export status...";
+
+    // CRITICAL FIX: Check if export_status_ exists before using it
+    if (export_status_) {
+        export_status_->setStatus("Generating point cloud...", widgets::StatusDisplay::StatusType::PROCESSING);
+        export_status_->startPulsing();
+        qDebug() << "[DepthWidget] Export status set successfully";
+    } else {
+        qDebug() << "[DepthWidget] WARNING: export_status_ is null, continuing without status updates";
+    }
 
     try {
+        qDebug() << "[DepthWidget] Entering PLY export try block...";
+
         // Export format is already updated via updateExportFormat() slot
         // when the UI combo box selection changes
 
+        qDebug() << "[DepthWidget] Creating PointCloud object...";
         // Generate point cloud from current depth result
         stereo::PointCloud pointCloud;
+        qDebug() << "[DepthWidget] PointCloud object created successfully";
 
+        qDebug() << "[DepthWidget] Creating color image from depth map...";
         // Create a safe color image if not available (prevents crashes)
         cv::Mat colorImage;
         if (current_result_.depth_map.rows > 0 && current_result_.depth_map.cols > 0) {
+            qDebug() << "[DepthWidget] Depth map valid, normalizing...";
             // Generate grayscale color from depth for visualization
             cv::Mat depthGray;
             cv::normalize(current_result_.depth_map, depthGray, 0, 255, cv::NORM_MINMAX, CV_8U, current_result_.depth_map > 0);
+            qDebug() << "[DepthWidget] Depth normalized, converting to BGR...";
             cv::cvtColor(depthGray, colorImage, cv::COLOR_GRAY2BGR);
+            qDebug() << "[DepthWidget] Color image created successfully";
+        } else {
+            qDebug() << "[DepthWidget] Invalid depth map dimensions, using empty color image";
         }
 
+        qDebug() << "[DepthWidget] Calling pointcloud_processor_->generatePointCloud()...";
         if (!pointcloud_processor_->generatePointCloud(
                 current_result_.depth_map,
                 colorImage,
                 pointCloud,
                 pointcloud_filter_config_)) {
 
+            qDebug() << "[DepthWidget] generatePointCloud() FAILED";
             QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            qDebug() << "[DepthWidget] Point cloud error:" << error;
             QMessageBox::critical(this, "Point Cloud Generation Failed", error);
-            export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
-            export_status_->stopPulsing();
+            if (export_status_) {
+                export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+                export_status_->stopPulsing();
+            }
             return;
         }
+        qDebug() << "[DepthWidget] generatePointCloud() completed successfully";
 
+        qDebug() << "[DepthWidget] Assessing point cloud quality...";
         // Assess point cloud quality
         pointcloud::PointCloudQuality quality;
         if (pointcloud_processor_->assessPointCloudQuality(pointCloud, quality)) {
+            qDebug() << "[DepthWidget] Point cloud quality assessment completed:";
             qDebug() << "[DepthWidget] Point cloud quality:"
                      << "Valid points:" << quality.validPoints
                      << "Density:" << quality.density
                      << "Valid ratio:" << (quality.validRatio * 100) << "%";
+        } else {
+            qDebug() << "[DepthWidget] Point cloud quality assessment FAILED";
         }
 
+        qDebug() << "[DepthWidget] Generating filename...";
         // Generate filename with timestamp
         QString filename = QString("unlook_pointcloud_%1%2")
             .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"))
             .arg(QString::fromStdString(export_format_.getFileExtension()));
+        qDebug() << "[DepthWidget] Filename generated:" << filename;
 
+        qDebug() << "[DepthWidget] Creating export directory...";
         QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
         QDir().mkpath(QDir::homePath() + "/unlook_exports");
+        qDebug() << "[DepthWidget] Export directory created, filepath:" << filepath;
 
+        qDebug() << "[DepthWidget] Setting export timestamp...";
         // Set timestamp for export
         export_format_.timestamp = QDateTime::currentDateTime().toString().toStdString();
+        qDebug() << "[DepthWidget] Export timestamp set";
 
+        qDebug() << "[DepthWidget] Calling pointcloud_processor_->exportPointCloud()...";
         // Export point cloud
         if (pointcloud_processor_->exportPointCloud(pointCloud, filepath.toStdString(), export_format_)) {
-            export_status_->setStatus(QString("Point cloud exported: %1").arg(filename),
-                                     widgets::StatusDisplay::StatusType::SUCCESS);
+            qDebug() << "[DepthWidget] exportPointCloud() completed successfully";
+            if (export_status_) {
+                export_status_->setStatus(QString("Point cloud exported: %1").arg(filename),
+                                         widgets::StatusDisplay::StatusType::SUCCESS);
+            }
 
+            qDebug() << "[DepthWidget] Creating success message...";
             // Show success message with quality info
             QString message = QString("Point cloud exported successfully!\n\n"
                                      "File: %1\n"
@@ -1239,19 +1278,32 @@ void DepthTestWidget::exportPointCloud() {
                 .arg(quality.validRatio * 100, 0, 'f', 1)
                 .arg(quality.density, 0, 'f', 2);
 
+            qDebug() << "[DepthWidget] Showing success message box...";
             QMessageBox::information(this, "Export Successful", message);
+            qDebug() << "[DepthWidget] Success message box completed";
         } else {
+            qDebug() << "[DepthWidget] exportPointCloud() FAILED";
             QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            qDebug() << "[DepthWidget] Export error:" << error;
             QMessageBox::critical(this, "Export Failed", QString("Failed to export point cloud: %1").arg(error));
-            export_status_->setStatus("Point cloud export failed", widgets::StatusDisplay::StatusType::ERROR);
+            if (export_status_) {
+                export_status_->setStatus("Point cloud export failed", widgets::StatusDisplay::StatusType::ERROR);
+            }
         }
 
     } catch (const std::exception& e) {
+        qDebug() << "[DepthWidget] EXCEPTION during PLY export:" << e.what();
         QMessageBox::critical(this, "Export Failed", QString("Exception during export: %1").arg(e.what()));
-        export_status_->setStatus("Export failed with exception", widgets::StatusDisplay::StatusType::ERROR);
+        if (export_status_) {
+            export_status_->setStatus("Export failed with exception", widgets::StatusDisplay::StatusType::ERROR);
+        }
     }
 
-    export_status_->stopPulsing();
+    qDebug() << "[DepthWidget] Stopping export status pulsing...";
+    if (export_status_) {
+        export_status_->stopPulsing();
+    }
+    qDebug() << "[DepthWidget] ===== PLY EXPORT END =====";
 }
 
 void DepthTestWidget::exportMesh() {
@@ -1374,26 +1426,36 @@ void DepthTestWidget::configureMeshGeneration() {
 
 // Update the onDepthResultReceived method to enable export buttons
 void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
+    qDebug() << "[DepthWidget] onDepthResultReceived() START";
     current_result_ = result;
 
     if (result.success) {
+        qDebug() << "[DepthWidget] Setting processing status...";
         processing_status_->setStatus(
             QString("Depth processing completed in %1ms").arg(result.processing_time_ms, 0, 'f', 1),
             widgets::StatusDisplay::StatusType::SUCCESS
         );
 
+        qDebug() << "[DepthWidget] About to call updateDepthVisualization()";
         updateDepthVisualization(result);
+        qDebug() << "[DepthWidget] updateDepthVisualization() completed";
 
-        // Update quality metrics
-        QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
-            .arg(result.coverage_ratio * 100, 0, 'f', 1)
-            .arg(result.mean_depth, 0, 'f', 2)
-            .arg(result.std_depth, 0, 'f', 2);
-        quality_metrics_label_->setText(metrics);
+        // Update quality metrics with safety check
+        if (quality_metrics_label_) {
+            QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
+                .arg(result.coverage_ratio * 100, 0, 'f', 1)
+                .arg(result.mean_depth, 0, 'f', 2)
+                .arg(result.std_depth, 0, 'f', 2);
+            quality_metrics_label_->setText(metrics);
+        }
 
-        // Enable point cloud export button from UI
-        ui->save_pointcloud_button->setEnabled(true);
-        ui->export_format_combo->setEnabled(true);
+        // Enable point cloud export button from UI with safety checks
+        if (ui && ui->save_pointcloud_button) {
+            ui->save_pointcloud_button->setEnabled(true);
+        }
+        if (ui && ui->export_format_combo) {
+            ui->export_format_combo->setEnabled(true);
+        }
 
         // Enable legacy point cloud export buttons (if they exist)
         if (export_pointcloud_button_) {
@@ -1403,13 +1465,19 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
             export_mesh_button_->setEnabled(true);
         }
 
+        qDebug() << "[DepthWidget] All UI updates completed successfully";
+
     } else {
         processing_status_->setStatus("Depth processing failed: " + QString::fromStdString(result.error_message),
                                      widgets::StatusDisplay::StatusType::ERROR);
 
-        // Disable export buttons on failure
-        ui->save_pointcloud_button->setEnabled(false);
-        ui->export_format_combo->setEnabled(false);
+        // Disable export buttons on failure with safety checks
+        if (ui && ui->save_pointcloud_button) {
+            ui->save_pointcloud_button->setEnabled(false);
+        }
+        if (ui && ui->export_format_combo) {
+            ui->export_format_combo->setEnabled(false);
+        }
 
         if (export_pointcloud_button_) {
             export_pointcloud_button_->setEnabled(false);
@@ -1418,6 +1486,7 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
             export_mesh_button_->setEnabled(false);
         }
     }
+    qDebug() << "[DepthWidget] onDepthResultReceived() END";
 }
 
 void DepthTestWidget::onVCSELThermalEvent(bool thermal_active, float temperature_c) {

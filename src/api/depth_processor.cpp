@@ -992,14 +992,10 @@ cv::Mat DepthProcessor::visualizeDepthMap(const cv::Mat& depth_map, double min_d
         return visualization;
     }
 
-    // Validate input parameters to prevent segfault
+    // Validate input parameters - only fix completely invalid ranges
     if (min_depth <= 0 || max_depth <= 0 || max_depth <= min_depth) {
-        // Use safe fallback range for face scanning (4m limit)
-        min_depth = 400.0;
-        max_depth = 4000.0;
-    } else {
-        // Clamp to 4m maximum for face scanning
-        max_depth = std::min(max_depth, 4000.0);
+        min_depth = 0.0;
+        max_depth = 1000.0;  // Generic fallback only for invalid data
     }
 
     // SAFE NORMALIZATION: Use actual parameters, not hardcoded ranges

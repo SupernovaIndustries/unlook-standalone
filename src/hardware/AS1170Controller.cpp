@@ -172,15 +172,13 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
         std::stringstream hex_ss;
         hex_ss << std::hex << (int)current_reg;
-        core::Logger::getInstance().info("LED1 Debug: enable=" + std::string(enable ? "true" : "false") +
-                                        ", current_ma=" + std::to_string(current_ma) +
-                                        ", current_reg=0x" + hex_ss.str());
+        // LED1 Debug logging disabled to reduce spam
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED1 current register");
             success = false;
         } else {
-            core::Logger::getInstance().info("LED1 current register written successfully");
+            // LED1 register write success (logging disabled)
 
             // READBACK VERIFICATION - verify the register was actually written
             uint8_t readback_value;
@@ -188,8 +186,7 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
                 std::stringstream readback_hex, expected_hex;
                 readback_hex << std::hex << (int)readback_value;
                 expected_hex << std::hex << (int)current_reg;
-                core::Logger::getInstance().info("LED1 register readback: 0x" + readback_hex.str() +
-                                                " (expected: 0x" + expected_hex.str() + ")");
+                // LED1 readback logging disabled
                 if (readback_value != current_reg) {
                     core::Logger::getInstance().error("LED1 register readback MISMATCH!");
                 }
@@ -199,12 +196,9 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
             // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
             if (enable && current_reg > 0) {
-                core::Logger::getInstance().info("LED1 activated in TORCH MODE (continuous operation)");
-
-                // DEBUG: Read ALL AS1170 registers to check for faults
-                debugAllRegisters("LED1 ENABLED");
+                // LED1 TORCH MODE activated (logging disabled)
             } else if (!enable) {
-                core::Logger::getInstance().info("LED1 deactivated in TORCH MODE");
+                // LED1 TORCH MODE deactivated (logging disabled)
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
@@ -217,15 +211,13 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
         std::stringstream hex_ss2;
         hex_ss2 << std::hex << (int)current_reg;
-        core::Logger::getInstance().info("LED2 Debug: enable=" + std::string(enable ? "true" : "false") +
-                                        ", current_ma=" + std::to_string(current_ma) +
-                                        ", current_reg=0x" + hex_ss2.str());
+        // LED2 Debug logging disabled to reduce spam
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED2 current register");
             success = false;
         } else {
-            core::Logger::getInstance().info("LED2 current register written successfully");
+            // LED2 register write success (logging disabled)
 
             // READBACK VERIFICATION - verify the register was actually written
             uint8_t readback_value;
@@ -233,8 +225,7 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
                 std::stringstream readback_hex2, expected_hex2;
                 readback_hex2 << std::hex << (int)readback_value;
                 expected_hex2 << std::hex << (int)current_reg;
-                core::Logger::getInstance().info("LED2 register readback: 0x" + readback_hex2.str() +
-                                                " (expected: 0x" + expected_hex2.str() + ")");
+                // LED2 readback logging disabled
                 if (readback_value != current_reg) {
                     core::Logger::getInstance().error("LED2 register readback MISMATCH!");
                 }
@@ -244,12 +235,9 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
             // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
             if (enable && current_reg > 0) {
-                core::Logger::getInstance().info("LED2 activated in TORCH MODE (continuous operation)");
-
-                // DEBUG: Read ALL AS1170 registers to check for faults
-                debugAllRegisters("LED2 ENABLED");
+                // LED2 TORCH MODE activated (logging disabled)
             } else if (!enable) {
-                core::Logger::getInstance().info("LED2 deactivated in TORCH MODE");
+                // LED2 TORCH MODE deactivated (logging disabled)
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
@@ -720,10 +708,7 @@ bool AS1170Controller::configureAS1170Registers() {
     }
 
     core::Logger::getInstance().info("AS1170 registers configured successfully");
-    // TODO: Fix formatted logging
-    core::Logger::getInstance().info("LED1 current configured");
-    // TODO: Fix formatted logging
-    core::Logger::getInstance().info("LED2 current configured");
+    // LED current configuration completed (logging disabled)
 
     return true;
 }
