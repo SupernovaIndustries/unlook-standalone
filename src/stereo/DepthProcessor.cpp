@@ -298,13 +298,16 @@ bool DepthProcessor::generatePointCloud(const cv::Mat& depthMap,
             float fy = calibData.cameraMatrixLeft.at<double>(1, 1);
             float cx = calibData.cameraMatrixLeft.at<double>(0, 2);
             float cy = calibData.cameraMatrixLeft.at<double>(1, 2);
-            
+
             cv::Mat colorResized;
-            if (!colorImage.empty() && colorImage.size() != depthMap.size()) {
-                cv::resize(colorImage, colorResized, depthMap.size());
-            } else {
-                colorResized = colorImage;
+            if (!colorImage.empty()) {
+                if (colorImage.size() != depthMap.size()) {
+                    cv::resize(colorImage, colorResized, depthMap.size());
+                } else {
+                    colorResized = colorImage;
+                }
             }
+            // colorResized will be empty if colorImage was empty, which is safely handled below
             
             for (int y = 0; y < depthMap.rows; ++y) {
                 for (int x = 0; x < depthMap.cols; ++x) {

@@ -550,20 +550,58 @@ QWidget* DepthTestWidget::createVisualizationPanel() {
 
 void DepthTestWidget::updateDepthVisualization(const core::DepthResult& result) {
     if (result.depth_map.empty()) return;
-    
-    // Create visualization using depth processor
-    cv::Mat visualization = depth_processor_->visualizeDepthMap(result.depth_map, 0.0, 1000.0);
-    
-    if (!visualization.empty()) {
-        // Convert to QPixmap
-        QImage qimg(visualization.data, visualization.cols, visualization.rows, 
-                   visualization.step, QImage::Format_BGR888);
-        QPixmap pixmap = QPixmap::fromImage(qimg.rgbSwapped());
-        
-        // Scale to fit display using .ui label
-        pixmap = pixmap.scaled(ui->depth_image_label->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        ui->depth_image_label->setPixmap(pixmap);
-        ui->depth_image_label->setText(""); // Clear the "No Depth Data" text
+
+    // Use dynamic depth range instead of fixed 0-1000mm to prevent visualization issues
+    double min_depth, max_depth;
+    cv::minMaxLoc(result.depth_map, &min_depth, &max_depth, nullptr, nullptr, result.depth_map > 0);
+
+    // Ensure valid depth range for face scanning (use robust range if available)
+    if (min_depth <= 0 || max_depth <= 0 || min_depth >= max_depth) {
+        // Fallback to face scanning range for invalid depth maps
+        min_depth = 400.0;   // Minimum face distance
+        max_depth = 4000.0;  // Maximum face distance (4m limit)
+    } else if (max_depth > 4000.0) {
+        // Clamp visualization to 4m maximum
+        max_depth = 4000.0;
+    }
+
+    qDebug() << "[DepthWidget] Dynamic depth visualization range:" << min_depth << "-" << max_depth << "mm";
+
+    // Create visualization using depth processor with dynamic range
+    cv::Mat visualization = depth_processor_->visualizeDepthMap(result.depth_map, min_depth, max_depth);
+
+    if (!visualization.empty() && ui && ui->depth_image_label) {
+        // Ensure we have a valid 3-channel 8-bit image for Qt
+        cv::Mat display_image;
+        if (visualization.channels() == 3 && visualization.type() == CV_8UC3) {
+            display_image = visualization;
+        } else {
+            // Convert to proper format if needed
+            if (visualization.channels() == 1) {
+                cv::cvtColor(visualization, display_image, cv::COLOR_GRAY2BGR);
+            } else {
+                visualization.convertTo(display_image, CV_8UC3);
+            }
+        }
+
+        // Safety check for image data and dimensions
+        if (display_image.data && display_image.cols > 0 && display_image.rows > 0) {
+            // Convert to QPixmap with proper format
+            QImage qimg(display_image.data, display_image.cols, display_image.rows,
+                       display_image.step, QImage::Format_RGB888);
+            QPixmap pixmap = QPixmap::fromImage(qimg.rgbSwapped());
+
+            // Scale to fit display using .ui label with size validation
+            QSize label_size = ui->depth_image_label->size();
+            if (label_size.width() > 0 && label_size.height() > 0) {
+                pixmap = pixmap.scaled(label_size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                ui->depth_image_label->setPixmap(pixmap);
+                ui->depth_image_label->setText(""); // Clear the "No Depth Data" text
+            }
+        }
+    } else {
+        qWarning() << "[DepthWidget] Visualization failed: empty=" << visualization.empty()
+                   << "ui_valid=" << (ui != nullptr) << "label_valid=" << (ui && ui->depth_image_label != nullptr);
     }
 }
 
@@ -719,7 +757,7 @@ void DepthTestWidget::saveDebugImages(const core::StereoFramePair& frame_pair, c
             
             // Remove invalid values (NaN, inf)
             cv::Mat mask;
-            cv::inRange(depth_clean, 1.0, 10000.0, mask); // Valid depth range: 1-10000mm
+            cv::inRange(depth_clean, 1.0, 4000.0, mask); // Valid depth range: 1-4000mm (4m limit for face scanning)
             depth_clean.setTo(0, ~mask);
             
             // Calculate robust statistics (ignore zeros)
@@ -1133,7 +1171,15 @@ void DepthTestWidget::exportPointCloud() {
 
         // Generate point cloud from current depth result
         stereo::PointCloud pointCloud;
-        cv::Mat colorImage; // TODO: Get the actual color image from current capture
+
+        // Create a safe color image if not available (prevents crashes)
+        cv::Mat colorImage;
+        if (current_result_.depth_map.rows > 0 && current_result_.depth_map.cols > 0) {
+            // Generate grayscale color from depth for visualization
+            cv::Mat depthGray;
+            cv::normalize(current_result_.depth_map, depthGray, 0, 255, cv::NORM_MINMAX, CV_8U, current_result_.depth_map > 0);
+            cv::cvtColor(depthGray, colorImage, cv::COLOR_GRAY2BGR);
+        }
 
         if (!pointcloud_processor_->generatePointCloud(
                 current_result_.depth_map,

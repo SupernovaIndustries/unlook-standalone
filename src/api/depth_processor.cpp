@@ -91,12 +91,16 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
     params.speckleRange = config.speckle_range > 0 ? config.speckle_range : 2; // Strict speckle filtering
     params.mode = config.mode;  // SGBM mode
     
-    // Log optimal parameters for debugging
-    std::cout << "[API DepthProcessor] CALIBRATION-OPTIMIZED parameters:" << std::endl;
-    std::cout << "[API DepthProcessor]   Baseline: " << BASELINE_MM << "mm" << std::endl;
-    std::cout << "[API DepthProcessor]   Focal: " << FOCAL_PIXELS << "px" << std::endl;
-    std::cout << "[API DepthProcessor]   Disparity range: " << params.minDisparity << " - " << (params.minDisparity + params.numDisparities) << std::endl;
-    std::cout << "[API DepthProcessor]   Depth range: " << MIN_DEPTH_MM << " - " << MAX_DEPTH_MM << "mm" << std::endl;
+    // Log optimal parameters for debugging (reduced to prevent spam)
+    static bool logged_once = false;
+    if (!logged_once) {
+        std::cout << "[API DepthProcessor] CALIBRATION-OPTIMIZED parameters:" << std::endl;
+        std::cout << "[API DepthProcessor]   Baseline: " << BASELINE_MM << "mm" << std::endl;
+        std::cout << "[API DepthProcessor]   Focal: " << FOCAL_PIXELS << "px" << std::endl;
+        std::cout << "[API DepthProcessor]   Disparity range: " << params.minDisparity << " - " << (params.minDisparity + params.numDisparities) << std::endl;
+        std::cout << "[API DepthProcessor]   Depth range: " << MIN_DEPTH_MM << " - " << MAX_DEPTH_MM << "mm" << std::endl;
+        logged_once = true;
+    }
     
     // Map algorithm to mode
     switch (config.algorithm) {
@@ -983,64 +987,88 @@ core::DepthResult DepthProcessor::processSync(const core::StereoFramePair& frame
 // Visualize depth map as colored image
 cv::Mat DepthProcessor::visualizeDepthMap(const cv::Mat& depth_map, double min_depth, double max_depth) const {
     cv::Mat visualization;
-    
+
     if (depth_map.empty()) {
         return visualization;
     }
-    
-    // ROBUST NORMALIZATION: Same logic as debug saving to fix line artifacts
+
+    // Validate input parameters to prevent segfault
+    if (min_depth <= 0 || max_depth <= 0 || max_depth <= min_depth) {
+        // Use safe fallback range for face scanning (4m limit)
+        min_depth = 400.0;
+        max_depth = 4000.0;
+    } else {
+        // Clamp to 4m maximum for face scanning
+        max_depth = std::min(max_depth, 4000.0);
+    }
+
+    // SAFE NORMALIZATION: Use actual parameters, not hardcoded ranges
     cv::Mat depth_clean = depth_map.clone();
-    
-    // Remove invalid values (NaN, inf, extreme values)
+
+    // Remove invalid values using ACTUAL parameter range (not hardcoded!)
     cv::Mat finite_mask;
     cv::compare(depth_clean, depth_clean, finite_mask, cv::CMP_EQ); // NaN check
     cv::Mat range_mask;
-    cv::inRange(depth_clean, 1.0, 10000.0, range_mask); // Valid depth range
+    cv::inRange(depth_clean, min_depth, max_depth, range_mask); // Use actual parameters!
     cv::Mat valid_mask;
     cv::bitwise_and(finite_mask, range_mask, valid_mask);
-    
+
     // Set invalid pixels to 0 for exclusion
     depth_clean.setTo(0, ~valid_mask);
-    
+
     if (cv::countNonZero(valid_mask) < 100) {
         // Not enough valid pixels - return black image
         visualization = cv::Mat::zeros(depth_map.size(), CV_8UC3);
         return visualization;
     }
+
+    // Use the actual parameter range for visualization (no more ignored parameters!)
+    double range_span = max_depth - min_depth;
+    if (range_span <= 0.1) {
+        // Avoid division by zero
+        visualization = cv::Mat::zeros(depth_map.size(), CV_8UC3);
+        return visualization;
+    }
+
+    // SAFE conversion with parameter-based range
+    cv::Mat depth_8bit;
+    double scale = 255.0 / range_span;
+    double offset = -min_depth * scale;
+
+    // Safety check for conversion parameters
+    if (scale <= 0 || scale > 10000 || std::abs(offset) > 1000000) {
+        // Invalid conversion parameters - fallback to normalize
+        cv::normalize(depth_clean, depth_8bit, 0, 255, cv::NORM_MINMAX, CV_8U, valid_mask);
+    } else {
+        depth_clean.convertTo(depth_8bit, CV_8U, scale, offset);
+    }
     
-    // Calculate robust statistics on valid pixels only
+    // Increase contrast by 1.25x for better face depth visualization (SAFE)
+    cv::Mat depth_contrast;
+    depth_8bit.convertTo(depth_contrast, CV_8U, 1.25, -32); // Force CV_8U type to prevent segfault
+
+    // Safe clamping to valid 8-bit range
+    cv::threshold(depth_contrast, depth_contrast, 255, 255, cv::THRESH_TRUNC); // Clamp max to 255
+    cv::max(depth_contrast, cv::Scalar(0), depth_contrast);                    // Clamp min to 0
+
+    // Apply color map with safe input
+    cv::applyColorMap(depth_contrast, visualization, cv::COLORMAP_JET);
+
+    // ENHANCED: Set invalid pixels to dark blue instead of black (NO MORE BLACK LINES!)
+    cv::Mat invalid_mask = (depth_map == 0) | (~valid_mask);
+    visualization.setTo(cv::Scalar(100, 0, 0), invalid_mask);  // Dark blue instead of black
+
+    // Calculate actual statistics for logging
     cv::Scalar mean_scalar, std_scalar;
     cv::meanStdDev(depth_clean, mean_scalar, std_scalar, valid_mask);
     double mean_depth = mean_scalar[0];
     double std_depth = std_scalar[0];
-    
-    // ROBUST: Use 3-sigma range for normalization (remove extreme outliers)
-    double robust_min = std::max(1.0, mean_depth - 2.0 * std_depth);
-    double robust_max = std::min(8000.0, mean_depth + 2.0 * std_depth);
-    
-    // Ensure reasonable range
-    if (robust_max <= robust_min) {
-        robust_min = mean_depth - 100.0;
-        robust_max = mean_depth + 100.0;
-    }
-    
-    // Apply robust normalization
-    cv::Mat depth_8bit;
-    double scale = 255.0 / (robust_max - robust_min);
-    depth_clean.convertTo(depth_8bit, CV_8U, scale, -robust_min * scale);
-    
-    // Apply color map
-    cv::applyColorMap(depth_8bit, visualization, cv::COLORMAP_JET);
-    
-    // ENHANCED: Set invalid pixels to dark blue instead of black (NO MORE BLACK LINES!)
-    cv::Mat invalid_mask = (depth_map == 0) | (~valid_mask);
-    visualization.setTo(cv::Scalar(100, 0, 0), invalid_mask);  // Dark blue instead of black
-    
-    std::cout << "[API DepthProcessor] Visualization - Valid pixels: " << cv::countNonZero(valid_mask) 
+
+    std::cout << "[API DepthProcessor] Visualization - Valid pixels: " << cv::countNonZero(valid_mask)
               << "/" << depth_map.total() << " (" << (100.0 * cv::countNonZero(valid_mask) / depth_map.total()) << "%)"
-              << ", Robust range: " << robust_min << "-" << robust_max << "mm"
+              << ", Robust range: " << min_depth << "-" << max_depth << "mm"
               << ", Mean±Std: " << mean_depth << "±" << std_depth << "mm" << std::endl;
-    
+
     return visualization;
 }
 
