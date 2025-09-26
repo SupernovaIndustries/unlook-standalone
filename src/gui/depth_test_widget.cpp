@@ -586,10 +586,15 @@ void DepthTestWidget::updateDepthVisualization(const core::DepthResult& result) 
 
         // Safety check for image data and dimensions
         if (display_image.data && display_image.cols > 0 && display_image.rows > 0) {
-            // Convert to QPixmap with proper format
+            // CRITICAL FIX: Create QImage with deep copy to prevent dangling pointer segfault
+            // The original code caused segfault because QImage held a pointer to cv::Mat data
+            // that was deallocated when display_image went out of scope
             QImage qimg(display_image.data, display_image.cols, display_image.rows,
                        display_image.step, QImage::Format_RGB888);
-            QPixmap pixmap = QPixmap::fromImage(qimg.rgbSwapped());
+
+            // Make a deep copy to ensure data ownership and prevent segfault
+            QImage qimg_copy = qimg.copy();
+            QPixmap pixmap = QPixmap::fromImage(qimg_copy.rgbSwapped());
 
             // Scale to fit display using .ui label with size validation
             QSize label_size = ui->depth_image_label->size();
@@ -629,12 +634,13 @@ void DepthTestWidget::updateStereoFrameImages(const core::CameraFrame& leftFrame
         cv::Mat left_rgb;
         cv::cvtColor(leftFrame.image, left_rgb, cv::COLOR_BGRA2RGB);
         
-        // Create QImage from cv::Mat
+        // Create QImage from cv::Mat with deep copy to prevent segfault
         QImage left_qimg(left_rgb.data, left_rgb.cols, left_rgb.rows, left_rgb.step, QImage::Format_RGB888);
-        
+        QImage left_qimg_copy = left_qimg.copy(); // Deep copy for safety
+
         // Scale to preview size
         QSize preview_size = QSize(300, 225); // Fixed size like CameraPreviewWidget
-        QPixmap left_pixmap = QPixmap::fromImage(left_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+        QPixmap left_pixmap = QPixmap::fromImage(left_qimg_copy.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
         
         // Set pixmap - only showing left camera in UI now
         ui->left_image_label->setPixmap(left_pixmap);

@@ -532,14 +532,18 @@ void CameraPreviewWidget::updatePreviewImages(const core::CameraFrame& left_fram
     cv::cvtColor(left_frame.image, left_rgb, cv::COLOR_BGRA2RGB);
     cv::cvtColor(right_frame.image, right_rgb, cv::COLOR_BGRA2RGB);
     
-    // Create QImage from cv::Mat
+    // Create QImage from cv::Mat with deep copy to prevent segfault
     QImage left_qimg(left_rgb.data, left_rgb.cols, left_rgb.rows, left_rgb.step, QImage::Format_RGB888);
     QImage right_qimg(right_rgb.data, right_rgb.cols, right_rgb.rows, right_rgb.step, QImage::Format_RGB888);
-    
+
+    // Make deep copies for safety before scaling
+    QImage left_qimg_copy = left_qimg.copy();
+    QImage right_qimg_copy = right_qimg.copy();
+
     // Scale to preview size
     QSize preview_size = getResponsivePreviewSize();
-    QPixmap left_pixmap = QPixmap::fromImage(left_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    QPixmap right_pixmap = QPixmap::fromImage(right_qimg.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    QPixmap left_pixmap = QPixmap::fromImage(left_qimg_copy.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    QPixmap right_pixmap = QPixmap::fromImage(right_qimg_copy.scaled(preview_size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     
     // Handle camera swapping
     if (cameras_swapped_) {
