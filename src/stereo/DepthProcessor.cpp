@@ -262,7 +262,7 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
             float d = disparity.at<float>(y, x);
             float depth = depthMap.at<float>(y, x);
             
-            if (d > 0 && depth > pImpl->config.minDepthMm && depth < pImpl->config.maxDepthMm) {
+            if (d > 0 && depth >= pImpl->config.minDepthMm && depth <= pImpl->config.maxDepthMm) {
                 // Calculate local variance
                 float variance = 0;
                 int count = 0;
@@ -582,7 +582,9 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             
             // Write points
             for (const auto& point : pointCloud.points) {
-                if (point.z > pImpl->config.minDepthMm && point.z < pImpl->config.maxDepthMm) {
+                // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
                     file << point.x << " " << point.y << " " << point.z << " "
                          << (int)point.r << " " << (int)point.g << " " << (int)point.b << " "
                          << point.confidence << "\n";
@@ -601,7 +603,9 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             
             // Write simple XYZ format
             for (const auto& point : pointCloud.points) {
-                if (point.z > pImpl->config.minDepthMm && point.z < pImpl->config.maxDepthMm) {
+                // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
                     file << point.x << " " << point.y << " " << point.z << "\n";
                 }
             }
@@ -632,7 +636,9 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             
             // Write points with packed RGB
             for (const auto& point : pointCloud.points) {
-                if (point.z > pImpl->config.minDepthMm && point.z < pImpl->config.maxDepthMm) {
+                // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
                     uint32_t rgb = ((uint32_t)point.r << 16) | ((uint32_t)point.g << 8) | point.b;
                     file << point.x << " " << point.y << " " << point.z << " " << rgb << "\n";
                 }
@@ -1223,6 +1229,26 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
     std::cout << "  Camera intrinsics: fx=" << fx << ", fy=" << fy << ", cx=" << cx << ", cy=" << cy << std::endl;
     std::cout << "  CRITICAL DEBUG - Depth range config: minDepthMm=" << pImpl->config.minDepthMm
               << ", maxDepthMm=" << pImpl->config.maxDepthMm << std::endl;
+
+    // CRITICAL: Analyze input depth map to understand the data
+    double minDepth, maxDepth;
+    cv::minMaxLoc(depthMap, &minDepth, &maxDepth, nullptr, nullptr, depthMap > 0);
+    int validDepthPixels = cv::countNonZero(depthMap > 0);
+    std::cout << "  INPUT DEPTH ANALYSIS: min=" << minDepth << "mm, max=" << maxDepth << "mm, valid="
+              << validDepthPixels << "/" << (depthMap.rows * depthMap.cols)
+              << " (" << (100.0 * validDepthPixels / (depthMap.rows * depthMap.cols)) << "%)" << std::endl;
+
+    // CRITICAL WARNING: Check for configuration issues
+    if (minDepth > pImpl->config.minDepthMm && maxDepth < pImpl->config.maxDepthMm) {
+        std::cout << "  ✅ Depth data (" << minDepth << "-" << maxDepth
+                  << "mm) is WITHIN configured range (" << pImpl->config.minDepthMm
+                  << "-" << pImpl->config.maxDepthMm << "mm)" << std::endl;
+    } else {
+        std::cout << "  ⚠️ WARNING: Depth data (" << minDepth << "-" << maxDepth
+                  << "mm) may be OUTSIDE configured range (" << pImpl->config.minDepthMm
+                  << "-" << pImpl->config.maxDepthMm << "mm)" << std::endl;
+    }
+
     std::cout << "  Safety limits: timeout=" << TIMEOUT_SECONDS << "s, memory=" << MAX_MEMORY_MB << "MB" << std::endl;
     std::cout << "  Initial memory usage: " << initialMemoryMB << "MB" << std::endl;
 
@@ -1286,7 +1312,8 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                 Point3D& pt = pointCloud.points[pixelIndex];  // Direct assignment, no push_back
 
                 // Apply professional depth range validation
-                if (depth > pImpl->config.minDepthMm && depth < pImpl->config.maxDepthMm && std::isfinite(depth)) {
+                // CRITICAL: Use >= and <= for inclusive range check (industrial standard)
+                if (depth >= pImpl->config.minDepthMm && depth <= pImpl->config.maxDepthMm && std::isfinite(depth)) {
                     // Professional pinhole camera back-projection
                     // Z = depth (already in millimeters)
                     // X = (u - cx) * Z / fx
@@ -1294,6 +1321,22 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                     pt.z = depth;
                     pt.x = static_cast<float>((x - cx) * depth / fx);
                     pt.y = static_cast<float>((y - cy) * depth / fy);
+
+                    // CRITICAL DEBUG: Verify coordinates are finite after transformation
+                    if (!std::isfinite(pt.x) || !std::isfinite(pt.y) || !std::isfinite(pt.z)) {
+                        if (debugSampleCount < MAX_DEBUG_SAMPLES) {
+                            std::cout << "[DepthProcessor] COORDINATE OVERFLOW DEBUG " << debugSampleCount + 1
+                                      << ": pixel(" << x << "," << y << "), depth=" << depth << "mm"
+                                      << " -> point(" << pt.x << "," << pt.y << "," << pt.z << ") [NON-FINITE!]" << std::endl;
+                            debugSampleCount++;
+                        }
+                        // Set as invalid point
+                        pt.x = pt.y = pt.z = std::numeric_limits<float>::quiet_NaN();
+                        pt.r = pt.g = pt.b = 0;
+                        pt.confidence = 0.0f;
+                        processedPixels++;
+                        continue;
+                    }
 
                     // Add color if available
                     if (hasColor) {
@@ -1312,12 +1355,29 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                     pt.confidence = std::max(0.1f, std::min(1.0f, pt.confidence));
 
                     validPointsCount++;
+
+                    // DEBUG: Show successful point generation samples (first few)
+                    if (validPointsCount <= 5) {
+                        std::cout << "[DepthProcessor] VALID POINT " << validPointsCount
+                                  << ": pixel(" << x << "," << y << "), depth=" << depth << "mm"
+                                  << " -> point(" << pt.x << "," << pt.y << "," << pt.z << ")" << std::endl;
+                    }
                 } else {
                     // DEBUG: Show first few rejected depths to understand the problem
                     if (debugSampleCount < MAX_DEBUG_SAMPLES && depth != 0.0f) {
-                        std::cout << "[DepthProcessor] REJECTED DEPTH SAMPLE " << debugSampleCount + 1
-                                  << ": depth=" << depth << "mm (range: " << pImpl->config.minDepthMm
-                                  << "-" << pImpl->config.maxDepthMm << "mm, finite=" << std::isfinite(depth) << ")" << std::endl;
+                        std::cout << "[DepthProcessor] REJECTED DEPTH " << debugSampleCount + 1
+                                  << ": pixel(" << x << "," << y << "), depth=" << depth << "mm";
+
+                        // CRITICAL: Identify the exact rejection reason
+                        if (!std::isfinite(depth)) {
+                            std::cout << " [NON-FINITE]" << std::endl;
+                        } else if (depth < pImpl->config.minDepthMm) {
+                            std::cout << " [TOO CLOSE: < " << pImpl->config.minDepthMm << "mm]" << std::endl;
+                        } else if (depth > pImpl->config.maxDepthMm) {
+                            std::cout << " [TOO FAR: > " << pImpl->config.maxDepthMm << "mm]" << std::endl;
+                        } else {
+                            std::cout << " [UNKNOWN REASON - SHOULD BE VALID!]" << std::endl;
+                        }
                         debugSampleCount++;
                     }
 
@@ -1341,6 +1401,16 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
         std::cout << "[DepthProcessor] Pinhole point cloud generation completed safely in " << duration.count()
                   << "ms, generated " << validPointsCount << "/" << totalPixels
                   << " valid points (" << std::fixed << std::setprecision(1) << validRatio << "%)" << std::endl;
+
+        if (validPointsCount == 0) {
+            std::cout << "  ⚠️ CRITICAL: NO VALID POINTS GENERATED!" << std::endl;
+            std::cout << "  Check depth range configuration and camera intrinsics" << std::endl;
+        } else if (validRatio < 10.0) {
+            std::cout << "  ⚠️ WARNING: Very low valid point ratio (" << validRatio << "%)" << std::endl;
+        } else {
+            std::cout << "  ✅ Good point cloud generation ratio: " << validRatio << "%" << std::endl;
+        }
+
         std::cout << "  Memory usage: " << memoryUsed << "MB (peak: " << finalMemoryMB << "MB)" << std::endl;
 
         if (pImpl->progressCallback) {

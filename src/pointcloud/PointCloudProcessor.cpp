@@ -506,8 +506,37 @@ std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::generateOpe
 bool PointCloudProcessor::exportPointCloud(const stereo::PointCloud& pointCloud,
                                           const std::string& filename,
                                           const ExportFormat& exportFormat) {
+    // CRITICAL DEBUG: Analyze point cloud before export
+    std::cout << "[PointCloudProcessor] Export requested: pointCloud.size()=" << pointCloud.points.size() << std::endl;
+
     if (pointCloud.empty()) {
+        std::cout << "[PointCloudProcessor] ERROR: Point cloud is EMPTY (size=0)" << std::endl;
         pImpl->lastError = "Empty point cloud";
+        return false;
+    }
+
+    // Count valid vs invalid points
+    // FIXED: Only count points with positive depth as invalid, allow optical axis points
+    int validCount = 0, nanCount = 0, zeroDepthCount = 0;
+    for (const auto& pt : pointCloud.points) {
+        if (std::isfinite(pt.x) && std::isfinite(pt.y) && std::isfinite(pt.z)) {
+            if (pt.z > 0) {  // Valid point with positive depth
+                validCount++;
+            } else {
+                zeroDepthCount++;  // Invalid: zero or negative depth
+            }
+        } else {
+            nanCount++;  // Invalid: NaN coordinates
+        }
+    }
+
+    std::cout << "[PointCloudProcessor] Point cloud analysis: total=" << pointCloud.points.size()
+              << ", valid=" << validCount << ", NaN=" << nanCount << ", zeroDepth=" << zeroDepthCount
+              << " (" << (100.0 * validCount / pointCloud.points.size()) << "% valid)" << std::endl;
+
+    if (validCount == 0) {
+        std::cout << "[PointCloudProcessor] ERROR: No valid points in point cloud!" << std::endl;
+        pImpl->lastError = "Point cloud contains no valid 3D points";
         return false;
     }
 
@@ -562,7 +591,7 @@ bool PointCloudProcessor::assessPointCloudQuality(const stereo::PointCloud& poin
 
         for (const auto& point : pointCloud.points) {
             if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
-                point.x != 0 && point.y != 0 && point.z != 0) {
+                point.z > 0) {  // FIXED: Allow optical axis points, only require positive depth
 
                 validPoints.emplace_back(point.x, point.y, point.z);
 
@@ -645,18 +674,33 @@ void PointCloudProcessor::enableARM64Optimizations(bool enable) {
 bool PointCloudProcessor::exportPLY(const stereo::PointCloud& pointCloud,
                                    const std::string& filename,
                                    const ExportFormat& exportFormat) {
+    std::cout << "[PointCloudProcessor] PLY export to: " << filename << std::endl;
+
     std::ofstream file(filename);
     if (!file.is_open()) {
         pImpl->lastError = "Failed to open PLY file for writing: " + filename;
         return false;
     }
 
-    // Count valid points
+    // Count valid points (CRITICAL: must match what we write)
+    // FIXED: Only reject points with invalid Z depth, NOT points near optical axis with X,Y ≈ 0
     size_t validPoints = 0;
     for (const auto& point : pointCloud.points) {
-        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+            point.z > 0) {  // Only require valid positive depth, allow X,Y=0 (optical axis points)
             validPoints++;
         }
+    }
+
+    std::cout << "[PointCloudProcessor] PLY export: " << validPoints << " valid points out of "
+              << pointCloud.points.size() << " total (" << (100.0 * validPoints / pointCloud.points.size())
+              << "%)" << std::endl;
+
+    if (validPoints == 0) {
+        file.close();
+        std::cout << "[PointCloudProcessor] ERROR: No valid points to export to PLY" << std::endl;
+        pImpl->lastError = "No valid points to export";
+        return false;
     }
 
     // Write PLY header
@@ -692,11 +736,14 @@ bool PointCloudProcessor::exportPLY(const stereo::PointCloud& pointCloud,
 
     file << "end_header\n";
 
-    // Write point data
+    // Write point data (CRITICAL: must write exactly 'validPoints' points)
+    size_t pointsWritten = 0;
     if (exportFormat.format == ExportFormat::Format::PLY_ASCII) {
         for (const auto& point : pointCloud.points) {
-            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                point.z > 0) {  // FIXED: Allow optical axis points with X,Y ≈ 0
                 file << point.x << " " << point.y << " " << point.z;
+                pointsWritten++;
 
                 if (exportFormat.includeColors) {
                     file << " " << (int)point.r << " " << (int)point.g << " " << (int)point.b;
@@ -712,10 +759,12 @@ bool PointCloudProcessor::exportPLY(const stereo::PointCloud& pointCloud,
     } else {
         // Binary format
         for (const auto& point : pointCloud.points) {
-            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                point.z > 0) {  // FIXED: Allow optical axis points with X,Y ≈ 0
                 file.write(reinterpret_cast<const char*>(&point.x), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&point.y), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&point.z), sizeof(float));
+                pointsWritten++;
 
                 if (exportFormat.includeColors) {
                     file.write(reinterpret_cast<const char*>(&point.r), sizeof(uint8_t));
@@ -731,6 +780,16 @@ bool PointCloudProcessor::exportPLY(const stereo::PointCloud& pointCloud,
     }
 
     file.close();
+
+    // CRITICAL VERIFICATION: Ensure we wrote the exact number of points declared in header
+    if (pointsWritten != validPoints) {
+        std::cout << "[PointCloudProcessor] ERROR: PLY header/data mismatch! Header declared "
+                  << validPoints << " points but wrote " << pointsWritten << " points" << std::endl;
+        pImpl->lastError = "PLY export failed: header/data mismatch";
+        return false;
+    }
+
+    std::cout << "[PointCloudProcessor] PLY export successful: " << pointsWritten << " points written" << std::endl;
     return true;
 }
 
@@ -743,10 +802,11 @@ bool PointCloudProcessor::exportPCD(const stereo::PointCloud& pointCloud,
         return false;
     }
 
-    // Count valid points
+    // Count valid points (allow optical axis points with X,Y ≈ 0)
     size_t validPoints = 0;
     for (const auto& point : pointCloud.points) {
-        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+            point.z > 0) {
             validPoints++;
         }
     }
@@ -776,7 +836,8 @@ bool PointCloudProcessor::exportPCD(const stereo::PointCloud& pointCloud,
     // Write point data
     if (exportFormat.format == ExportFormat::Format::PCD_ASCII) {
         for (const auto& point : pointCloud.points) {
-            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                point.z > 0) {
                 file << point.x << " " << point.y << " " << point.z;
 
                 if (exportFormat.includeColors) {
@@ -790,7 +851,8 @@ bool PointCloudProcessor::exportPCD(const stereo::PointCloud& pointCloud,
     } else {
         // Binary format
         for (const auto& point : pointCloud.points) {
-            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+            if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                point.z > 0) {
                 file.write(reinterpret_cast<const char*>(&point.x), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&point.y), sizeof(float));
                 file.write(reinterpret_cast<const char*>(&point.z), sizeof(float));
@@ -820,9 +882,10 @@ bool PointCloudProcessor::exportOBJ(const stereo::PointCloud& pointCloud,
     file << "# Generated by " << exportFormat.scannerInfo << "\n";
     file << "# Precision: " << exportFormat.precisionMm << "mm\n";
 
-    // Write vertices
+    // Write vertices (allow optical axis points)
     for (const auto& point : pointCloud.points) {
-        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+            point.z > 0) {
             file << "v " << point.x << " " << point.y << " " << point.z << "\n";
         }
     }
@@ -840,9 +903,10 @@ bool PointCloudProcessor::exportXYZ(const stereo::PointCloud& pointCloud,
         return false;
     }
 
-    // Write simple XYZ format
+    // Write simple XYZ format (allow optical axis points)
     for (const auto& point : pointCloud.points) {
-        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z)) {
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+            point.z > 0) {
             file << point.x << " " << point.y << " " << point.z;
 
             if (exportFormat.includeColors) {
