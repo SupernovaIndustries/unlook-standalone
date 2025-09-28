@@ -282,13 +282,59 @@ public:
 private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
-    
+
+    /**
+     * @brief Update depth range parameters based on calibration data
+     *
+     * Calculates optimal depth range using industrial stereo vision standards:
+     * - Minimum depth: 3x baseline (IEEE/ISO standard) + safety margin
+     * - Maximum depth: Based on disparity precision limits
+     *
+     * This ensures industrial standards compliance and prevents data loss
+     * due to arbitrary range limitations.
+     */
+    void updateDepthRangeFromCalibration();
+
     /**
      * @brief Create LIDAR-like continuous depth map by filling holes and smoothing
      * @param inputDepth Input depth map with potential holes
      * @param outputDepth Output continuous depth map
      */
     void createLidarLikeDepthMap(const cv::Mat& inputDepth, cv::Mat& outputDepth) const;
+
+#ifdef OPEN3D_ENABLED
+    /**
+     * @brief Professional Open3D-based point cloud generation
+     * @param depthMap Input depth map
+     * @param colorImage Optional color image
+     * @param pointCloud Output point cloud
+     * @param fx Focal length X
+     * @param fy Focal length Y
+     * @param cx Principal point X
+     * @param cy Principal point Y
+     * @return true if generation successful
+     */
+    bool generatePointCloudOpen3D(const cv::Mat& depthMap,
+                                  const cv::Mat& colorImage,
+                                  PointCloud& pointCloud,
+                                  double fx, double fy, double cx, double cy);
+#endif
+
+    /**
+     * @brief Professional pinhole camera model point cloud generation (fallback)
+     * @param depthMap Input depth map
+     * @param colorImage Optional color image
+     * @param pointCloud Output point cloud
+     * @param fx Focal length X
+     * @param fy Focal length Y
+     * @param cx Principal point X
+     * @param cy Principal point Y
+     * @return true if generation successful
+     */
+    bool generatePointCloudPinhole(const cv::Mat& depthMap,
+                                  const cv::Mat& colorImage,
+                                  PointCloud& pointCloud,
+                                  double fx, double fy, double cx, double cy);
     
     // Disable copy
     DepthProcessor(const DepthProcessor&) = delete;

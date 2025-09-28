@@ -21,9 +21,7 @@
 #include <open3d/Open3D.h>
 #include <open3d/geometry/PointCloud.h>
 #include <open3d/geometry/TriangleMesh.h>
-#include <open3d/filters/StatisticalOutlierRemoval.h>
-#include <open3d/filters/RadiusOutlierRemoval.h>
-#include <open3d/filters/VoxelGrid.h>
+#include <open3d/camera/PinholeCameraIntrinsic.h>
 #include <open3d/io/PointCloudIO.h>
 #include <open3d/io/TriangleMeshIO.h>
 #endif

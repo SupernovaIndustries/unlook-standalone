@@ -30,6 +30,11 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     , processing_active_(false)
     , live_preview_active_(false)
     , current_debug_directory_("")
+    , export_pointcloud_button_(nullptr)
+    , export_mesh_button_(nullptr)
+    , configure_export_button_(nullptr)
+    , export_format_combo_(nullptr)
+    , export_status_(nullptr)
 {
     // Setup UI from .ui file
     ui->setupUi(this);
@@ -1456,32 +1461,74 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
         updateDepthVisualization(result);
         qDebug() << "[DepthWidget] updateDepthVisualization() completed";
 
-        // Update quality metrics with safety check
-        if (quality_metrics_label_) {
-            QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
-                .arg(result.coverage_ratio * 100, 0, 'f', 1)
-                .arg(result.mean_depth, 0, 'f', 2)
-                .arg(result.std_depth, 0, 'f', 2);
-            quality_metrics_label_->setText(metrics);
+        // Update quality metrics with enhanced safety checks
+        qDebug() << "[DepthWidget] About to update quality metrics...";
+        try {
+            if (quality_metrics_label_) {
+                qDebug() << "[DepthWidget] quality_metrics_label_ is valid, updating text...";
+                QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
+                    .arg(result.coverage_ratio * 100, 0, 'f', 1)
+                    .arg(result.mean_depth, 0, 'f', 2)
+                    .arg(result.std_depth, 0, 'f', 2);
+                quality_metrics_label_->setText(metrics);
+                qDebug() << "[DepthWidget] Quality metrics updated successfully";
+            } else {
+                qDebug() << "[DepthWidget] WARNING: quality_metrics_label_ is null or invalid";
+            }
+        } catch (const std::exception& e) {
+            qDebug() << "[DepthWidget] EXCEPTION during quality metrics update:" << e.what();
+        } catch (...) {
+            qDebug() << "[DepthWidget] UNKNOWN EXCEPTION during quality metrics update";
         }
 
-        // Enable point cloud export button from UI with safety checks
-        if (ui && ui->save_pointcloud_button) {
-            ui->save_pointcloud_button->setEnabled(true);
-        }
-        if (ui && ui->export_format_combo) {
-            ui->export_format_combo->setEnabled(true);
+        // Enable point cloud export button from UI with enhanced safety checks
+        qDebug() << "[DepthWidget] About to update UI button states...";
+        try {
+            if (ui && ui->save_pointcloud_button) {
+                qDebug() << "[DepthWidget] Enabling save_pointcloud_button...";
+                ui->save_pointcloud_button->setEnabled(true);
+            }
+            if (ui && ui->export_format_combo) {
+                qDebug() << "[DepthWidget] Enabling export_format_combo...";
+                ui->export_format_combo->setEnabled(true);
+            }
+
+            // Enable legacy point cloud export buttons (if they exist)
+            if (export_pointcloud_button_) {
+                qDebug() << "[DepthWidget] Enabling export_pointcloud_button_...";
+                try {
+                    export_pointcloud_button_->setEnabled(true);
+                    qDebug() << "[DepthWidget] export_pointcloud_button_ enabled successfully";
+                } catch (const std::exception& e) {
+                    qDebug() << "[DepthWidget] EXCEPTION enabling export_pointcloud_button_:" << e.what();
+                } catch (...) {
+                    qDebug() << "[DepthWidget] UNKNOWN EXCEPTION enabling export_pointcloud_button_";
+                }
+            } else {
+                qDebug() << "[DepthWidget] export_pointcloud_button_ is NULL - skipping";
+            }
+            if (export_mesh_button_) {
+                qDebug() << "[DepthWidget] Enabling export_mesh_button_...";
+                try {
+                    export_mesh_button_->setEnabled(true);
+                    qDebug() << "[DepthWidget] export_mesh_button_ enabled successfully";
+                } catch (const std::exception& e) {
+                    qDebug() << "[DepthWidget] EXCEPTION enabling export_mesh_button_:" << e.what();
+                } catch (...) {
+                    qDebug() << "[DepthWidget] UNKNOWN EXCEPTION enabling export_mesh_button_";
+                }
+            } else {
+                qDebug() << "[DepthWidget] export_mesh_button_ is NULL - skipping";
+            }
+
+            qDebug() << "[DepthWidget] All UI updates completed successfully";
+        } catch (const std::exception& e) {
+            qDebug() << "[DepthWidget] EXCEPTION during UI button updates:" << e.what();
+        } catch (...) {
+            qDebug() << "[DepthWidget] UNKNOWN EXCEPTION during UI button updates";
         }
 
-        // Enable legacy point cloud export buttons (if they exist)
-        if (export_pointcloud_button_) {
-            export_pointcloud_button_->setEnabled(true);
-        }
-        if (export_mesh_button_) {
-            export_mesh_button_->setEnabled(true);
-        }
-
-        qDebug() << "[DepthWidget] All UI updates completed successfully";
+        qDebug() << "[DepthWidget] SUCCESS PATH: About to exit onDepthResultReceived()";
 
     } else {
         processing_status_->setStatus("Depth processing failed: " + QString::fromStdString(result.error_message),
@@ -1496,10 +1543,18 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
         }
 
         if (export_pointcloud_button_) {
-            export_pointcloud_button_->setEnabled(false);
+            try {
+                export_pointcloud_button_->setEnabled(false);
+            } catch (...) {
+                qDebug() << "[DepthWidget] Exception disabling export_pointcloud_button_";
+            }
         }
         if (export_mesh_button_) {
-            export_mesh_button_->setEnabled(false);
+            try {
+                export_mesh_button_->setEnabled(false);
+            } catch (...) {
+                qDebug() << "[DepthWidget] Exception disabling export_mesh_button_";
+            }
         }
     }
     qDebug() << "[DepthWidget] onDepthResultReceived() END";
