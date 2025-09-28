@@ -1220,8 +1220,8 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                                               double fx, double fy, double cx, double cy) {
     auto startTime = std::chrono::high_resolution_clock::now();
     const auto TIMEOUT_SECONDS = 30;
-    const auto MAX_MEMORY_MB = 1000;  // 1GB safety limit
-    const auto PROGRESS_CHECK_INTERVAL = 1000;  // Check every 1000 pixels
+    const auto MAX_MEMORY_MB = 4000;  // Increased for CM4 8GB system
+    const auto PROGRESS_CHECK_INTERVAL = 50000;  // Reduced frequency: check every 50k pixels
 
     size_t initialMemoryMB = getCurrentMemoryUsageMB();
 
@@ -1256,9 +1256,10 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
         const size_t totalPixels = depthMap.rows * depthMap.cols;
         std::cout << "  Processing " << totalPixels << " pixels (" << depthMap.cols << "x" << depthMap.rows << ")" << std::endl;
 
-        // CRITICAL: Pre-allocate vector to prevent reallocations and memory fragmentation
+        // OPTIMIZED: Reserve memory based on estimated valid points to prevent fragmentation
         pointCloud.points.clear();
-        pointCloud.points.resize(totalPixels);  // Use resize instead of reserve + push_back
+        int estimatedValidPoints = cv::countNonZero(depthMap > 0);
+        pointCloud.points.reserve(estimatedValidPoints);  // Reserve, don't resize
 
         bool hasColor = !colorImage.empty();
         int validPointsCount = 0;
@@ -1308,12 +1309,12 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                 }
 
                 float depth = depthMap.at<float>(y, x);
-                size_t pixelIndex = y * depthMap.cols + x;
-                Point3D& pt = pointCloud.points[pixelIndex];  // Direct assignment, no push_back
 
                 // Apply professional depth range validation
                 // CRITICAL: Use >= and <= for inclusive range check (industrial standard)
                 if (depth >= pImpl->config.minDepthMm && depth <= pImpl->config.maxDepthMm && std::isfinite(depth)) {
+                    // Create point only for valid depths
+                    Point3D pt;
                     // Professional pinhole camera back-projection
                     // Z = depth (already in millimeters)
                     // X = (u - cx) * Z / fx
@@ -1354,6 +1355,8 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                                                      (pImpl->config.maxDepthMm - pImpl->config.minDepthMm));
                     pt.confidence = std::max(0.1f, std::min(1.0f, pt.confidence));
 
+                    // CRITICAL: Add point to vector using push_back
+                    pointCloud.points.push_back(pt);
                     validPointsCount++;
 
                     // DEBUG: Show successful point generation samples (first few)
@@ -1380,11 +1383,7 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
                         }
                         debugSampleCount++;
                     }
-
-                    // Invalid point - set to NaN for professional point cloud standards
-                    pt.x = pt.y = pt.z = std::numeric_limits<float>::quiet_NaN();
-                    pt.r = pt.g = pt.b = 0;
-                    pt.confidence = 0.0f;
+                    // OPTIMIZED: No need to create invalid points when using push_back
                 }
 
                 processedPixels++;
