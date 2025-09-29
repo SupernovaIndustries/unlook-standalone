@@ -162,56 +162,6 @@ QPushButton#back_button:pressed {
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QPushButton" name="fullscreen_toggle_button">
-        <property name="maximumSize">
-         <size>
-          <width>120</width>
-          <height>16777215</height>
-         </size>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">/* Pure Neomorphism - Neutral Subtle */
-QPushButton#fullscreen_toggle_button {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f0f0f0,
-        stop:1 #cacaca);
-    color: #64748b;
-    border: none;
-    border-radius: 15px;
-    padding: 8px 16px;
-    font-weight: 600;
-    /* Subtle shadow */
-    border-left: 2px solid #ffffff;
-    border-top: 2px solid #ffffff;
-    border-right: 2px solid #bebebe;
-    border-bottom: 2px solid #bebebe;
-}
-
-QPushButton#fullscreen_toggle_button:hover {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #f5f5f5,
-        stop:1 #d0d0d0);
-    color: #475569;
-}
-
-QPushButton#fullscreen_toggle_button:pressed {
-    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
-        stop:0 #cacaca,
-        stop:1 #e5e5e5);
-    /* Inverted shadow */
-    border-left: 2px solid #bebebe;
-    border-top: 2px solid #bebebe;
-    border-right: 2px solid #ffffff;
-    border-bottom: 2px solid #ffffff;
-    padding: 9px 15px 7px 17px;
-}</string>
-        </property>
-        <property name="text">
-         <string>Window</string>
-        </property>
-       </widget>
-      </item>
      </layout>
     </item>
     <item>

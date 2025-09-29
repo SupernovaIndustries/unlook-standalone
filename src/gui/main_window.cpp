@@ -231,35 +231,18 @@ void UnlookMainWindow::showMainMenu() {
 }
 
 void UnlookMainWindow::exitApplication() {
-    // Show confirmation dialog if in fullscreen
-    if (is_fullscreen_) {
-        QMessageBox msgBox;
-        msgBox.setWindowTitle("Exit Confirmation");
-        msgBox.setText("Are you sure you want to exit the Unlook Scanner?");
-        msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::No);
-        msgBox.setDefaultButton(QMessageBox::No);
-        
-        // Apply Supernova styling to message box
-        SupernovaStyle::applyStyle(&msgBox);
-        
-        if (msgBox.exec() == QMessageBox::Yes) {
-            close();
-        }
-    } else {
-        close();
-    }
+    // Exit immediately without confirmation popup
+    close();
 }
 
 void UnlookMainWindow::toggleFullscreen() {
     if (is_fullscreen_) {
         showNormal();
         is_fullscreen_ = false;
-        ui->fullscreen_toggle_button->setText("Fullscreen");
         system_status_->setStatus("Windowed mode (ESC to toggle)", StatusDisplay::StatusType::INFO);
     } else {
         showFullScreen();
         is_fullscreen_ = true;
-        ui->fullscreen_toggle_button->setText("Window");
         system_status_->setStatus("Fullscreen mode", StatusDisplay::StatusType::SUCCESS);
     }
 }
@@ -300,7 +283,7 @@ void UnlookMainWindow::initializeAdditionalComponents() {
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
     connect(ui->back_button, &QPushButton::clicked, this, &UnlookMainWindow::showMainMenu);
-    connect(ui->fullscreen_toggle_button, &QPushButton::clicked, this, &UnlookMainWindow::toggleFullscreen);
+    // fullscreen_toggle_button removed from UI
     
     // Initialize status displays (these will be custom widgets)
     system_status_ = new widgets::StatusDisplay("System");
