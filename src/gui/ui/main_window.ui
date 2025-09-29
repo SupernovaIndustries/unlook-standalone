@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>600</height>
+    <height>400</height>
    </rect>
   </property>
   <property name="font">
@@ -225,16 +225,16 @@ QPushButton#fullscreen_toggle_button:pressed {
          <number>20</number>
         </property>
         <property name="leftMargin">
-         <number>40</number>
+         <number>20</number>
         </property>
         <property name="topMargin">
-         <number>40</number>
+         <number>15</number>
         </property>
         <property name="rightMargin">
-         <number>40</number>
+         <number>20</number>
         </property>
         <property name="bottomMargin">
-         <number>40</number>
+         <number>15</number>
         </property>
         <item>
          <spacer name="top_spacer">
@@ -258,8 +258,8 @@ QPushButton#fullscreen_toggle_button:pressed {
            <widget class="QPushButton" name="camera_preview_button">
             <property name="minimumSize">
              <size>
-              <width>200</width>
-              <height>120</height>
+              <width>180</width>
+              <height>80</height>
              </size>
             </property>
             <property name="font">
@@ -325,8 +325,8 @@ QPushButton#camera_preview_button:pressed {
            <widget class="QPushButton" name="depth_test_button">
             <property name="minimumSize">
              <size>
-              <width>200</width>
-              <height>120</height>
+              <width>180</width>
+              <height>80</height>
              </size>
             </property>
             <property name="font">
@@ -392,8 +392,8 @@ QPushButton#depth_test_button:pressed {
            <widget class="QPushButton" name="options_button">
             <property name="minimumSize">
              <size>
-              <width>200</width>
-              <height>120</height>
+              <width>180</width>
+              <height>80</height>
              </size>
             </property>
             <property name="font">
@@ -459,8 +459,8 @@ QPushButton#options_button:pressed {
            <widget class="QPushButton" name="exit_button">
             <property name="minimumSize">
              <size>
-              <width>200</width>
-              <height>120</height>
+              <width>180</width>
+              <height>80</height>
              </size>
             </property>
             <property name="font">
@@ -526,8 +526,8 @@ QPushButton#exit_button:pressed {
            <widget class="QPushButton" name="face_enrollment_button">
             <property name="minimumSize">
              <size>
-              <width>420</width>
-              <height>120</height>
+              <width>370</width>
+              <height>80</height>
              </size>
             </property>
             <property name="font">

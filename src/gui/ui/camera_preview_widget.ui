@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1436</width>
-    <height>835</height>
+    <width>800</width>
+    <height>400</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -62,16 +62,16 @@ QSlider::sub-page:horizontal {
     <number>10</number>
    </property>
    <property name="leftMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="topMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="rightMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="bottomMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <item>
     <layout class="QVBoxLayout" name="preview_layout">
@@ -81,7 +81,7 @@ QSlider::sub-page:horizontal {
      <item>
       <layout class="QHBoxLayout" name="cameras_layout" stretch="1,0">
        <property name="spacing">
-        <number>38</number>
+        <number>10</number>
        </property>
        <item>
         <layout class="QVBoxLayout" name="left_camera_layout">
@@ -95,8 +95,8 @@ QSlider::sub-page:horizontal {
           <widget class="QLabel" name="left_title_label">
            <property name="maximumSize">
             <size>
-             <width>400</width>
-             <height>100</height>
+             <width>300</width>
+             <height>60</height>
             </size>
            </property>
            <property name="font">
@@ -127,14 +127,14 @@ QSlider::sub-page:horizontal {
            </property>
            <property name="minimumSize">
             <size>
-             <width>400</width>
-             <height>100</height>
+             <width>300</width>
+             <height>180</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>400</width>
-             <height>300</height>
+             <width>300</width>
+             <height>180</height>
             </size>
            </property>
            <property name="font">
@@ -169,8 +169,8 @@ border-bottom: 3px solid #ffffff;</string>
           <widget class="QLabel" name="right_title_label">
            <property name="maximumSize">
             <size>
-             <width>400</width>
-             <height>100</height>
+             <width>300</width>
+             <height>60</height>
             </size>
            </property>
            <property name="font">
@@ -194,14 +194,14 @@ border-bottom: 3px solid #ffffff;</string>
           <widget class="QLabel" name="right_camera_label">
            <property name="minimumSize">
             <size>
-             <width>400</width>
-             <height>300</height>
+             <width>300</width>
+             <height>180</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>400</width>
-             <height>300</height>
+             <width>300</width>
+             <height>180</height>
             </size>
            </property>
            <property name="font">
@@ -294,16 +294,16 @@ QPushButton#swap_cameras_button:pressed {
       <number>15</number>
      </property>
      <property name="leftMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="topMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="rightMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="bottomMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <item>
       <widget class="QLabel" name="controls_title">
@@ -1082,16 +1082,16 @@ QPushButton#led_test_off_button:pressed {
       <number>15</number>
      </property>
      <property name="leftMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="topMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="rightMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <property name="bottomMargin">
-      <number>20</number>
+      <number>10</number>
      </property>
      <item>
       <widget class="QLabel" name="status_title">

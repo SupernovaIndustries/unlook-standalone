@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1200</width>
-    <height>718</height>
+    <width>800</width>
+    <height>400</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -93,16 +93,16 @@ QComboBox QAbstractItemView {
     <number>10</number>
    </property>
    <property name="leftMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="topMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="rightMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <property name="bottomMargin">
-    <number>10</number>
+    <number>5</number>
    </property>
    <item>
     <layout class="QHBoxLayout" name="content_layout">
@@ -125,8 +125,8 @@ QComboBox QAbstractItemView {
             <widget class="QLabel" name="left_image_label">
              <property name="minimumSize">
               <size>
-               <width>300</width>
-               <height>225</height>
+               <width>250</width>
+               <height>150</height>
               </size>
              </property>
              <property name="font">
@@ -157,8 +157,8 @@ color: #FFFFFF;</string>
             <widget class="QLabel" name="depth_image_label">
              <property name="minimumSize">
               <size>
-               <width>600</width>
-               <height>200</height>
+               <width>500</width>
+               <height>150</height>
               </size>
              </property>
              <property name="font">
@@ -193,16 +193,16 @@ color: #FFFFFF;</string>
             <number>15</number>
            </property>
            <property name="leftMargin">
-            <number>20</number>
+            <number>10</number>
            </property>
            <property name="topMargin">
-            <number>20</number>
+            <number>10</number>
            </property>
            <property name="rightMargin">
-            <number>20</number>
+            <number>10</number>
            </property>
            <property name="bottomMargin">
-            <number>20</number>
+            <number>10</number>
            </property>
            <item>
             <widget class="QPushButton" name="capture_button">

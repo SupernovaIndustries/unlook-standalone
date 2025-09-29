@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>600</height>
+    <height>400</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -29,16 +29,16 @@ QLabel {
     <number>20</number>
    </property>
    <property name="leftMargin">
-    <number>20</number>
+    <number>10</number>
    </property>
    <property name="topMargin">
-    <number>20</number>
+    <number>10</number>
    </property>
    <property name="rightMargin">
-    <number>20</number>
+    <number>10</number>
    </property>
    <property name="bottomMargin">
-    <number>20</number>
+    <number>10</number>
    </property>
    <item>
     <widget class="QLabel" name="title_label">
@@ -97,8 +97,8 @@ font-weight: 700;</string>
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
@@ -152,8 +152,8 @@ QPushButton:pressed {
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
@@ -207,8 +207,8 @@ QPushButton:pressed {
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
@@ -262,8 +262,8 @@ QPushButton:pressed {
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
@@ -335,8 +335,8 @@ font-weight: 700;</string>
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
@@ -390,8 +390,8 @@ QPushButton:pressed {
           </property>
           <property name="minimumSize">
            <size>
-            <width>250</width>
-            <height>60</height>
+            <width>220</width>
+            <height>50</height>
            </size>
           </property>
           <property name="font">
