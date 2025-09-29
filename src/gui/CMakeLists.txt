@@ -20,6 +20,7 @@ set(CMAKE_AUTOUIC_SEARCH_PATHS ui)
 # GUI source files (only existing files)
 set(GUI_SOURCES
     ../main.cpp
+    ../core/QtLogHandler.cpp  # Qt-dependent logging handler (GUI only)
     main_window.cpp
     camera_preview_widget.cpp
     depth_test_widget.cpp

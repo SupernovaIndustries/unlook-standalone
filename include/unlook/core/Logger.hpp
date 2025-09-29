@@ -61,7 +61,23 @@ public:
      * Initialize logger with configuration
      */
     bool initialize(LogLevel level, bool consoleOutput, bool fileOutput, const std::string& filename = "");
-    
+
+    /**
+     * Initialize logger with automatic timestamped log file
+     * Creates log directory if needed, generates filename with timestamp
+     * @param logDirectory Directory for log files (default: /home/unlook/log)
+     * @param level Minimum log level to capture
+     * @return true if initialization successful, false otherwise
+     */
+    bool initializeWithTimestamp(const std::string& logDirectory = "/home/unlook/log",
+                                  LogLevel level = LogLevel::INFO);
+
+    /**
+     * Get current log file path
+     * @return Path to current log file, empty string if no file logging
+     */
+    std::string getCurrentLogFile() const;
+
     /**
      * Flush all pending log messages
      */
@@ -115,10 +131,13 @@ private:
     std::string getTimestamp() const;
     std::string formatMessage(LogLevel level, const std::string& message,
                                const std::string& file, int line) const;
-    
+    std::string generateTimestampedFilename(const std::string& directory) const;
+    bool createDirectoryIfNeeded(const std::string& directory) const;
+
     LogLevel minLevel_ = LogLevel::INFO;
     bool consoleOutput_ = true;
-    
+    std::string currentLogFile_;
+
     std::mutex mutex_;
     std::ofstream logFile_;
 };

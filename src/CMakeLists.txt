@@ -10,7 +10,7 @@ add_subdirectory(hardware)
 # add_subdirectory(mesh)
 add_subdirectory(validation)
 
-# Core library sources
+# Core library sources (no Qt dependencies)
 set(UNLOOK_CORE_SOURCES
     core/exception.cpp
     core/Logger.cpp

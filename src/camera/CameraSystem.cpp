@@ -14,18 +14,38 @@
 #include <future>
 
 // Use the official Unlook logging system
-using unlook::core::LogStream;
+using unlook::core::Logger;
 using unlook::core::LogLevel;
 
-// Simple logging to avoid macro conflicts
+// Unified logging macros using Unlook Logger
 #undef LOG_INFO
 #undef LOG_ERROR
 #undef LOG_WARNING
 #undef LOG_DEBUG
-#define LOG_INFO(msg) std::cout << "[INFO] CameraSystem: " << msg << std::endl
-#define LOG_ERROR(msg) std::cerr << "[ERROR] CameraSystem: " << msg << std::endl  
-#define LOG_WARNING(msg) std::cout << "[WARN] CameraSystem: " << msg << std::endl
-#define LOG_DEBUG(msg) std::cout << "[DEBUG] CameraSystem: " << msg << std::endl
+
+#define LOG_INFO(msg) do { \
+    std::ostringstream oss; \
+    oss << "[CameraSystem] " << msg; \
+    Logger::getInstance().info(oss.str()); \
+} while(0)
+
+#define LOG_ERROR(msg) do { \
+    std::ostringstream oss; \
+    oss << "[CameraSystem] " << msg; \
+    Logger::getInstance().error(oss.str()); \
+} while(0)
+
+#define LOG_WARNING(msg) do { \
+    std::ostringstream oss; \
+    oss << "[CameraSystem] " << msg; \
+    Logger::getInstance().warning(oss.str()); \
+} while(0)
+
+#define LOG_DEBUG(msg) do { \
+    std::ostringstream oss; \
+    oss << "[CameraSystem] " << msg; \
+    Logger::getInstance().debug(oss.str()); \
+} while(0)
 
 namespace unlook {
 namespace camera {
