@@ -123,21 +123,15 @@ void CameraPreviewWidget::connectSignals() {
     connect(ui->led_test_on_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOn);
     connect(ui->led_test_off_button, &QPushButton::clicked, this, &CameraPreviewWidget::onLEDTestOff);
 
-    // Connect LED current sliders
+    // Connect LED current slider (LED2 removed - only LED1 unified control)
     connect(ui->led1_current_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, &CameraPreviewWidget::onLED1CurrentChanged);
-    connect(ui->led2_current_slider, QOverload<int>::of(&QSlider::valueChanged),
-            this, &CameraPreviewWidget::onLED2CurrentChanged);
 
-    // Connect camera sliders
-    connect(ui->left_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
+    // Connect unified camera sliders (left sliders now control BOTH cameras)
+    connect(ui->left_exposure_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, [this](int value) { onLeftExposureChanged(static_cast<double>(value)); });
-    connect(ui->right_exposure_slider, QOverload<int>::of(&QSlider::valueChanged), 
-            this, [this](int value) { onRightExposureChanged(static_cast<double>(value)); });
-    connect(ui->left_gain_slider, QOverload<int>::of(&QSlider::valueChanged), 
+    connect(ui->left_gain_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, [this](int value) { onLeftGainChanged(static_cast<double>(value) / 100.0); });
-    connect(ui->right_gain_slider, QOverload<int>::of(&QSlider::valueChanged), 
-            this, [this](int value) { onRightGainChanged(static_cast<double>(value) / 100.0); });
     // TODO_UI: Add fps_slider to .ui file
     // connect(ui->fps_slider, QOverload<int>::of(&QSlider::valueChanged), 
     //         this, [this](int value) { onFPSChanged(static_cast<double>(value)); });
@@ -154,59 +148,57 @@ void CameraPreviewWidget::initializeAdditionalComponents() {
     // Initialize slider value labels with default values (unified for both cameras)
     // Exposure default: 10000µs (from .ui file)
     ui->left_exposure_value->setText("10000µs");
-    
+
     // Gain default: 1.0x (from .ui file, slider value 100 = gain 1.0)
     ui->left_gain_value->setText("1.0x");
-    
-    // Hide/disable right sliders (will be removed from UI)
-    if (ui->right_exposure_slider) {
-        ui->right_exposure_slider->setVisible(false);
-    }
-    if (ui->right_gain_slider) {
-        ui->right_gain_slider->setVisible(false);
-    }
-    if (ui->right_exposure_value) {
-        ui->right_exposure_value->setVisible(false);
-    }
-    if (ui->right_gain_value) {
-        ui->right_gain_value->setVisible(false);
-    }
+
+    // LED1 current default: 0 mA (from .ui file)
+    ui->led1_current_value->setText("0 mA");
+
+    // Note: Right camera sliders and LED2 slider have been removed from .ui file
+    // The left sliders now control BOTH cameras (unified control)
 }
 
 void CameraPreviewWidget::updateFPSDisplay() {
     static int last_frame_count = 0;
     current_fps_ = frame_count_ - last_frame_count;
     last_frame_count = frame_count_;
-    
-    ui->fps_status->setText(QString("FPS: %1").arg(current_fps_));
+
+    // TODO_UI: Add fps_status label to .ui file to display FPS
+    // For now, FPS is calculated but not displayed in UI
+    qDebug() << "[CameraPreview] Current FPS:" << current_fps_;
 }
 
 void CameraPreviewWidget::onLeftExposureChanged(double value) {
     if (camera_system_) {
-        // Now controls BOTH cameras (unified control)
+        // Unified control: left slider now controls BOTH cameras
         camera_system_->setExposureTime(core::CameraId::LEFT, value);
+        camera_system_->setExposureTime(core::CameraId::RIGHT, value);
     }
-    // Update label to show current value (for both cameras)
+    // Update label to show current value (applies to both cameras)
     ui->left_exposure_value->setText(QString("%1µs").arg(static_cast<int>(value)));
 }
 
 void CameraPreviewWidget::onRightExposureChanged(double value) {
-    // Deprecated - right slider will be removed
-    onLeftExposureChanged(value);
+    // Deprecated method - right slider removed from UI
+    // This method kept for backward compatibility but no longer called
+    qDebug() << "[CameraPreview] WARNING: onRightExposureChanged called but right slider no longer exists";
 }
 
 void CameraPreviewWidget::onLeftGainChanged(double value) {
     if (camera_system_) {
-        // Now controls BOTH cameras (unified control)
+        // Unified control: left slider now controls BOTH cameras
         camera_system_->setGain(core::CameraId::LEFT, value);
+        camera_system_->setGain(core::CameraId::RIGHT, value);
     }
-    // Update label to show current value (for both cameras, gain is from 1.0 to 16.0)
+    // Update label to show current value (applies to both cameras, gain is from 1.0 to 16.0)
     ui->left_gain_value->setText(QString("%1x").arg(value, 0, 'f', 1));
 }
 
 void CameraPreviewWidget::onRightGainChanged(double value) {
-    // Deprecated - right slider will be removed
-    onLeftGainChanged(value);
+    // Deprecated method - right slider removed from UI
+    // This method kept for backward compatibility but no longer called
+    qDebug() << "[CameraPreview] WARNING: onRightGainChanged called but right slider no longer exists";
 }
 
 void CameraPreviewWidget::onFPSChanged(double value) {
@@ -229,16 +221,9 @@ void CameraPreviewWidget::toggleLeftAutoExposure() {
 }
 
 void CameraPreviewWidget::toggleRightAutoExposure() {
-    if (!camera_system_) return;
-    
-    core::CameraConfig config = camera_system_->getCameraConfig(core::CameraId::RIGHT);
-    bool new_auto = !config.auto_exposure;
-    
-    camera_system_->setAutoExposure(core::CameraId::RIGHT, new_auto);
-    
-    // TODO_UI: Add auto exposure button to .ui file
-    // ui->right_auto_exposure_button->setText(new_auto ? "Auto ON" : "Auto OFF");
-    ui->right_exposure_slider->setEnabled(!new_auto);
+    // Deprecated method - right auto exposure control removed with right slider
+    // This method kept for backward compatibility but no longer called
+    qDebug() << "[CameraPreview] WARNING: toggleRightAutoExposure called but right controls no longer exist";
 }
 
 void CameraPreviewWidget::toggleLeftAutoGain() {
@@ -255,16 +240,9 @@ void CameraPreviewWidget::toggleLeftAutoGain() {
 }
 
 void CameraPreviewWidget::toggleRightAutoGain() {
-    if (!camera_system_) return;
-    
-    core::CameraConfig config = camera_system_->getCameraConfig(core::CameraId::RIGHT);
-    bool new_auto = !config.auto_gain;
-    
-    camera_system_->setAutoGain(core::CameraId::RIGHT, new_auto);
-    
-    // TODO_UI: Add auto gain button to .ui file
-    // ui->right_auto_gain_button->setText(new_auto ? "Auto ON" : "Auto OFF");
-    ui->right_gain_slider->setEnabled(!new_auto);
+    // Deprecated method - right auto gain control removed with right slider
+    // This method kept for backward compatibility but no longer called
+    qDebug() << "[CameraPreview] WARNING: toggleRightAutoGain called but right controls no longer exist";
 }
 
 void CameraPreviewWidget::onLEDTestOn() {
@@ -286,27 +264,24 @@ void CameraPreviewWidget::onLEDTestOn() {
         }
     }
 
-    // Activate both LEDs at 150mA
+    // Activate LED1 only at 150mA (LED2 control removed from UI)
     bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
-    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
 
-    if (led1_success && led2_success) {
-        qDebug() << "[CameraPreview] Both LEDs activated successfully at 150mA";
+    if (led1_success) {
+        qDebug() << "[CameraPreview] LED1 activated successfully at 150mA";
 
-        // Sync sliders to reflect LED state (150mA)
+        // Sync slider to reflect LED state (150mA)
         ui->led1_current_slider->setValue(150);
-        ui->led2_current_slider->setValue(150);
         ui->led1_current_value->setText("150 mA");
-        ui->led2_current_value->setText("150 mA");
 
-        qDebug() << "[CameraPreview] LED sliders synchronized to 150mA";
+        qDebug() << "[CameraPreview] LED1 slider synchronized to 150mA";
     } else {
-        qWarning() << "[CameraPreview] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
+        qWarning() << "[CameraPreview] LED1 activation failed";
     }
 }
 
 void CameraPreviewWidget::onLEDTestOff() {
-    qDebug() << "[CameraPreview] LED Test OFF - deactivating both LEDs";
+    qDebug() << "[CameraPreview] LED Test OFF - deactivating LED1";
 
     // Get AS1170 controller instance
     auto as1170 = hardware::AS1170Controller::getInstance();
@@ -315,22 +290,19 @@ void CameraPreviewWidget::onLEDTestOff() {
         return;
     }
 
-    // Deactivate both LEDs
+    // Deactivate LED1 (LED2 control removed from UI)
     bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
 
-    if (led1_success && led2_success) {
-        qDebug() << "[CameraPreview] Both LEDs deactivated successfully";
+    if (led1_success) {
+        qDebug() << "[CameraPreview] LED1 deactivated successfully";
 
-        // Sync sliders to reflect LED state (0mA = OFF)
+        // Sync slider to reflect LED state (0mA = OFF)
         ui->led1_current_slider->setValue(0);
-        ui->led2_current_slider->setValue(0);
         ui->led1_current_value->setText("0 mA");
-        ui->led2_current_value->setText("0 mA");
 
-        qDebug() << "[CameraPreview] LED sliders synchronized to 0mA";
+        qDebug() << "[CameraPreview] LED1 slider synchronized to 0mA";
     } else {
-        qWarning() << "[CameraPreview] LED deactivation failed - LED1:" << led1_success << "LED2:" << led2_success;
+        qWarning() << "[CameraPreview] LED1 deactivation failed";
     }
 }
 
@@ -372,40 +344,9 @@ void CameraPreviewWidget::onLED1CurrentChanged(int current_ma) {
 }
 
 void CameraPreviewWidget::onLED2CurrentChanged(int current_ma) {
-    qDebug() << "[CameraPreview] LED2 current changed to:" << current_ma << "mA";
-
-    // Update the display label
-    ui->led2_current_value->setText(QString::number(current_ma) + " mA");
-
-    // Get AS1170 controller instance
-    auto as1170 = hardware::AS1170Controller::getInstance();
-    if (!as1170) {
-        qWarning() << "[CameraPreview] Failed to get AS1170 controller instance";
-        return;
-    }
-
-    // Initialize if not already done
-    if (!as1170->isInitialized()) {
-        qDebug() << "[CameraPreview] Initializing AS1170 controller";
-        if (!as1170->initialize()) {
-            qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
-            return;
-        }
-    }
-
-    // Set LED2 current (0 = OFF, >0 = ON at specified current)
-    bool success;
-    if (current_ma == 0) {
-        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-    } else {
-        success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, current_ma);
-    }
-
-    if (success) {
-        qDebug() << "[CameraPreview] LED2 current updated successfully to" << current_ma << "mA";
-    } else {
-        qWarning() << "[CameraPreview] Failed to update LED2 current to" << current_ma << "mA";
-    }
+    // Deprecated method - LED2 slider removed from UI
+    // This method kept for backward compatibility but no longer called
+    qDebug() << "[CameraPreview] WARNING: onLED2CurrentChanged called but LED2 slider no longer exists";
 }
 
 void CameraPreviewWidget::swapCameraDisplays() {
