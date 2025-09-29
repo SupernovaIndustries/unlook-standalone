@@ -90,34 +90,34 @@ QComboBox QAbstractItemView {
   </property>
   <layout class="QVBoxLayout" name="main_layout">
    <property name="spacing">
-    <number>10</number>
+    <number>3</number>
    </property>
    <property name="leftMargin">
-    <number>5</number>
+    <number>3</number>
    </property>
    <property name="topMargin">
-    <number>5</number>
+    <number>3</number>
    </property>
    <property name="rightMargin">
-    <number>5</number>
+    <number>3</number>
    </property>
    <property name="bottomMargin">
-    <number>5</number>
+    <number>3</number>
    </property>
    <item>
     <layout class="QHBoxLayout" name="content_layout">
      <property name="spacing">
-      <number>15</number>
+      <number>6</number>
      </property>
      <item>
       <layout class="QVBoxLayout" name="visualization_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>4</number>
        </property>
        <item>
         <layout class="QHBoxLayout" name="images_layout">
          <property name="spacing">
-          <number>10</number>
+          <number>6</number>
          </property>
          <item>
           <layout class="QVBoxLayout" name="left_image_layout">
@@ -125,13 +125,19 @@ QComboBox QAbstractItemView {
             <widget class="QLabel" name="left_image_label">
              <property name="minimumSize">
               <size>
-               <width>250</width>
-               <height>150</height>
+               <width>180</width>
+               <height>110</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>200</width>
+               <height>120</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>9</pointsize>
               </font>
              </property>
              <property name="styleSheet">
@@ -157,13 +163,19 @@ color: #FFFFFF;</string>
             <widget class="QLabel" name="depth_image_label">
              <property name="minimumSize">
               <size>
-               <width>500</width>
-               <height>150</height>
+               <width>350</width>
+               <height>110</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>400</width>
+               <height>120</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>9</pointsize>
               </font>
              </property>
              <property name="styleSheet">
@@ -190,31 +202,37 @@ color: #FFFFFF;</string>
          <item>
           <layout class="QVBoxLayout" name="controls_layout">
            <property name="spacing">
-            <number>15</number>
+            <number>4</number>
            </property>
            <property name="leftMargin">
-            <number>10</number>
+            <number>4</number>
            </property>
            <property name="topMargin">
-            <number>10</number>
+            <number>4</number>
            </property>
            <property name="rightMargin">
-            <number>10</number>
+            <number>4</number>
            </property>
            <property name="bottomMargin">
-            <number>10</number>
+            <number>4</number>
            </property>
            <item>
             <widget class="QPushButton" name="capture_button">
              <property name="minimumSize">
               <size>
-               <width>0</width>
-               <height>50</height>
+               <width>140</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>180</width>
+               <height>45</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>9</pointsize>
                <weight>87</weight>
               </font>
              </property>
@@ -256,13 +274,19 @@ QPushButton#capture_button:disabled {
             <widget class="QPushButton" name="save_pointcloud_button">
              <property name="minimumSize">
               <size>
-               <width>0</width>
-               <height>50</height>
+               <width>140</width>
+               <height>38</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>180</width>
+               <height>42</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>8</pointsize>
                <weight>87</weight>
               </font>
              </property>
@@ -307,13 +331,19 @@ QPushButton#save_pointcloud_button:disabled {
             <widget class="QComboBox" name="export_format_combo">
              <property name="minimumSize">
               <size>
-               <width>0</width>
-               <height>35</height>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>180</width>
+               <height>36</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>11</pointsize>
+               <pointsize>8</pointsize>
               </font>
              </property>
              <property name="styleSheet">
@@ -361,13 +391,19 @@ QPushButton#save_pointcloud_button:disabled {
             <widget class="QComboBox" name="algorithm_combo">
              <property name="minimumSize">
               <size>
-               <width>0</width>
-               <height>35</height>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>180</width>
+               <height>36</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>11</pointsize>
+               <pointsize>8</pointsize>
               </font>
              </property>
              <property name="styleSheet">
@@ -407,7 +443,7 @@ QPushButton#save_pointcloud_button:disabled {
             <widget class="QLabel" name="parameters_label">
              <property name="font">
               <font>
-               <pointsize>12</pointsize>
+               <pointsize>8</pointsize>
                <bold>true</bold>
               </font>
              </property>
@@ -415,14 +451,14 @@ QPushButton#save_pointcloud_button:disabled {
               <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
              </property>
              <property name="text">
-              <string>Disparity Parameters</string>
+              <string>Parameters</string>
              </property>
             </widget>
            </item>
            <item>
             <layout class="QVBoxLayout" name="num_disparities_layout">
              <property name="spacing">
-              <number>5</number>
+              <number>2</number>
              </property>
              <property name="leftMargin">
               <number>0</number>
@@ -440,14 +476,14 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="num_disparities_label">
                <property name="font">
                 <font>
-                 <pointsize>10</pointsize>
+                 <pointsize>7</pointsize>
                 </font>
                </property>
                <property name="styleSheet">
                 <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
-                <string>Number of Disparities</string>
+                <string>Disparities</string>
                </property>
               </widget>
              </item>
@@ -455,8 +491,14 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QSlider" name="num_disparities_slider">
                <property name="minimumSize">
                 <size>
-                 <width>0</width>
-                 <height>30</height>
+                 <width>120</width>
+                 <height>26</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>160</width>
+                 <height>28</height>
                 </size>
                </property>
                <property name="minimum">
@@ -481,7 +523,7 @@ QPushButton#save_pointcloud_button:disabled {
            <item>
             <layout class="QVBoxLayout" name="block_size_layout">
              <property name="spacing">
-              <number>5</number>
+              <number>2</number>
              </property>
              <property name="leftMargin">
               <number>0</number>
@@ -499,7 +541,7 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="block_size_label">
                <property name="font">
                 <font>
-                 <pointsize>10</pointsize>
+                 <pointsize>7</pointsize>
                 </font>
                </property>
                <property name="styleSheet">
@@ -514,8 +556,14 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QSlider" name="block_size_slider">
                <property name="minimumSize">
                 <size>
-                 <width>0</width>
-                 <height>30</height>
+                 <width>120</width>
+                 <height>26</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>160</width>
+                 <height>28</height>
                 </size>
                </property>
                <property name="minimum">
@@ -540,7 +588,7 @@ QPushButton#save_pointcloud_button:disabled {
            <item>
             <layout class="QVBoxLayout" name="min_disparity_layout">
              <property name="spacing">
-              <number>5</number>
+              <number>2</number>
              </property>
              <property name="leftMargin">
               <number>0</number>
@@ -558,14 +606,14 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="min_disparity_label">
                <property name="font">
                 <font>
-                 <pointsize>10</pointsize>
+                 <pointsize>7</pointsize>
                 </font>
                </property>
                <property name="styleSheet">
                 <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
-                <string>Minimum Disparity</string>
+                <string>Min Disparity</string>
                </property>
               </widget>
              </item>
@@ -573,14 +621,14 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QSlider" name="min_disparity_slider">
                <property name="minimumSize">
                 <size>
-                 <width>0</width>
-                 <height>30</height>
+                 <width>120</width>
+                 <height>26</height>
                 </size>
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>16777215</width>
-                 <height>30</height>
+                 <width>160</width>
+                 <height>28</height>
                 </size>
                </property>
                <property name="minimum">

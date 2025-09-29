@@ -59,34 +59,34 @@ QSlider::sub-page:horizontal {
   </property>
   <layout class="QHBoxLayout" name="main_layout">
    <property name="spacing">
-    <number>10</number>
+    <number>6</number>
    </property>
    <property name="leftMargin">
-    <number>5</number>
+    <number>4</number>
    </property>
    <property name="topMargin">
-    <number>5</number>
+    <number>4</number>
    </property>
    <property name="rightMargin">
-    <number>5</number>
+    <number>4</number>
    </property>
    <property name="bottomMargin">
-    <number>5</number>
+    <number>4</number>
    </property>
    <item>
     <layout class="QVBoxLayout" name="preview_layout">
      <property name="spacing">
-      <number>10</number>
+      <number>6</number>
      </property>
      <item>
       <layout class="QHBoxLayout" name="cameras_layout" stretch="1,0">
        <property name="spacing">
-        <number>10</number>
+        <number>6</number>
        </property>
        <item>
         <layout class="QVBoxLayout" name="left_camera_layout">
          <property name="spacing">
-          <number>22</number>
+          <number>4</number>
          </property>
          <property name="sizeConstraint">
           <enum>QLayout::SetMinimumSize</enum>
@@ -96,13 +96,13 @@ QSlider::sub-page:horizontal {
            <property name="maximumSize">
             <size>
              <width>300</width>
-             <height>60</height>
+             <height>20</height>
             </size>
            </property>
            <property name="font">
             <font>
              <family>Inter Display</family>
-             <pointsize>12</pointsize>
+             <pointsize>9</pointsize>
              <bold>false</bold>
             </font>
            </property>
@@ -170,12 +170,12 @@ border-bottom: 3px solid #ffffff;</string>
            <property name="maximumSize">
             <size>
              <width>300</width>
-             <height>60</height>
+             <height>20</height>
             </size>
            </property>
            <property name="font">
             <font>
-             <pointsize>12</pointsize>
+             <pointsize>9</pointsize>
              <bold>true</bold>
             </font>
            </property>
@@ -236,13 +236,13 @@ border-bottom: 3px solid #ffffff;</string>
       <widget class="QPushButton" name="swap_cameras_button">
        <property name="minimumSize">
         <size>
-         <width>120</width>
-         <height>40</height>
+         <width>100</width>
+         <height>36</height>
         </size>
        </property>
        <property name="font">
         <font>
-         <pointsize>12</pointsize>
+         <pointsize>9</pointsize>
          <bold>true</bold>
         </font>
        </property>
@@ -291,26 +291,26 @@ QPushButton#swap_cameras_button:pressed {
    <item>
     <layout class="QVBoxLayout" name="controls_layout">
      <property name="spacing">
-      <number>15</number>
+      <number>3</number>
      </property>
      <property name="leftMargin">
-      <number>10</number>
+      <number>3</number>
      </property>
      <property name="topMargin">
-      <number>10</number>
+      <number>2</number>
      </property>
      <property name="rightMargin">
-      <number>10</number>
+      <number>3</number>
      </property>
      <property name="bottomMargin">
-      <number>10</number>
+      <number>2</number>
      </property>
      <item>
       <widget class="QLabel" name="controls_title">
        <property name="font">
         <font>
          <family>Inter Black</family>
-         <pointsize>14</pointsize>
+         <pointsize>8</pointsize>
          <bold>true</bold>
         </font>
        </property>
@@ -319,27 +319,33 @@ QPushButton#swap_cameras_button:pressed {
 font-weight: 700;</string>
        </property>
        <property name="text">
-        <string>Camera Controls</string>
+        <string>Controls</string>
        </property>
       </widget>
      </item>
      <item>
       <layout class="QHBoxLayout" name="capture_buttons_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>5</number>
        </property>
        <item>
         <widget class="QPushButton" name="start_capture_button">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>60</width>
            <height>40</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>45</height>
           </size>
          </property>
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>11</pointsize>
+           <pointsize>8</pointsize>
            <bold>false</bold>
           </font>
          </property>
@@ -379,7 +385,7 @@ QPushButton#start_capture_button:pressed {
 }</string>
          </property>
          <property name="text">
-          <string>START Preview</string>
+          <string>START</string>
          </property>
         </widget>
        </item>
@@ -390,14 +396,20 @@ QPushButton#start_capture_button:pressed {
          </property>
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>60</width>
            <height>40</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>45</height>
           </size>
          </property>
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>11</pointsize>
+           <pointsize>8</pointsize>
            <bold>false</bold>
           </font>
          </property>
@@ -442,7 +454,7 @@ QPushButton#stop_capture_button:disabled {
 }</string>
          </property>
          <property name="text">
-          <string>STOP Preview</string>
+          <string>STOP</string>
          </property>
         </widget>
        </item>
@@ -453,7 +465,7 @@ QPushButton#stop_capture_button:disabled {
        <property name="font">
         <font>
          <family>Inter Black</family>
-         <pointsize>12</pointsize>
+         <pointsize>7</pointsize>
          <bold>true</bold>
         </font>
        </property>
@@ -461,27 +473,33 @@ QPushButton#stop_capture_button:disabled {
         <string notr="true">color: #FFFFFF;</string>
        </property>
        <property name="text">
-        <string>LED Test</string>
+        <string>LED</string>
        </property>
       </widget>
      </item>
      <item>
       <layout class="QHBoxLayout" name="led_test_buttons_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>5</number>
        </property>
        <item>
         <widget class="QPushButton" name="led_test_on_button">
          <property name="minimumSize">
           <size>
-           <width>0</width>
-           <height>40</height>
+           <width>60</width>
+           <height>38</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>42</height>
           </size>
          </property>
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
            <bold>false</bold>
           </font>
          </property>
@@ -521,7 +539,7 @@ QPushButton#led_test_on_button:pressed {
 }</string>
          </property>
          <property name="text">
-          <string>LEDs ON 150mA</string>
+          <string>ON</string>
          </property>
         </widget>
        </item>
@@ -529,14 +547,20 @@ QPushButton#led_test_on_button:pressed {
         <widget class="QPushButton" name="led_test_off_button">
          <property name="minimumSize">
           <size>
-           <width>0</width>
-           <height>40</height>
+           <width>60</width>
+           <height>38</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>80</width>
+           <height>42</height>
           </size>
          </property>
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
            <bold>false</bold>
           </font>
          </property>
@@ -576,7 +600,7 @@ QPushButton#led_test_off_button:pressed {
 }</string>
          </property>
          <property name="text">
-          <string>LEDs OFF</string>
+          <string>OFF</string>
          </property>
         </widget>
        </item>
@@ -585,21 +609,21 @@ QPushButton#led_test_off_button:pressed {
      <item>
       <layout class="QVBoxLayout" name="led1_current_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <item>
         <widget class="QLabel" name="led1_current_label">
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
           <string notr="true">color: #FFFFFF;</string>
          </property>
          <property name="text">
-          <string>LED1 (VCSEL) Current (mA)</string>
+          <string>LED1 (VCSEL) mA</string>
          </property>
         </widget>
        </item>
@@ -607,7 +631,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="led1_current_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
@@ -629,7 +659,7 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QLabel" name="led1_current_value">
          <property name="font">
           <font>
-           <pointsize>9</pointsize>
+           <pointsize>8</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -648,21 +678,21 @@ QPushButton#led_test_off_button:pressed {
      <item>
       <layout class="QVBoxLayout" name="led2_current_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <item>
         <widget class="QLabel" name="led2_current_label">
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
           <string notr="true">color: #FFFFFF;</string>
          </property>
          <property name="text">
-          <string>LED2 (Flood) Current (mA)</string>
+          <string>LED2 (Flood) mA</string>
          </property>
         </widget>
        </item>
@@ -670,7 +700,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="led2_current_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
@@ -692,7 +728,7 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QLabel" name="led2_current_value">
          <property name="font">
           <font>
-           <pointsize>9</pointsize>
+           <pointsize>8</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -713,7 +749,7 @@ QPushButton#led_test_off_button:pressed {
        <property name="font">
         <font>
          <family>Inter Black</family>
-         <pointsize>12</pointsize>
+         <pointsize>7</pointsize>
          <bold>true</bold>
         </font>
        </property>
@@ -721,14 +757,14 @@ QPushButton#led_test_off_button:pressed {
         <string notr="true">color: #FFFFFF;</string>
        </property>
        <property name="text">
-        <string>LEFT Camera</string>
+        <string>LEFT</string>
        </property>
       </widget>
      </item>
      <item>
       <layout class="QVBoxLayout" name="left_exposure_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -747,7 +783,7 @@ QPushButton#led_test_off_button:pressed {
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -762,7 +798,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="left_exposure_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
@@ -784,7 +826,7 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QLabel" name="left_exposure_value">
          <property name="font">
           <font>
-           <pointsize>9</pointsize>
+           <pointsize>8</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -803,7 +845,7 @@ QPushButton#led_test_off_button:pressed {
      <item>
       <layout class="QVBoxLayout" name="left_gain_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -822,7 +864,7 @@ QPushButton#led_test_off_button:pressed {
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -837,7 +879,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="left_gain_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
@@ -859,7 +907,7 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QLabel" name="left_gain_value">
          <property name="font">
           <font>
-           <pointsize>9</pointsize>
+           <pointsize>8</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -880,7 +928,7 @@ QPushButton#led_test_off_button:pressed {
        <property name="font">
         <font>
          <family>Inter Black</family>
-         <pointsize>12</pointsize>
+         <pointsize>7</pointsize>
          <bold>true</bold>
         </font>
        </property>
@@ -888,14 +936,14 @@ QPushButton#led_test_off_button:pressed {
         <string notr="true">color: #FFFFFF;</string>
        </property>
        <property name="text">
-        <string>RIGHT Camera</string>
+        <string>RIGHT</string>
        </property>
       </widget>
      </item>
      <item>
       <layout class="QVBoxLayout" name="right_exposure_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -914,7 +962,7 @@ QPushButton#led_test_off_button:pressed {
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -929,7 +977,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="right_exposure_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
@@ -970,7 +1024,7 @@ QPushButton#led_test_off_button:pressed {
      <item>
       <layout class="QVBoxLayout" name="right_gain_layout">
        <property name="spacing">
-        <number>10</number>
+        <number>2</number>
        </property>
        <property name="leftMargin">
         <number>0</number>
@@ -989,7 +1043,7 @@ QPushButton#led_test_off_button:pressed {
          <property name="font">
           <font>
            <family>Inter Display</family>
-           <pointsize>10</pointsize>
+           <pointsize>7</pointsize>
           </font>
          </property>
          <property name="styleSheet">
@@ -1004,7 +1058,13 @@ QPushButton#led_test_off_button:pressed {
         <widget class="QSlider" name="right_gain_slider">
          <property name="minimumSize">
           <size>
-           <width>0</width>
+           <width>120</width>
+           <height>28</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>160</width>
            <height>30</height>
           </size>
          </property>
