@@ -132,6 +132,8 @@ void CameraPreviewWidget::connectSignals() {
             this, [this](int value) { onLeftExposureChanged(static_cast<double>(value)); });
     connect(ui->left_gain_slider, QOverload<int>::of(&QSlider::valueChanged),
             this, [this](int value) { onLeftGainChanged(static_cast<double>(value) / 100.0); });
+    connect(ui->left_contrast_slider, QOverload<int>::of(&QSlider::valueChanged),
+            this, [this](int value) { onLeftContrastChanged(static_cast<double>(value) / 100.0); });
     // TODO_UI: Add fps_slider to .ui file
     // connect(ui->fps_slider, QOverload<int>::of(&QSlider::valueChanged), 
     //         this, [this](int value) { onFPSChanged(static_cast<double>(value)); });
@@ -151,6 +153,9 @@ void CameraPreviewWidget::initializeAdditionalComponents() {
 
     // Gain default: 1.0x (from .ui file, slider value 100 = gain 1.0)
     ui->left_gain_value->setText("1.0x");
+
+    // Contrast default: 1.0 (from .ui file, slider value 100 = contrast 1.0)
+    ui->left_contrast_value->setText("1.0");
 
     // LED1 current default: 0 mA (from .ui file)
     ui->led1_current_value->setText("0 mA");
@@ -199,6 +204,19 @@ void CameraPreviewWidget::onRightGainChanged(double value) {
     // Deprecated method - right slider removed from UI
     // This method kept for backward compatibility but no longer called
     qDebug() << "[CameraPreview] WARNING: onRightGainChanged called but right slider no longer exists";
+}
+
+void CameraPreviewWidget::onLeftContrastChanged(double value) {
+    if (camera_system_) {
+        // Unified control: contrast slider controls BOTH cameras
+        // Note: Contrast control implementation depends on camera backend support
+        // TODO: Implement camera_system_->setContrast() if supported by hardware
+        qDebug() << "[CameraPreview] Contrast changed to:" << value << "(applies to both cameras)";
+        // camera_system_->setContrast(core::CameraId::LEFT, value);
+        // camera_system_->setContrast(core::CameraId::RIGHT, value);
+    }
+    // Update label to show current value (contrast from 0.0 to 2.0, neutral at 1.0)
+    ui->left_contrast_value->setText(QString("%1").arg(value, 0, 'f', 1));
 }
 
 void CameraPreviewWidget::onFPSChanged(double value) {

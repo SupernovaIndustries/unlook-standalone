@@ -98,7 +98,12 @@ private slots:
      * @brief Handle right camera gain change
      */
     void onRightGainChanged(double value);
-    
+
+    /**
+     * @brief Handle contrast change (unified for both cameras)
+     */
+    void onLeftContrastChanged(double value);
+
     /**
      * @brief Handle FPS change
      */

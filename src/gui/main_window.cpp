@@ -41,7 +41,10 @@ UnlookMainWindow::UnlookMainWindow(QWidget* parent)
 {
     // Setup UI from .ui file
     ui->setupUi(this);
-    
+
+    // Remove window title bar and frame for clean 800x400 display
+    setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+
     // Initialize responsive display metrics system FIRST
     styles::DisplayMetrics::initialize();
     

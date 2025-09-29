@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>800</width>
-    <height>400</height>
+    <height>431</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -18,7 +18,7 @@
 QWidget#DepthTestWidget {
     background-color: #000000;
     color: #FFFFFF;
-    font-family: "Inter", sans-serif;
+    font-family: &quot;Inter&quot;, sans-serif;
 }
 
 /* Supernova-tech Sliders */
@@ -150,9 +150,6 @@ color: #FFFFFF;</string>
              <property name="text">
               <string>No Image</string>
              </property>
-             <property name="alignment">
-              <set>Qt::AlignmentFlag::AlignCenter</set>
-             </property>
             </widget>
            </item>
           </layout>
@@ -188,9 +185,6 @@ color: #FFFFFF;</string>
              <property name="text">
               <string>No Depth Data</string>
              </property>
-             <property name="alignment">
-              <set>Qt::AlignmentFlag::AlignCenter</set>
-             </property>
             </widget>
            </item>
           </layout>
@@ -218,22 +212,30 @@ color: #FFFFFF;</string>
            </property>
            <item>
             <widget class="QPushButton" name="capture_button">
+             <property name="sizePolicy">
+              <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+               <horstretch>0</horstretch>
+               <verstretch>0</verstretch>
+              </sizepolicy>
+             </property>
              <property name="minimumSize">
               <size>
                <width>140</width>
-               <height>40</height>
+               <height>32</height>
               </size>
              </property>
              <property name="maximumSize">
               <size>
-               <width>180</width>
-               <height>45</height>
+               <width>800</width>
+               <height>40</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>9</pointsize>
-               <weight>87</weight>
+               <family>Inter</family>
+               <pointsize>-1</pointsize>
+               <bold>false</bold>
+               <kerning>false</kerning>
               </font>
              </property>
              <property name="styleSheet">
@@ -243,11 +245,10 @@ QPushButton#capture_button {
     color: #000000;
     border: 2px solid transparent;
     border-radius: 6px;
-    padding: 16px 24px;
     min-height: 60px;
     font-weight: 500;
     font-size: 16px;
-    font-family: "Inter", sans-serif;
+    font-family: &quot;Inter&quot;, sans-serif;
 }
 
 QPushButton#capture_button:hover {
@@ -268,27 +269,33 @@ QPushButton#capture_button:disabled {
              <property name="text">
               <string>CAPTURE &amp; PROCESS</string>
              </property>
+             <property name="iconSize">
+              <size>
+               <width>0</width>
+               <height>0</height>
+              </size>
+             </property>
+             <property name="autoDefault">
+              <bool>true</bool>
+             </property>
             </widget>
            </item>
            <item>
             <widget class="QPushButton" name="save_pointcloud_button">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
              <property name="minimumSize">
               <size>
                <width>140</width>
-               <height>38</height>
+               <height>32</height>
               </size>
              </property>
              <property name="maximumSize">
               <size>
-               <width>180</width>
-               <height>42</height>
+               <width>800</width>
+               <height>40</height>
               </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>8</pointsize>
-               <weight>87</weight>
-              </font>
              </property>
              <property name="styleSheet">
               <string notr="true">/* Supernova-tech Success Button */
@@ -297,11 +304,10 @@ QPushButton#save_pointcloud_button {
     color: #000000;
     border: 2px solid transparent;
     border-radius: 6px;
-    padding: 16px 24px;
     min-height: 50px;
     font-weight: 500;
     font-size: 14px;
-    font-family: "Inter", sans-serif;
+    font-family: &quot;Inter&quot;, sans-serif;
 }
 
 QPushButton#save_pointcloud_button:hover {
@@ -322,13 +328,13 @@ QPushButton#save_pointcloud_button:disabled {
              <property name="text">
               <string>SAVE POINT CLOUD</string>
              </property>
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
             </widget>
            </item>
            <item>
             <widget class="QComboBox" name="export_format_combo">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
              <property name="minimumSize">
               <size>
                <width>140</width>
@@ -337,13 +343,14 @@ QPushButton#save_pointcloud_button:disabled {
              </property>
              <property name="maximumSize">
               <size>
-               <width>180</width>
+               <width>800</width>
                <height>36</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>8</pointsize>
+               <pointsize>-1</pointsize>
+               <bold>false</bold>
               </font>
              </property>
              <property name="styleSheet">
@@ -351,9 +358,6 @@ QPushButton#save_pointcloud_button:disabled {
 
 
 </string>
-             </property>
-             <property name="enabled">
-              <bool>false</bool>
              </property>
              <item>
               <property name="text">
@@ -397,13 +401,14 @@ QPushButton#save_pointcloud_button:disabled {
              </property>
              <property name="maximumSize">
               <size>
-               <width>180</width>
+               <width>800</width>
                <height>36</height>
               </size>
              </property>
              <property name="font">
               <font>
-               <pointsize>8</pointsize>
+               <pointsize>-1</pointsize>
+               <bold>false</bold>
               </font>
              </property>
              <property name="styleSheet">
@@ -443,12 +448,13 @@ QPushButton#save_pointcloud_button:disabled {
             <widget class="QLabel" name="parameters_label">
              <property name="font">
               <font>
+               <family>Inter</family>
                <pointsize>8</pointsize>
                <bold>true</bold>
               </font>
              </property>
              <property name="styleSheet">
-              <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
+              <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
              </property>
              <property name="text">
               <string>Parameters</string>
@@ -476,11 +482,13 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="num_disparities_label">
                <property name="font">
                 <font>
+                 <family>Inter</family>
                  <pointsize>7</pointsize>
+                 <bold>true</bold>
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
+                <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Disparities</string>
@@ -513,9 +521,6 @@ QPushButton#save_pointcloud_button:disabled {
                <property name="value">
                 <number>64</number>
                </property>
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
-               </property>
               </widget>
              </item>
             </layout>
@@ -541,11 +546,13 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="block_size_label">
                <property name="font">
                 <font>
+                 <family>Inter</family>
                  <pointsize>7</pointsize>
+                 <bold>true</bold>
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
+                <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Block Size</string>
@@ -578,9 +585,6 @@ QPushButton#save_pointcloud_button:disabled {
                <property name="value">
                 <number>15</number>
                </property>
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
-               </property>
               </widget>
              </item>
             </layout>
@@ -606,11 +610,13 @@ QPushButton#save_pointcloud_button:disabled {
               <widget class="QLabel" name="min_disparity_label">
                <property name="font">
                 <font>
+                 <family>Inter</family>
                  <pointsize>7</pointsize>
+                 <bold>true</bold>
                 </font>
                </property>
                <property name="styleSheet">
-                <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
+                <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
                </property>
                <property name="text">
                 <string>Min Disparity</string>
@@ -640,70 +646,9 @@ QPushButton#save_pointcloud_button:disabled {
                <property name="value">
                 <number>0</number>
                </property>
-               <property name="orientation">
-                <enum>Qt::Orientation::Horizontal</enum>
-               </property>
               </widget>
              </item>
             </layout>
-           </item>
-           <item>
-            <widget class="QLabel" name="processing_status">
-             <property name="font">
-              <font>
-               <pointsize>10</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #FFFFFF;
-font-weight: 700;
-font-family: "Inter", sans-serif;</string>
-             </property>
-             <property name="text">
-              <string>Idle</string>
-             </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="result_stats">
-             <property name="minimumSize">
-              <size>
-               <width>0</width>
-               <height>30</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <pointsize>9</pointsize>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #FFFFFF; font-family: "Inter", sans-serif; font-weight: 700;</string>
-             </property>
-             <property name="text">
-              <string>No results</string>
-             </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="controls_spacer">
-             <property name="orientation">
-              <enum>Qt::Orientation::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
            </item>
           </layout>
          </item>
