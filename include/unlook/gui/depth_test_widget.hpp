@@ -145,6 +145,16 @@ private slots:
      */
     void onVCSELError(const std::string& error);
 
+    /**
+     * @brief Handle filter disable checkbox toggle for investor demo
+     */
+    void onFilterDisableToggled(bool disable);
+
+    /**
+     * @brief Handle LED toggle button for investor demo
+     */
+    void onLEDToggle();
+
 private:
     /**
      * @brief Initialize the widget UI
@@ -248,6 +258,7 @@ private:
     core::DepthResult current_result_;
     bool processing_active_;
     bool live_preview_active_;
+    bool led_enabled_;  // Track LED state for investor demo
     std::string current_debug_directory_;  // Store current debug directory for image loading
 
 #ifndef DISABLE_POINTCLOUD_FUNCTIONALITY

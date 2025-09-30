@@ -276,9 +276,34 @@ bool PointCloudProcessor::applyOpen3DFiltering(
     try {
         // Statistical outlier removal
         if (filterConfig.enableStatisticalFilter) {
+            // DIAGNOSTIC: Count points before filtering
+            size_t points_before = pointCloud->points_.size();
+            std::cout << "[PointCloudProcessor] BEFORE statistical filter: " << points_before << " points" << std::endl;
+            std::cout << "[PointCloudProcessor] Filter parameters: "
+                      << filterConfig.statisticalNeighbors << " neighbors, "
+                      << filterConfig.statisticalStdRatio << " std ratio" << std::endl;
+
             auto [filtered, indices] = pointCloud->RemoveStatisticalOutliers(
                 filterConfig.statisticalNeighbors,
                 filterConfig.statisticalStdRatio);
+
+            // DIAGNOSTIC: Count points after filtering and calculate removal rate
+            size_t points_after = filtered->points_.size();
+            size_t removed = points_before - points_after;
+            double removal_rate = (points_before > 0) ? (100.0 * removed / points_before) : 0.0;
+
+            std::cout << "[PointCloudProcessor] AFTER statistical filter: " << points_after << " points" << std::endl;
+            std::cout << "[PointCloudProcessor] Removed: " << removed << " points ("
+                      << std::fixed << std::setprecision(3) << removal_rate << "% removal rate)" << std::endl;
+
+            // SAFETY CHECK: Warn if removal rate is dangerously high
+            if (removal_rate > 50.0) {
+                std::cout << "[PointCloudProcessor] WARNING: Statistical filter removed >"
+                          << std::fixed << std::setprecision(1) << removal_rate
+                          << "% of points! Filter may be too aggressive." << std::endl;
+                std::cout << "[PointCloudProcessor] Consider using more lenient parameters (50 neighbors, 3.0 std ratio)" << std::endl;
+            }
+
             *pointCloud = *filtered;
 
             if (pImpl->progressCallback) {

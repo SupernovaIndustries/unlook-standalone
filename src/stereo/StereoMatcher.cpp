@@ -4,6 +4,8 @@
 #include "unlook/stereo/BoofCVStereoMatcher.hpp"
 #endif
 #include <opencv2/imgproc.hpp>
+#include <limits>
+#include <cmath>
 
 namespace unlook {
 namespace stereo {
@@ -105,22 +107,44 @@ bool StereoMatcher::disparityToDepth(const cv::Mat& disparity,
                                     cv::Mat& depth,
                                     bool handleMissingValues) {
     if (disparity.empty() || Q.empty()) return false;
-    
+
+    // CRITICAL FIX: Pre-filter disparity to avoid infinite depth values
+    // Minimum disparity threshold to prevent divide-by-near-zero
+    // With 70mm baseline, disparity < 1px would give depth > 122 meters (unrealistic)
+    cv::Mat disparityFiltered;
+    disparity.copyTo(disparityFiltered);
+
+    // Set invalid disparities to negative (will be filtered later)
+    cv::Mat invalidMask = (disparity <= 1.0f);  // Less than 1 pixel = invalid
+    disparityFiltered.setTo(-1, invalidMask);
+
     // Convert disparity to 3D points
     cv::Mat points3D;
-    cv::reprojectImageTo3D(disparity, points3D, Q, true);
-    
+    cv::reprojectImageTo3D(disparityFiltered, points3D, Q, true);
+
     // Extract Z channel as depth
     std::vector<cv::Mat> channels(3);
     cv::split(points3D, channels);
     depth = channels[2];  // Z channel
-    
-    // Handle missing values if requested
+
+    // AGGRESSIVE filtering to prevent OOM - synchronized with DepthProcessor config
     if (handleMissingValues) {
-        cv::Mat mask = (disparity <= 0) | (depth > 10000) | (depth < 0);
-        depth.setTo(0, mask);
+        // Filter: invalid disparity, negative depth, unrealistic depth (>4000mm), infinite/NaN
+        // Synchronized with DepthProcessor maxDepthMm=4000mm
+        cv::Mat mask = (disparity <= 1.0f) | (depth < 0) | (depth > 4000.0f) |
+                       (cv::abs(depth) == std::numeric_limits<float>::infinity());
+
+        // Additional safety: replace any remaining extreme values
+        for (int y = 0; y < depth.rows; ++y) {
+            for (int x = 0; x < depth.cols; ++x) {
+                float d = depth.at<float>(y, x);
+                if (!std::isfinite(d) || d < 0 || d > 4000.0f) {
+                    depth.at<float>(y, x) = 0.0f;
+                }
+            }
+        }
     }
-    
+
     return true;
 }
 

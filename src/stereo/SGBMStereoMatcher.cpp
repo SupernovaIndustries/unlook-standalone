@@ -4,32 +4,49 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <fstream>
+#include <vector>
 
 namespace unlook {
 namespace stereo {
 
 SGBMStereoMatcher::SGBMStereoMatcher() {
-    // OPTIMIZED PARAMETERS FOR 70MM BASELINE
-    // Target: 100-800mm depth range with 0.005mm precision
+    // OPTIMIZED PARAMETERS FOR CM5 CORTEX-A76 PERFORMANCE
+    // Target: 100-6000mm depth range with 0.005mm precision
+    // 70.017mm baseline with IMX296 1456x1088 cameras
 
-    // Adjust default parameters for 70mm baseline configuration
-    params_.minDisparity = 4;       // Start from 4 to avoid border artifacts
-    params_.numDisparities = 160;   // Optimized for 70mm baseline (must be divisible by 16)
-    params_.blockSize = 7;          // Smaller block for fine detail preservation
+    // Disparity range CRITICAL for depth coverage
+    params_.minDisparity = 0;         // Start from 0 to capture far objects
+    params_.numDisparities = 256;     // INCREASED from 160 to 256 for extended depth range
+                                      // Must be divisible by 16 for SIMD optimization
+                                      // Math: Z = (70.017mm * ~1000px) / disparity
+                                      // Min depth (d=256): 273mm, Max depth (d=1): 70m
 
-    // Calculate P1/P2 based on block size for optimal smoothness
-    // P1 controls disparity changes by ±1, P2 controls larger changes
-    params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
-    params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 7 * 7 = 1568
+    // Block size optimized for CM5 processing power
+    params_.blockSize = 11;           // INCREASED from 7 to 11 for better texture context
+                                      // Larger block = more reliable matches at computational cost
+                                      // CM5 Cortex-A76 can handle this easily
 
-    // Uniqueness and texture thresholds optimized for precision
-    params_.uniquenessRatio = 5;      // Lower value for more valid pixels (was too strict)
-    params_.textureThreshold = 10;    // Lower threshold to preserve texture
-    params_.preFilterCap = 31;        // Moderate pre-filtering
+    // Recalculate P1/P2 based on new blockSize=11 for optimal smoothness
+    // P1 controls small disparity changes (±1 pixel)
+    // P2 controls large disparity changes (>1 pixel)
+    params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
+    params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 11 * 11 = 3872
 
-    // Speckle filtering - less aggressive to preserve valid depth
-    params_.speckleWindowSize = 50;   // Smaller window (was 100-200)
-    params_.speckleRange = 16;        // Tighter range for 70mm baseline
+    // Uniqueness and texture thresholds - VERY PERMISSIVE for maximum coverage
+    params_.uniquenessRatio = 5;      // MODERATE: 5 allows more matches while WLS filter cleans up
+                                      // Not too strict to preserve coverage
+    params_.textureThreshold = 10;    // DEFAULT VALUE: Maximum permissiveness
+                                      // Let WLS filter and post-processing clean up noise
+                                      // CRITICAL: Low threshold prevents empty disparity maps
+                                      // We rely on WLS filter + uniquenessRatio for quality
+    params_.preFilterCap = 63;        // INCREASED from 31 for better pre-filtering
+                                      // Maximum allowed value for best edge preservation
+
+    // Speckle filtering - more aggressive for cleaner depth maps
+    params_.speckleWindowSize = 100;  // INCREASED from 50 to 100 for better noise removal
+    params_.speckleRange = 32;        // INCREASED from 16 to 32 for wider disparity tolerance
 
     // WLS filter parameters optimized for edge preservation
     params_.useWLSFilter = true;
@@ -113,7 +130,75 @@ bool SGBMStereoMatcher::computeDisparity(const cv::Mat& leftRectified,
         if (params_.speckleWindowSize > 0) {
             applySpeckleFilter(disparity);
         }
-        
+
+        // DIAGNOSTIC: Analyze disparity distribution to understand median ~0 issue
+        double minDisp, maxDisp;
+        cv::minMaxLoc(disparity, &minDisp, &maxDisp, nullptr, nullptr, disparity > 0);
+        std::vector<float> validDisparities;
+        validDisparities.reserve(disparity.rows * disparity.cols / 2);  // Reserve space for efficiency
+
+        // Collect all valid disparity values for statistical analysis
+        for (int y = 0; y < disparity.rows; ++y) {
+            for (int x = 0; x < disparity.cols; ++x) {
+                // Handle both CV_16S (raw) and CV_32F (converted) types
+                float d = (disparity.type() == CV_16S) ?
+                         static_cast<float>(disparity.at<short>(y, x)) / 16.0f :  // 16x sub-pixel
+                         disparity.at<float>(y, x);
+                if (d > 0) {
+                    validDisparities.push_back(d);
+                }
+            }
+        }
+
+        // DIAGNOSTIC: Write to both stdout AND file for GUI debugging
+        std::ofstream logFile("/tmp/sgbm_disparity.log", std::ios::app);
+        auto logToAll = [&](const std::string& msg) {
+            std::cout << msg << std::endl;
+            if (logFile.is_open()) logFile << msg << std::endl;
+        };
+
+        if (!validDisparities.empty()) {
+            std::sort(validDisparities.begin(), validDisparities.end());
+            float median = validDisparities[validDisparities.size() / 2];
+            float q25 = validDisparities[validDisparities.size() / 4];
+            float q75 = validDisparities[3 * validDisparities.size() / 4];
+            float mean = 0;
+            for (float d : validDisparities) mean += d;
+            mean /= validDisparities.size();
+
+            logToAll("[SGBM] Disparity distribution analysis:");
+            logToAll("  Valid pixels: " + std::to_string(validDisparities.size()) + "/" +
+                     std::to_string(disparity.rows * disparity.cols) + " (" +
+                     std::to_string(100.0 * validDisparities.size() / (disparity.rows * disparity.cols)) + "%)");
+            logToAll("  Range: [" + std::to_string(minDisp) + ", " + std::to_string(maxDisp) + "] pixels");
+            logToAll("  Mean: " + std::to_string(mean) + " pixels");
+            logToAll("  Median: " + std::to_string(median) + " pixels (Q1=" +
+                     std::to_string(q25) + ", Q3=" + std::to_string(q75) + ")");
+
+            // Detect anomaly: median near zero while mean is high
+            if (median < 1.0 && mean > 10.0) {
+                logToAll("  ⚠️ WARNING: Median near zero (" + std::to_string(median) +
+                         ") while mean is " + std::to_string(mean) +
+                         " - indicates highly skewed distribution!");
+                logToAll("  This suggests most pixels have invalid/zero disparity.");
+            }
+
+            // CRITICAL: Warn if coverage is too low
+            float coverage = 100.0 * validDisparities.size() / (disparity.rows * disparity.cols);
+            if (coverage < 10.0) {
+                logToAll("  ⚠️ CRITICAL: Only " + std::to_string(coverage) +
+                         "% disparity coverage! Point cloud will be sparse.");
+                logToAll("  Check: scene texture, lighting, SGBM parameters");
+            }
+        } else {
+            logToAll("[SGBM] ⚠️⚠️⚠️ CRITICAL: No valid disparity pixels found!");
+            logToAll("[SGBM] Possible causes:");
+            logToAll("  - Scene has no texture (uniform color/surface)");
+            logToAll("  - Cameras not properly rectified");
+            logToAll("  - SGBM parameters too restrictive");
+            logToAll("  - Images not properly captured/synchronized");
+        }
+
         // PRECISION-CRITICAL: Convert to float preserving sub-pixel accuracy
         // OpenCV SGBM returns CV_16S with 4 fractional bits (16x sub-pixel precision)
         if (disparity.type() == CV_16S) {
@@ -255,30 +340,32 @@ void SGBMStereoMatcher::setPrecisionMode(bool highPrecision) {
     highPrecisionMode_ = highPrecision;
 
     if (highPrecision) {
-        // OPTIMIZED FOR 70MM BASELINE - HIGH PRECISION MODE
-        // Target: <0.005mm precision at 100-800mm range
-        params_.uniquenessRatio = 5;      // Balance between coverage and precision
-        params_.speckleWindowSize = 50;   // Moderate speckle filter (was 200 - too aggressive)
-        params_.speckleRange = 16;        // Optimized for disparity range at 70mm baseline
-        params_.disp12MaxDiff = 2;        // Allow small differences for more coverage
+        // OPTIMIZED FOR CM5 CORTEX-A76 - HIGH PRECISION MODE
+        // Target: <0.005mm precision at 100-6000mm range
+        params_.uniquenessRatio = 10;     // Higher for better quality (consistent with new defaults)
+        params_.speckleWindowSize = 100;  // More aggressive speckle removal
+        params_.speckleRange = 32;        // Wider range for extended disparity
+        params_.disp12MaxDiff = 2;        // Strict left-right consistency check
+        params_.textureThreshold = 500;   // High threshold to reject low-texture regions
 
         // Use full 8-directional matching for best quality
         params_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;
 
         // Adjust P1/P2 for high precision (less smoothing)
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;
-        params_.P2 = 24 * params_.blockSize * params_.blockSize;  // Reduced from 32x
+        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
+        params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 11 * 11 = 2904 (reduced smoothing)
     } else {
-        // OPTIMIZED FOR 70MM BASELINE - FAST MODE
-        params_.uniquenessRatio = 10;
-        params_.speckleWindowSize = 25;   // Smaller for speed
+        // OPTIMIZED FOR CM5 CORTEX-A76 - FAST MODE
+        params_.uniquenessRatio = 15;     // Even stricter for speed
+        params_.speckleWindowSize = 50;   // Smaller for speed
         params_.speckleRange = 32;
-        params_.disp12MaxDiff = 3;
+        params_.disp12MaxDiff = 3;        // More relaxed for speed
+        params_.textureThreshold = 100;   // Lower threshold for more coverage
         params_.mode = cv::StereoSGBM::MODE_SGBM;  // 5-directional for speed
 
         // More smoothing for fast mode
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;
-        params_.P2 = 32 * params_.blockSize * params_.blockSize;
+        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
+        params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 11 * 11 = 3872
     }
 
     updateSGBMParameters();

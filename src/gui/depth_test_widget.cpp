@@ -29,6 +29,7 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     , camera_system_(camera_system)
     , processing_active_(false)
     , live_preview_active_(false)
+    , led_enabled_(true)  // LED enabled by default for investor demo
     , current_debug_directory_("")
     , export_pointcloud_button_(nullptr)
     , export_mesh_button_(nullptr)
@@ -79,6 +80,14 @@ void DepthTestWidget::connectSignals() {
     // Connect algorithm selection
     connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DepthTestWidget::updateStereoParameters);
+
+    // INVESTOR DEMO: Connect filter disable checkbox
+    connect(ui->disable_filters_checkbox, &QCheckBox::toggled,
+            this, &DepthTestWidget::onFilterDisableToggled);
+
+    // INVESTOR DEMO: Connect LED toggle button
+    connect(ui->led_toggle_button, &QPushButton::clicked,
+            this, &DepthTestWidget::onLEDToggle);
 
     // TODO: Add these widgets to .ui file and uncomment:
     // connect(ui->export_button, &QPushButton::clicked, this, &DepthTestWidget::exportDepthMap);
@@ -135,31 +144,37 @@ void DepthTestWidget::captureStereoFrame() {
     qDebug() << "[DepthWidget] Starting stereo frame capture with VCSEL";
     processing_active_ = true;
 
-    // SYNCHRONIZATION STEP 1: Activate LEDs for optimal illumination
-    qDebug() << "[DepthWidget] Activating AS1170 LEDs for depth capture";
-    capture_status_->setStatus("Activating LED illumination...", StatusDisplay::StatusType::PROCESSING);
-
+    // SYNCHRONIZATION STEP 1: Conditionally activate LEDs based on user preference (INVESTOR DEMO)
     auto as1170 = hardware::AS1170Controller::getInstance();
     bool leds_activated = false;
-    if (as1170) {
-        // Initialize if not already done
-        if (!as1170->isInitialized()) {
-            qDebug() << "[DepthWidget] Initializing AS1170 controller";
-            as1170->initialize();
-        }
 
-        // Activate both LED1 (VCSEL) and LED2 (Flood) at 150mA for optimal depth capture illumination
-        bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
-        bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+    if (led_enabled_) {
+        qDebug() << "[DepthWidget] LED illumination ENABLED - Activating AS1170 LEDs for depth capture";
+        capture_status_->setStatus("Activating LED illumination...", StatusDisplay::StatusType::PROCESSING);
 
-        leds_activated = led1_success && led2_success;
-        if (leds_activated) {
-            qDebug() << "[DepthWidget] Both LEDs activated successfully at 150mA for depth capture";
+        if (as1170) {
+            // Initialize if not already done
+            if (!as1170->isInitialized()) {
+                qDebug() << "[DepthWidget] Initializing AS1170 controller";
+                as1170->initialize();
+            }
+
+            // Activate both LED1 (VCSEL) and LED2 (Flood) at 150mA for optimal depth capture illumination
+            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
+            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+
+            leds_activated = led1_success && led2_success;
+            if (leds_activated) {
+                qDebug() << "[DepthWidget] Both LEDs activated successfully at 150mA for depth capture";
+            } else {
+                qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
+            }
         } else {
-            qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
+            qWarning() << "[DepthWidget] AS1170Controller not available";
         }
     } else {
-        qWarning() << "[DepthWidget] AS1170Controller not available";
+        qDebug() << "[DepthWidget] LED illumination DISABLED by user - Capturing with ambient light only";
+        capture_status_->setStatus("Capturing with ambient light (LED OFF)...", StatusDisplay::StatusType::INFO);
     }
 
     capture_status_->setStatus("Activating VCSEL projection...", StatusDisplay::StatusType::PROCESSING);
@@ -246,10 +261,11 @@ void DepthTestWidget::captureStereoFrame() {
         capture_status_->setStatus("Failed to capture synchronized frames", StatusDisplay::StatusType::ERROR);
     }
 
-    qDebug() << "[DepthWidget] Starting LED deactivation sequence";
-    // SYNCHRONIZATION STEP 2: Deactivate LEDs after capture and processing complete
-    qDebug() << "[DepthWidget] Deactivating AS1170 LEDs after depth capture";
-    if (as1170) {
+    // SYNCHRONIZATION STEP 2: Conditionally deactivate LEDs after capture (only if they were activated)
+    if (led_enabled_ && as1170) {
+        qDebug() << "[DepthWidget] Starting LED deactivation sequence";
+        qDebug() << "[DepthWidget] Deactivating AS1170 LEDs after depth capture";
+
         // Deactivate both LEDs
         bool led1_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
         bool led2_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
@@ -259,6 +275,8 @@ void DepthTestWidget::captureStereoFrame() {
         } else {
             qWarning() << "[DepthWidget] LED deactivation failed - LED1:" << led1_off << "LED2:" << led2_off;
         }
+    } else if (!led_enabled_) {
+        qDebug() << "[DepthWidget] LED deactivation skipped - LEDs were not activated (user disabled)";
     }
 
     capture_status_->stopPulsing();
@@ -1039,9 +1057,16 @@ void DepthTestWidget::initializePointCloudProcessor() {
 
     // Initialize default configurations
     pointcloud_filter_config_ = pointcloud::PointCloudFilterConfig{};
-    pointcloud_filter_config_.enableStatisticalFilter = true;
-    pointcloud_filter_config_.statisticalNeighbors = 20;
-    pointcloud_filter_config_.statisticalStdRatio = 2.0;
+
+    // CRITICAL FIX: Disable statistical outlier filter - it was decimating point clouds
+    // Previous settings (20 neighbors, 2.0 std ratio) removed 99.997% of points (989K -> 28)
+    // Root cause: In sparse point clouds with non-uniform disparity distribution,
+    // most points appear as "outliers" due to large inter-point distances
+    // TODO: Re-enable after fixing disparity distribution uniformity in SGBM
+    // If re-enabled, use more lenient parameters: 50 neighbors, 3.0 std ratio
+    pointcloud_filter_config_.enableStatisticalFilter = false;  // DISABLED - was too aggressive
+    pointcloud_filter_config_.statisticalNeighbors = 50;        // Increased from 20 (if re-enabled)
+    pointcloud_filter_config_.statisticalStdRatio = 3.0;        // Increased from 2.0 (if re-enabled)
     pointcloud_filter_config_.computeNormals = true;
 
     mesh_generation_config_ = pointcloud::MeshGenerationConfig{};
@@ -1250,11 +1275,35 @@ void DepthTestWidget::exportPointCloud() {
         // Assess point cloud quality
         pointcloud::PointCloudQuality quality;
         if (pointcloud_processor_->assessPointCloudQuality(pointCloud, quality)) {
-            qDebug() << "[DepthWidget] Point cloud quality assessment completed:";
-            qDebug() << "[DepthWidget] Point cloud quality:"
-                     << "Valid points:" << quality.validPoints
-                     << "Density:" << quality.density
-                     << "Valid ratio:" << (quality.validRatio * 100) << "%";
+            qDebug() << "[DepthWidget] ========== POINT CLOUD QUALITY REPORT ==========";
+            qDebug() << "[DepthWidget] Total points:" << quality.totalPoints;
+            qDebug() << "[DepthWidget] Valid points:" << quality.validPoints;
+            qDebug() << "[DepthWidget] Valid ratio:" << (quality.validRatio * 100) << "%";
+            qDebug() << "[DepthWidget] Density:" << quality.density << "points/mm³";
+            qDebug() << "[DepthWidget] Bounding box min: ("
+                     << quality.boundingBoxMin[0] << ","
+                     << quality.boundingBoxMin[1] << ","
+                     << quality.boundingBoxMin[2] << ")";
+            qDebug() << "[DepthWidget] Bounding box max: ("
+                     << quality.boundingBoxMax[0] << ","
+                     << quality.boundingBoxMax[1] << ","
+                     << quality.boundingBoxMax[2] << ")";
+            qDebug() << "[DepthWidget] Mean nearest neighbor distance:" << quality.meanNearestNeighborDistance << "mm";
+            qDebug() << "[DepthWidget] Std nearest neighbor distance:" << quality.stdNearestNeighborDistance << "mm";
+            qDebug() << "[DepthWidget] Completeness:" << (quality.completeness * 100) << "%";
+            qDebug() << "[DepthWidget] Outlier ratio:" << (quality.outlierRatio * 100) << "%";
+            qDebug() << "[DepthWidget] Centroid: ("
+                     << quality.centroid[0] << ","
+                     << quality.centroid[1] << ","
+                     << quality.centroid[2] << ")";
+            qDebug() << "[DepthWidget] ================================================";
+
+            // CRITICAL VALIDATION: Check if point cloud survived filtering
+            if (quality.validPoints < 1000) {
+                qWarning() << "[DepthWidget] CRITICAL WARNING: Only" << quality.validPoints
+                          << "points in point cloud! Expected ~500K-990K points.";
+                qWarning() << "[DepthWidget] Point cloud may have been decimated by aggressive filtering.";
+            }
         } else {
             qDebug() << "[DepthWidget] Point cloud quality assessment FAILED";
         }
@@ -1607,6 +1656,77 @@ void DepthTestWidget::onVCSELError(const std::string& error) {
     processing_status_->showTemporaryMessage(
         QString("VCSEL: %1").arg(QString::fromStdString(error)),
         StatusDisplay::StatusType::ERROR, 3000);
+}
+
+void DepthTestWidget::onFilterDisableToggled(bool disable) {
+    qDebug() << "[DepthWidget] Filter disable checkbox toggled:" << disable;
+
+#ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
+    // When checked, disable all point cloud filters for investor demo
+    if (disable) {
+        pointcloud_filter_config_.enableStatisticalFilter = false;
+        pointcloud_filter_config_.enableVoxelDownsampling = false;
+        pointcloud_filter_config_.enableRadiusFilter = false;
+
+        qDebug() << "[DepthWidget] ALL FILTERS DISABLED - Demo mode active";
+        qDebug() << "[DepthWidget]   Statistical filter: OFF";
+        qDebug() << "[DepthWidget]   Voxel downsampling: OFF";
+        qDebug() << "[DepthWidget]   Radius filter: OFF";
+
+        if (processing_status_) {
+            processing_status_->showTemporaryMessage(
+                "Demo Mode: All filters disabled for maximum point count",
+                StatusDisplay::StatusType::WARNING, 3000);
+        }
+    } else {
+        // Re-enable filters with original settings
+        pointcloud_filter_config_.enableStatisticalFilter = false;  // Keep disabled (was too aggressive)
+        pointcloud_filter_config_.enableVoxelDownsampling = false;
+        pointcloud_filter_config_.enableRadiusFilter = false;
+
+        qDebug() << "[DepthWidget] Filters returned to default configuration";
+
+        if (processing_status_) {
+            processing_status_->showTemporaryMessage(
+                "Normal Mode: Filter configuration restored",
+                StatusDisplay::StatusType::INFO, 2000);
+        }
+    }
+#else
+    qDebug() << "[DepthWidget] Point cloud functionality disabled at compile time";
+#endif
+}
+
+void DepthTestWidget::onLEDToggle() {
+    // Toggle LED state
+    led_enabled_ = !led_enabled_;
+
+    qDebug() << "[DepthWidget] LED toggle button clicked - LED enabled:" << led_enabled_;
+
+    // Update button text based on new state
+    if (ui && ui->led_toggle_button) {
+        if (led_enabled_) {
+            ui->led_toggle_button->setText("LED ON");
+            ui->led_toggle_button->setChecked(true);
+            qDebug() << "[DepthWidget] LED button updated to ON state";
+        } else {
+            ui->led_toggle_button->setText("LED OFF");
+            ui->led_toggle_button->setChecked(false);
+            qDebug() << "[DepthWidget] LED button updated to OFF state";
+        }
+    }
+
+    // Show status message
+    if (processing_status_) {
+        QString message = led_enabled_ ?
+            "LED illumination ENABLED for next capture" :
+            "LED illumination DISABLED for next capture";
+        processing_status_->showTemporaryMessage(
+            message,
+            StatusDisplay::StatusType::INFO, 2000);
+    }
+
+    qDebug() << "[DepthWidget] LED toggle complete - next capture will use LED:" << led_enabled_;
 }
 
 } // namespace gui

@@ -219,35 +219,40 @@ color: #FFFFFF;</string>
             <number>4</number>
            </property>
            <item>
-            <widget class="QPushButton" name="capture_button">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
+            <layout class="QHBoxLayout" name="capture_led_layout">
+             <property name="spacing">
+              <number>4</number>
              </property>
-             <property name="minimumSize">
-              <size>
-               <width>140</width>
-               <height>32</height>
-              </size>
-             </property>
-             <property name="maximumSize">
-              <size>
-               <width>800</width>
-               <height>32</height>
-              </size>
-             </property>
-             <property name="font">
-              <font>
-               <family>Inter</family>
-               <pointsize>-1</pointsize>
-               <bold>false</bold>
-               <kerning>false</kerning>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">/* Supernova-tech Primary Button */
+             <item>
+              <widget class="QPushButton" name="capture_button">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>100</width>
+                 <height>32</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>800</width>
+                 <height>32</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Inter</family>
+                 <pointsize>-1</pointsize>
+                 <bold>false</bold>
+                 <kerning>false</kerning>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">/* Supernova-tech Primary Button */
 QPushButton#capture_button {
     background: #00E5CC;
     color: #000000;
@@ -273,20 +278,87 @@ QPushButton#capture_button:disabled {
     color: #666666;
     border: 2px solid transparent;
 }</string>
-             </property>
-             <property name="text">
-              <string>CAPTURE &amp; PROCESS</string>
-             </property>
-             <property name="iconSize">
-              <size>
-               <width>0</width>
-               <height>0</height>
-              </size>
-             </property>
-             <property name="autoDefault">
-              <bool>true</bool>
-             </property>
-            </widget>
+               </property>
+               <property name="text">
+                <string>CAPTURE &amp; PROCESS</string>
+               </property>
+               <property name="iconSize">
+                <size>
+                 <width>0</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="autoDefault">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="led_toggle_button">
+               <property name="sizePolicy">
+                <sizepolicy hsizetype="Fixed" vsizetype="Expanding">
+                 <horstretch>0</horstretch>
+                 <verstretch>0</verstretch>
+                </sizepolicy>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>80</width>
+                 <height>32</height>
+                </size>
+               </property>
+               <property name="maximumSize">
+                <size>
+                 <width>90</width>
+                 <height>32</height>
+                </size>
+               </property>
+               <property name="font">
+                <font>
+                 <family>Inter</family>
+                 <pointsize>-1</pointsize>
+                 <bold>false</bold>
+                </font>
+               </property>
+               <property name="styleSheet">
+                <string notr="true">/* Supernova-tech Warning Button (LED Toggle) */
+QPushButton#led_toggle_button {
+    background: #FF8800;
+    color: #000000;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    min-height: 60px;
+    font-weight: 500;
+    font-size: 14px;
+    font-family: &quot;Inter&quot;, sans-serif;
+}
+
+QPushButton#led_toggle_button:hover {
+    background: #FFAA33;
+    border: 2px solid #FF8800;
+}
+
+QPushButton#led_toggle_button:pressed {
+    background: #CC6600;
+}
+
+QPushButton#led_toggle_button:checked {
+    background: #008B7A;
+    color: #FFFFFF;
+}</string>
+               </property>
+               <property name="text">
+                <string>LED ON</string>
+               </property>
+               <property name="checkable">
+                <bool>true</bool>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
            <item>
             <widget class="QPushButton" name="save_pointcloud_button">
@@ -397,6 +469,65 @@ QPushButton#save_pointcloud_button:disabled {
                <string>XYZ (Points Only)</string>
               </property>
              </item>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="disable_filters_checkbox">
+             <property name="minimumSize">
+              <size>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>800</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <family>Inter</family>
+               <pointsize>9</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Supernova-tech Checkbox */
+QCheckBox {
+    color: #FFFFFF;
+    font-family: &quot;Inter&quot;, sans-serif;
+    font-weight: 700;
+    spacing: 8px;
+    min-height: 48px;
+}
+
+QCheckBox::indicator {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #008B7A;
+    border-radius: 4px;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #00E5CC;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:checked {
+    background: #00E5CC;
+    border: 2px solid #00B8A3;
+}
+
+QCheckBox::indicator:checked:hover {
+    background: #00FFE6;
+    border: 2px solid #00E5CC;
+}</string>
+             </property>
+             <property name="text">
+              <string>Disable All Filters (Demo Mode)</string>
+             </property>
             </widget>
            </item>
            <item>

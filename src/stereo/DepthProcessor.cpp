@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <vector>
 #include <cmath>
+#include <limits>
 
 // Professional Open3D integration for industrial-grade point cloud processing
 #ifdef OPEN3D_ENABLED
@@ -48,12 +49,13 @@ public:
         // Based on IEEE/ISO stereo vision standards and actual measurement capabilities
         // Automatically calculated from baseline geometry and practical limitations
 
-        // Minimum depth: ~3x baseline (stereo vision standard) with safety margin
-        config.minDepthMm = 200.0f;      // 3x70mm = 210mm, rounded for safety
+        // INVESTOR DEMO FIX: Correct depth range for 70mm baseline stereo system
+        // Working range verified by user: 400-4000mm
+        config.minDepthMm = 400.0f;
+        config.maxDepthMm = 4000.0f;
 
-        // Maximum depth: Extended to accommodate actual measurement range
-        // Based on disparity precision limits and practical scene requirements
-        config.maxDepthMm = 3500.0f;     // Covers typical industrial scanning ranges
+        std::cout << "[DepthProcessor] Depth range configured: "
+                  << config.minDepthMm << "-" << config.maxDepthMm << "mm" << std::endl;
 
         // Filtering parameters - less aggressive to preserve precision
         config.medianKernelSize = 3;     // Smaller kernel (was 5)
@@ -1076,8 +1078,9 @@ bool DepthProcessor::generatePointCloudOpen3D(const cv::Mat& depthMap,
                 float depth = depthMap.at<float>(y, x);
                 int idx = y * depthMap.cols + x;
 
+                // CRITICAL FIX: Use INCLUSIVE bounds (>= and <=) per industrial standards
                 // Apply depth range filtering for 70mm baseline stereo system
-                if (depth > pImpl->config.minDepthMm && depth < pImpl->config.maxDepthMm && std::isfinite(depth)) {
+                if (depth >= pImpl->config.minDepthMm && depth <= pImpl->config.maxDepthMm && std::isfinite(depth)) {
                     open3dData[idx] = depth;  // Keep depth in millimeters
                     validPixelsCount++;
                 } else {
@@ -1086,26 +1089,117 @@ bool DepthProcessor::generatePointCloudOpen3D(const cv::Mat& depthMap,
             }
         }
 
-        std::cout << "[DepthProcessor] Prepared depth image: " << validPixelsCount << "/"
-                  << (depthMap.rows * depthMap.cols) << " valid pixels ("
-                  << (100.0 * validPixelsCount / (depthMap.rows * depthMap.cols)) << "%)" << std::endl;
+        // CRITICAL DIAGNOSTIC: Log depth range and filtering TO FILE
+        std::ofstream depthLog("/tmp/depth_processor.log", std::ios::app);
+        auto logDepth = [&](const std::string& msg) {
+            std::cout << msg << std::endl;
+            if (depthLog.is_open()) depthLog << msg << std::endl;
+        };
+
+        float minDepthFound = std::numeric_limits<float>::max();
+        float maxDepthFound = 0.0f;
+        int tooClose = 0, tooFar = 0, infiniteVals = 0, validDepth = 0;
+
+        for (int y = 0; y < depthMap.rows; ++y) {
+            for (int x = 0; x < depthMap.cols; ++x) {
+                float depth = depthMap.at<float>(y, x);
+                if (std::isfinite(depth) && depth > 0) {
+                    validDepth++;
+                    if (depth < minDepthFound) minDepthFound = depth;
+                    if (depth > maxDepthFound) maxDepthFound = depth;
+
+                    if (depth < pImpl->config.minDepthMm) tooClose++;
+                    else if (depth > pImpl->config.maxDepthMm) tooFar++;
+                }
+                else if (!std::isfinite(depth)) infiniteVals++;
+            }
+        }
+
+        logDepth("[DepthProcessor] ========== DEPTH MAP ANALYSIS ==========");
+        logDepth("[DepthProcessor] Total depth pixels: " + std::to_string(depthMap.rows * depthMap.cols));
+        logDepth("[DepthProcessor] Depth pixels > 0 (from reprojectImageTo3D): " + std::to_string(validDepth) + " (" +
+                 std::to_string(100.0 * validDepth / (depthMap.rows * depthMap.cols)) + "%)");
+        logDepth("[DepthProcessor] Valid depth pixels AFTER filtering (for Open3D): " + std::to_string(validPixelsCount) + " (" +
+                 std::to_string(100.0 * validPixelsCount / (depthMap.rows * depthMap.cols)) + "%)");
+        logDepth("[DepthProcessor] Depth range found: [" + std::to_string(minDepthFound) + ", " +
+                 std::to_string(maxDepthFound) + "] mm");
+        logDepth("[DepthProcessor] Configured depth range: [" + std::to_string(pImpl->config.minDepthMm) + ", " +
+                 std::to_string(pImpl->config.maxDepthMm) + "] mm");
+        logDepth("[DepthProcessor] Pixels TOO CLOSE (< " + std::to_string(pImpl->config.minDepthMm) + "mm): " + std::to_string(tooClose));
+        logDepth("[DepthProcessor] Pixels TOO FAR (> " + std::to_string(pImpl->config.maxDepthMm) + "mm): " + std::to_string(tooFar));
+        logDepth("[DepthProcessor] Infinite/NaN values: " + std::to_string(infiniteVals));
+        logDepth("[DepthProcessor] =============================================");
+
+        // CRITICAL VALIDATION: Fail-fast if no valid pixels before Open3D
+        if (validPixelsCount == 0) {
+            logDepth("[DepthProcessor] ❌❌❌ BLOCKER: NO valid depth pixels after filtering!");
+            logDepth("[DepthProcessor] All " + std::to_string(depthMap.rows * depthMap.cols) + " pixels rejected");
+            logDepth("[DepthProcessor] Check depth range config vs actual measured depths");
+            pImpl->lastError = "No valid depth pixels for point cloud generation";
+            return false;
+        }
 
         // Create Open3D point cloud from depth image using camera intrinsics
+        // CRITICAL FIX: depth_trunc must be in METERS, not millimeters!
+        // depth_scale = 1000.0 converts mm to meters
+        // depth_trunc = max valid depth in METERS
+        // With 70mm baseline, realistic max is ~6 meters
         auto open3dPointCloud = open3d::geometry::PointCloud::CreateFromDepthImage(
             *open3dDepthImage, intrinsic,
             Eigen::Matrix4d::Identity(),  // No extrinsic transformation
-            1000.0,  // Depth scale: convert mm to meters for Open3D
-            8000.0,  // Max depth in mm (8 meters maximum for our stereo system)
-            1,       // Depth stride
-            false    // Not organized point cloud
+            1000.0,     // Depth scale: depth values in mm, divide by 1000 to get meters
+            6.0,        // Max depth in METERS (6 meters = 6000mm, covers 400-4000mm range)
+            1,          // Depth stride (process every pixel)
+            true        // CRITICAL: Only project pixels with valid depth (depth > 0)
         );
 
         if (!open3dPointCloud || open3dPointCloud->points_.empty()) {
+            logDepth("[DepthProcessor] ❌❌❌ BLOCKER: Open3D returned EMPTY point cloud!");
+            logDepth("[DepthProcessor] Input had " + std::to_string(validPixelsCount) + " valid pixels");
+            logDepth("[DepthProcessor] Open3D params: depth_scale=1000.0, depth_trunc=6.0m");
+            logDepth("[DepthProcessor] Possible causes:");
+            logDepth("[DepthProcessor]   1. Camera intrinsics (fx,fy,cx,cy) don't match depth map");
+            logDepth("[DepthProcessor]   2. Depth values outside Open3D expected range");
+            logDepth("[DepthProcessor]   3. Coordinate system mismatch");
             pImpl->lastError = "Open3D failed to create point cloud from depth image";
             return false;
         }
 
-        std::cout << "[DepthProcessor] Open3D generated " << open3dPointCloud->points_.size() << " 3D points" << std::endl;
+        logDepth("[DepthProcessor] ========== OPEN3D POINT CLOUD GENERATION ==========");
+        logDepth("[DepthProcessor] Open3D generated " + std::to_string(open3dPointCloud->points_.size()) + " 3D points");
+
+        if (!open3dPointCloud->points_.empty()) {
+            // Analyze generated point cloud
+            double minX = std::numeric_limits<double>::max(), maxX = std::numeric_limits<double>::lowest();
+            double minY = std::numeric_limits<double>::max(), maxY = std::numeric_limits<double>::lowest();
+            double minZ = std::numeric_limits<double>::max(), maxZ = std::numeric_limits<double>::lowest();
+
+            for (const auto& p : open3dPointCloud->points_) {
+                if (p.x() < minX) minX = p.x();
+                if (p.x() > maxX) maxX = p.x();
+                if (p.y() < minY) minY = p.y();
+                if (p.y() > maxY) maxY = p.y();
+                if (p.z() < minZ) minZ = p.z();
+                if (p.z() > maxZ) maxZ = p.z();
+            }
+
+            logDepth("[DepthProcessor] Point cloud bounding box (in meters):");
+            logDepth("[DepthProcessor]   X: [" + std::to_string(minX) + ", " + std::to_string(maxX) + "]");
+            logDepth("[DepthProcessor]   Y: [" + std::to_string(minY) + ", " + std::to_string(maxY) + "]");
+            logDepth("[DepthProcessor]   Z: [" + std::to_string(minZ) + ", " + std::to_string(maxZ) + "]");
+            logDepth("[DepthProcessor] Point cloud bounding box (in mm):");
+            logDepth("[DepthProcessor]   X: [" + std::to_string(minX*1000) + ", " + std::to_string(maxX*1000) + "]");
+            logDepth("[DepthProcessor]   Y: [" + std::to_string(minY*1000) + ", " + std::to_string(maxY*1000) + "]");
+            logDepth("[DepthProcessor]   Z: [" + std::to_string(minZ*1000) + ", " + std::to_string(maxZ*1000) + "]");
+        } else {
+            logDepth("[DepthProcessor] ⚠️⚠️⚠️ CRITICAL: Open3D generated ZERO points!");
+            logDepth("[DepthProcessor] Possible causes:");
+            logDepth("[DepthProcessor]   - depth_trunc too restrictive (current: 6.0 meters)");
+            logDepth("[DepthProcessor]   - depth_scale incorrect (current: 1000.0)");
+            logDepth("[DepthProcessor]   - Depth values outside expected range");
+            logDepth("[DepthProcessor]   - Camera intrinsics incorrect");
+        }
+        logDepth("[DepthProcessor] ====================================================");
 
         // Prepare color data if available
         bool hasColor = !colorImage.empty();
@@ -1180,8 +1274,15 @@ bool DepthProcessor::generatePointCloudOpen3D(const cv::Mat& depthMap,
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-        std::cout << "[DepthProcessor] Open3D point cloud generation completed in " << duration.count()
-                  << "ms, generated " << pointCloud.points.size() << " points" << std::endl;
+        logDepth("[DepthProcessor] ========== FINAL POINT CLOUD ==========");
+        logDepth("[DepthProcessor] Open3D point cloud generation completed in " + std::to_string(duration.count()) + "ms");
+        logDepth("[DepthProcessor] Final point cloud size: " + std::to_string(pointCloud.points.size()) + " points");
+        logDepth("[DepthProcessor] Conversion: Open3D " + std::to_string(open3dPointCloud->points_.size()) +
+                 " points -> Unlook " + std::to_string(pointCloud.points.size()) + " points");
+        if (open3dPointCloud->points_.size() != pointCloud.points.size()) {
+            logDepth("[DepthProcessor] ⚠️ WARNING: Point count mismatch in conversion!");
+        }
+        logDepth("[DepthProcessor] =======================================");
 
         if (pImpl->progressCallback) {
             pImpl->progressCallback(100);
