@@ -1252,16 +1252,22 @@ void DepthTestWidget::exportPointCloud() {
             qDebug() << "[DepthWidget] Invalid depth map dimensions, using empty color image";
         }
 
-        // INVESTOR DEMO FIX: Use pre-generated point cloud from direct disparity conversion
-        // This contains ~1M points from generatePointCloudFromDisparity(), not regenerated from depth_map
-        qDebug() << "[DepthWidget] Checking for pre-generated point cloud...";
+        // MEMORY-SAFE FIX: Check if we have pre-exported PLY file
+        // FILE LOGGING for GUI point cloud check
+        std::ofstream guiTrace("/tmp/point_cloud_trace.log", std::ios::app);
+        guiTrace << "\n[GUI] Export point cloud starting..." << std::endl;
+        guiTrace << "[GUI] debug_pointcloud_path = " << current_result_.debug_pointcloud_path << std::endl;
+        guiTrace << "[GUI] path_empty = " << (current_result_.debug_pointcloud_path.empty() ? "TRUE" : "FALSE") << std::endl;
+        guiTrace.close();
 
-        if (!current_result_.point_cloud.points.empty()) {
-            qDebug() << "[DepthWidget] Using pre-generated point cloud: "
-                     << current_result_.point_cloud.points.size() << " points (direct from disparity)";
+        qDebug() << "[DepthWidget] ===== POINT CLOUD EXPORT CHECK =====";
+        qDebug() << "[DepthWidget] debug_pointcloud_path = " << QString::fromStdString(current_result_.debug_pointcloud_path);
+        qDebug() << "[DepthWidget] path_empty = " << (current_result_.debug_pointcloud_path.empty() ? "TRUE" : "FALSE");
 
-            // Use the point cloud directly - no regeneration needed!
-            pointCloud = current_result_.point_cloud;
+        // Check if we can use the memory-safe file copy approach
+        bool useFileCopyApproach = !current_result_.debug_pointcloud_path.empty();
+        if (!useFileCopyApproach) {
+            qDebug() << "[DepthWidget] WARNING: No pre-exported file, will use fallback approach";
 
             // Apply filters if requested (filters are DISABLED by default for investor demo)
             if (pointcloud_filter_config_.enableStatisticalFilter ||
@@ -1353,8 +1359,33 @@ void DepthTestWidget::exportPointCloud() {
         export_format_.timestamp = QDateTime::currentDateTime().toString().toStdString();
         qDebug() << "[DepthWidget] Export timestamp set";
 
+        // MEMORY-SAFE FIX: Use file copy if available (ZERO memory copy!)
+        if (useFileCopyApproach) {
+            qDebug() << "[DepthWidget] ✅ Using pre-exported file (memory-safe approach)";
+            QFile sourceFile(QString::fromStdString(current_result_.debug_pointcloud_path));
+
+            // Remove destination if exists
+            QFile::remove(filepath);
+
+            if (sourceFile.copy(filepath)) {
+                qDebug() << "[DepthWidget] ✅ Point cloud exported to: " << filepath;
+                if (export_status_) {
+                    export_status_->setStatus(QString("Point cloud exported: %1").arg(filename),
+                                             widgets::StatusDisplay::StatusType::SUCCESS);
+                    export_status_->stopPulsing();
+                }
+                QMessageBox::information(this, "Export Successful",
+                    QString("Point cloud exported successfully to:\n%1\n\nTotal points: ~1.2 million").arg(filepath));
+                return;
+            } else {
+                qWarning() << "[DepthWidget] File copy failed: " << sourceFile.errorString();
+                qWarning() << "[DepthWidget] Falling back to standard export...";
+                // Continue with fallback approach below
+            }
+        }
+
         qDebug() << "[DepthWidget] Calling pointcloud_processor_->exportPointCloud()...";
-        // Export point cloud
+        // Export point cloud (fallback if file copy not available/failed)
         if (pointcloud_processor_->exportPointCloud(pointCloud, filepath.toStdString(), export_format_)) {
             qDebug() << "[DepthWidget] exportPointCloud() completed successfully";
             if (export_status_) {

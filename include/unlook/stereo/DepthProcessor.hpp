@@ -275,6 +275,16 @@ public:
     const PointCloud& getLastGeneratedPointCloud() const;
 
     /**
+     * @brief Get path to last exported point cloud file
+     *
+     * MEMORY-SAFE FIX: Returns file path instead of copying 1M points.
+     * GUI loads from file to avoid memory copy failures.
+     *
+     * @return Path to PLY file with point cloud (empty if not generated)
+     */
+    std::string getLastPointCloudPath() const;
+
+    /**
      * @brief Compute depth precision at given distance
      * @param depthMm Depth in millimeters
      * @return Expected precision in millimeters

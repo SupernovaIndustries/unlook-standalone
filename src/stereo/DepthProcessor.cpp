@@ -41,6 +41,9 @@ public:
     // This preserves the ~1M points from direct disparity conversion
     PointCloud lastGeneratedPointCloud;
 
+    // MEMORY-SAFE: Store path to exported PLY file instead of copying 1M points
+    std::string lastDebugPointCloudPath;
+
     // WLS filter for post-processing
     cv::Ptr<cv::ximgproc::DisparityWLSFilter> wlsFilter;
     cv::Ptr<cv::StereoMatcher> rightMatcher;
@@ -235,33 +238,61 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
 
     // CRITICAL FIX: Direct disparity-to-3D conversion for investor demo
     // This bypasses the intermediate depth map conversion that loses 99.999% of points
+
+    // FILE LOGGING to trace point loss (std::cout not captured)
+    std::ofstream traceLog("/tmp/point_cloud_trace.log", std::ios::app);
+    traceLog << "\n========== POINT CLOUD GENERATION TRACE ==========" << std::endl;
+    traceLog << "Timestamp: " << std::chrono::system_clock::now().time_since_epoch().count() << std::endl;
+    traceLog << "config.computePointCloud = " << (pImpl->config.computePointCloud ? "TRUE" : "FALSE") << std::endl;
+
+    std::cout << "[Core DepthProcessor] ===== POINT CLOUD GENERATION CHECK =====" << std::endl;
+    std::cout << "[Core DepthProcessor] config.computePointCloud = " << (pImpl->config.computePointCloud ? "TRUE" : "FALSE") << std::endl;
+
     if (pImpl->config.computePointCloud) {
+        traceLog << "✓ Entering direct conversion block" << std::endl;
         std::cout << "[Core DepthProcessor] USING DIRECT DISPARITY-TO-3D CONVERSION" << std::endl;
 
         // Generate point cloud directly from disparity
         PointCloud directPointCloud;
         if (generatePointCloudFromDisparity(disparity, leftRect, directPointCloud, calibData)) {
+            traceLog << "✓ Direct conversion SUCCESS: " << directPointCloud.points.size() << " points" << std::endl;
             std::cout << "[Core DepthProcessor] Direct conversion SUCCESS: "
                       << directPointCloud.points.size() << " points generated from disparity" << std::endl;
 
             // INVESTOR DEMO FIX: Store point cloud for GUI export
             // This preserves ~1M points and will be included in DepthResult
             pImpl->lastGeneratedPointCloud = std::move(directPointCloud);
+            traceLog << "✓ Stored in lastGeneratedPointCloud: " << pImpl->lastGeneratedPointCloud.points.size() << " points" << std::endl;
+            std::cout << "[Core DepthProcessor] Stored in lastGeneratedPointCloud: "
+                      << pImpl->lastGeneratedPointCloud.points.size() << " points" << std::endl;
 
-            // Debug export for validation
-            std::string debugFilename = "/tmp/direct_pointcloud_" +
-                std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".ply";
+            // CRITICAL: Export to file for GUI (avoids 1M point copy failure)
+            std::string debugFilename = "/tmp/direct_pointcloud_latest.ply";
             if (exportPointCloud(pImpl->lastGeneratedPointCloud, debugFilename, "ply")) {
-                std::cout << "[Core DepthProcessor] Debug point cloud exported to: " << debugFilename << std::endl;
+                traceLog << "✓ Point cloud exported to file: " << debugFilename << std::endl;
+                std::cout << "[Core DepthProcessor] Point cloud exported to: " << debugFilename << std::endl;
+
+                // Store path for GUI retrieval (not the 1M points!)
+                pImpl->lastDebugPointCloudPath = debugFilename;
+            } else {
+                traceLog << "❌ Failed to export point cloud to file" << std::endl;
+                pImpl->lastDebugPointCloudPath.clear();
             }
         } else {
+            traceLog << "❌ Direct conversion FAILED: " << pImpl->lastError << std::endl;
             std::cout << "[Core DepthProcessor] Direct conversion FAILED: " << pImpl->lastError << std::endl;
             pImpl->lastGeneratedPointCloud.clear();  // Clear on failure
         }
     } else {
+        traceLog << "❌ computePointCloud is FALSE - clearing point cloud" << std::endl;
+        std::cout << "[Core DepthProcessor] computePointCloud is FALSE - clearing point cloud" << std::endl;
         // Clear point cloud if not computed
         pImpl->lastGeneratedPointCloud.clear();
     }
+
+    traceLog << "=================================================" << std::endl;
+    traceLog.close();
+    std::cout << "[Core DepthProcessor] ==========================================" << std::endl;
 
     // Convert to depth
     if (!StereoMatcher::disparityToDepth(disparity, calibData.Q, depthMap, true)) {
@@ -714,6 +745,10 @@ std::string DepthProcessor::getLastError() const {
 
 const PointCloud& DepthProcessor::getLastGeneratedPointCloud() const {
     return pImpl->lastGeneratedPointCloud;
+}
+
+std::string DepthProcessor::getLastPointCloudPath() const {
+    return pImpl->lastDebugPointCloudPath;
 }
 
 double DepthProcessor::computeDepthPrecision(double depthMm) const {
