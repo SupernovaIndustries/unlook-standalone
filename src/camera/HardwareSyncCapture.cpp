@@ -1163,7 +1163,7 @@ bool HardwareSyncCapture::configureAutoExposure() {
     
     // OPTIMIZED parameters for IMX296 sensors in INDUSTRIAL INDOOR environments
     // CORRECTED: Higher exposure, lower gain for cleaner images
-    master_exposure_.exposure_time_us = 15000;   // 15ms exposure for better light capture
+    master_exposure_.exposure_time_us = 20000;   // 20ms exposure for better light capture
     master_exposure_.analogue_gain = 1.8f;       // Lower gain to reduce noise
     master_exposure_.target_brightness = 85.0f;  // Slightly lower target to prevent oversaturation
     master_exposure_.brightness_tolerance = 8.0f; // Tighter tolerance for stability
