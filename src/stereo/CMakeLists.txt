@@ -24,13 +24,14 @@ set_target_properties(unlook_stereo PROPERTIES
 )
 
 # Include directories
-target_include_directories(unlook_stereo 
+target_include_directories(unlook_stereo
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${OpenCV_INCLUDE_DIRS}
+        /usr/include/eigen3  # Add Eigen include path for Open3D
 )
 
 # Link dependencies
@@ -39,6 +40,12 @@ target_link_libraries(unlook_stereo
         ${OpenCV_LIBS}
         unlook_calibration
 )
+
+# Link Open3D if available
+if(Open3D_FOUND)
+    target_link_libraries(unlook_stereo PUBLIC Open3D::Open3D)
+    target_compile_definitions(unlook_stereo PUBLIC OPEN3D_ENABLED)
+endif()
 
 # Add BoofCV/JNI support if enabled
 if(BOOFCV_ENABLED)

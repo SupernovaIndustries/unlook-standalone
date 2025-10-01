@@ -166,6 +166,7 @@ if(Open3D_FOUND)
     message(STATUS "Open3D include dirs: ${Open3D_INCLUDE_DIRS}")
     message(STATUS "Open3D libraries: ${Open3D_LIBRARIES}")
     set(OPEN3D_ENABLED TRUE)
+    add_definitions(-DOPEN3D_ENABLED=1)
 
     # ARM64 optimization for Open3D
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")

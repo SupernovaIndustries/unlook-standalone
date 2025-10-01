@@ -1252,24 +1252,52 @@ void DepthTestWidget::exportPointCloud() {
             qDebug() << "[DepthWidget] Invalid depth map dimensions, using empty color image";
         }
 
-        qDebug() << "[DepthWidget] Calling pointcloud_processor_->generatePointCloud()...";
-        if (!pointcloud_processor_->generatePointCloud(
-                current_result_.depth_map,
-                colorImage,
-                pointCloud,
-                pointcloud_filter_config_)) {
+        // INVESTOR DEMO FIX: Use pre-generated point cloud from direct disparity conversion
+        // This contains ~1M points from generatePointCloudFromDisparity(), not regenerated from depth_map
+        qDebug() << "[DepthWidget] Checking for pre-generated point cloud...";
 
-            qDebug() << "[DepthWidget] generatePointCloud() FAILED";
-            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
-            qDebug() << "[DepthWidget] Point cloud error:" << error;
-            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
-            if (export_status_) {
-                export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
-                export_status_->stopPulsing();
+        if (!current_result_.point_cloud.points.empty()) {
+            qDebug() << "[DepthWidget] Using pre-generated point cloud: "
+                     << current_result_.point_cloud.points.size() << " points (direct from disparity)";
+
+            // Use the point cloud directly - no regeneration needed!
+            pointCloud = current_result_.point_cloud;
+
+            // Apply filters if requested (filters are DISABLED by default for investor demo)
+            if (pointcloud_filter_config_.enableStatisticalFilter ||
+                pointcloud_filter_config_.enableVoxelDownsampling ||
+                pointcloud_filter_config_.enableRadiusFilter) {
+
+                qDebug() << "[DepthWidget] Applying point cloud filters...";
+                if (!pointcloud_processor_->applyAdvancedFiltering(pointCloud, pointcloud_filter_config_)) {
+                    qDebug() << "[DepthWidget] WARNING: Filtering failed, using unfiltered point cloud";
+                }
             }
-            return;
+
+        } else {
+            qDebug() << "[DepthWidget] WARNING: No pre-generated point cloud available, falling back to depth map conversion";
+
+            // FALLBACK: Regenerate from depth map if point cloud not available
+            // This shouldn't happen if computePointCloud=true, but provides safety
+            if (!pointcloud_processor_->generatePointCloud(
+                    current_result_.depth_map,
+                    colorImage,
+                    pointCloud,
+                    pointcloud_filter_config_)) {
+
+                qDebug() << "[DepthWidget] generatePointCloud() FAILED";
+                QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+                qDebug() << "[DepthWidget] Point cloud error:" << error;
+                QMessageBox::critical(this, "Point Cloud Generation Failed", error);
+                if (export_status_) {
+                    export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+                    export_status_->stopPulsing();
+                }
+                return;
+            }
+            qDebug() << "[DepthWidget] Fallback generatePointCloud() completed with"
+                     << pointCloud.points.size() << "points";
         }
-        qDebug() << "[DepthWidget] generatePointCloud() completed successfully";
 
         qDebug() << "[DepthWidget] Assessing point cloud quality...";
         // Assess point cloud quality

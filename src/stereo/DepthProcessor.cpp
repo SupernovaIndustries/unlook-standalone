@@ -36,11 +36,15 @@ public:
     std::atomic<bool> cancelRequested{false};
     std::function<void(int)> progressCallback;
     mutable std::mutex processingMutex;
-    
+
+    // INVESTOR DEMO FIX: Store generated point cloud for GUI export
+    // This preserves the ~1M points from direct disparity conversion
+    PointCloud lastGeneratedPointCloud;
+
     // WLS filter for post-processing
     cv::Ptr<cv::ximgproc::DisparityWLSFilter> wlsFilter;
     cv::Ptr<cv::StereoMatcher> rightMatcher;
-    
+
     // Temporal filtering state
     cv::Mat previousDepth;
     
@@ -211,9 +215,9 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
     }
     
     // COMPREHENSIVE DEBUG: Save disparity at each step
-    std::cout << "[Core DepthProcessor] RAW Disparity computed - Size: " << disparity.cols << "x" << disparity.rows 
+    std::cout << "[Core DepthProcessor] RAW Disparity computed - Size: " << disparity.cols << "x" << disparity.rows
               << ", Type: " << disparity.type() << ", Channels: " << disparity.channels() << std::endl;
-    
+
     // Analyze raw disparity values
     double minDisp, maxDisp;
     cv::minMaxLoc(disparity, &minDisp, &maxDisp);
@@ -221,13 +225,45 @@ bool DepthProcessor::processWithConfidence(const cv::Mat& leftImage,
     int validPixels = cv::countNonZero(disparity);
     int totalPixels = disparity.rows * disparity.cols;
     double validRatio = double(validPixels) / totalPixels * 100.0;
-    
-    std::cout << "[Core DepthProcessor] RAW Disparity stats: Min=" << minDisp << ", Max=" << maxDisp 
-              << ", Mean=" << meanDisp[0] << ", Valid=" << validPixels << "/" << totalPixels 
+
+    std::cout << "[Core DepthProcessor] RAW Disparity stats: Min=" << minDisp << ", Max=" << maxDisp
+              << ", Mean=" << meanDisp[0] << ", Valid=" << validPixels << "/" << totalPixels
               << " (" << validRatio << "%)" << std::endl;
-    
-    // Convert to depth
+
+    // Get calibration data once for use in multiple places
     auto& calibData = pImpl->calibManager->getCalibrationData();
+
+    // CRITICAL FIX: Direct disparity-to-3D conversion for investor demo
+    // This bypasses the intermediate depth map conversion that loses 99.999% of points
+    if (pImpl->config.computePointCloud) {
+        std::cout << "[Core DepthProcessor] USING DIRECT DISPARITY-TO-3D CONVERSION" << std::endl;
+
+        // Generate point cloud directly from disparity
+        PointCloud directPointCloud;
+        if (generatePointCloudFromDisparity(disparity, leftRect, directPointCloud, calibData)) {
+            std::cout << "[Core DepthProcessor] Direct conversion SUCCESS: "
+                      << directPointCloud.points.size() << " points generated from disparity" << std::endl;
+
+            // INVESTOR DEMO FIX: Store point cloud for GUI export
+            // This preserves ~1M points and will be included in DepthResult
+            pImpl->lastGeneratedPointCloud = std::move(directPointCloud);
+
+            // Debug export for validation
+            std::string debugFilename = "/tmp/direct_pointcloud_" +
+                std::to_string(std::chrono::system_clock::now().time_since_epoch().count()) + ".ply";
+            if (exportPointCloud(pImpl->lastGeneratedPointCloud, debugFilename, "ply")) {
+                std::cout << "[Core DepthProcessor] Debug point cloud exported to: " << debugFilename << std::endl;
+            }
+        } else {
+            std::cout << "[Core DepthProcessor] Direct conversion FAILED: " << pImpl->lastError << std::endl;
+            pImpl->lastGeneratedPointCloud.clear();  // Clear on failure
+        }
+    } else {
+        // Clear point cloud if not computed
+        pImpl->lastGeneratedPointCloud.clear();
+    }
+
+    // Convert to depth
     if (!StereoMatcher::disparityToDepth(disparity, calibData.Q, depthMap, true)) {
         pImpl->lastError = "Depth conversion failed";
         pImpl->processing = false;
@@ -676,6 +712,10 @@ std::string DepthProcessor::getLastError() const {
     return pImpl->lastError;
 }
 
+const PointCloud& DepthProcessor::getLastGeneratedPointCloud() const {
+    return pImpl->lastGeneratedPointCloud;
+}
+
 double DepthProcessor::computeDepthPrecision(double depthMm) const {
     if (!pImpl->calibManager) return 0.0;
     
@@ -1070,7 +1110,7 @@ bool DepthProcessor::generatePointCloudOpen3D(const cv::Mat& depthMap,
         open3dDepthImage->Prepare(depthMap.cols, depthMap.rows, 1, sizeof(float));
 
         // Copy depth data with proper scaling and validation
-        float* open3dData = static_cast<float*>(open3dDepthImage->data_.data());
+        float* open3dData = reinterpret_cast<float*>(open3dDepthImage->data_.data());
         int validPixelsCount = 0;
 
         for (int y = 0; y < depthMap.rows; ++y) {
@@ -1532,6 +1572,370 @@ bool DepthProcessor::generatePointCloudPinhole(const cv::Mat& depthMap,
         pImpl->lastError = "Pinhole point cloud generation failed: unknown exception";
         return false;
     }
+}
+
+bool DepthProcessor::generatePointCloudFromDisparity(
+    const cv::Mat& disparity,
+    const cv::Mat& leftRectified,
+    PointCloud& pointCloud,
+    const calibration::StereoCalibrationData& calibData) {
+
+    // TODO: CRITICAL INVESTOR DEMO FIX - Direct disparity-to-3D conversion
+    // This method bypasses intermediate depth map for maximum precision
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    const auto TIMEOUT_SECONDS = 30;
+    const auto MAX_MEMORY_MB = 4000;
+
+    // Open diagnostic log file
+    std::ofstream diagLog("/tmp/direct_disparity_conversion.log", std::ios::out);
+    auto logInfo = [&diagLog](const std::string& msg) {
+        std::cout << msg << std::endl;
+        if (diagLog.is_open()) {
+            diagLog << msg << std::endl;
+        }
+    };
+
+    logInfo("[DIRECT DISPARITY TO 3D CONVERSION - START]");
+    logInfo("Timestamp: " + std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
+
+    // ============================================================================
+    // STAGE 1: INPUT VALIDATION AND ANALYSIS
+    // ============================================================================
+
+    logInfo("\n[STAGE 1] Input Analysis");
+
+    // Check for empty inputs
+    if (disparity.empty()) {
+        pImpl->lastError = "Empty disparity map";
+        logInfo("  ERROR: Empty disparity map");
+        return false;
+    }
+
+    if (leftRectified.empty()) {
+        pImpl->lastError = "Empty left rectified image";
+        logInfo("  ERROR: Empty left rectified image");
+        return false;
+    }
+
+    // Check calibration validity
+    if (calibData.baselineMm <= 0) {
+        pImpl->lastError = "Invalid baseline in calibration data";
+        logInfo("  ERROR: Invalid baseline: " + std::to_string(calibData.baselineMm) + "mm");
+        return false;
+    }
+
+    if (calibData.cameraMatrixLeft.empty()) {
+        pImpl->lastError = "Invalid camera matrix";
+        logInfo("  ERROR: Empty camera matrix");
+        return false;
+    }
+
+    // Determine disparity format
+    std::string disparityType;
+    bool isFixed16 = (disparity.type() == CV_16S);
+    bool isFloat32 = (disparity.type() == CV_32F);
+
+    if (isFixed16) {
+        disparityType = "CV_16S (fixed-point, divide by 16)";
+    } else if (isFloat32) {
+        disparityType = "CV_32F (floating-point)";
+    } else {
+        disparityType = "Unknown type: " + std::to_string(disparity.type());
+        logInfo("  ERROR: Unsupported disparity type: " + disparityType);
+        pImpl->lastError = "Unsupported disparity format";
+        return false;
+    }
+
+    logInfo("  - Disparity type: " + disparityType);
+    logInfo("  - Disparity dimensions: " + std::to_string(disparity.cols) + "x" +
+            std::to_string(disparity.rows));
+
+    const int totalPixels = disparity.rows * disparity.cols;
+    logInfo("  - Total pixels: " + std::to_string(totalPixels));
+
+    // Convert disparity to float for uniform processing
+    cv::Mat disparityFloat;
+    if (isFixed16) {
+        // SGBM outputs fixed-point * 16
+        disparity.convertTo(disparityFloat, CV_32F, 1.0/16.0);
+        logInfo("  - Converted CV_16S to float (divided by 16)");
+    } else {
+        disparityFloat = disparity;
+    }
+
+    // Analyze disparity statistics
+    double minDisp, maxDisp;
+    cv::minMaxLoc(disparityFloat, &minDisp, &maxDisp, nullptr, nullptr, disparityFloat > 0);
+
+    cv::Scalar meanDispScalar = cv::mean(disparityFloat, disparityFloat > 0);
+    double meanDisp = meanDispScalar[0];
+
+    // Count valid disparity pixels (> threshold to avoid div-by-zero)
+    const float MIN_DISPARITY_THRESHOLD = 1.0f;  // pixels
+    int validDisparityPixels = cv::countNonZero(disparityFloat > MIN_DISPARITY_THRESHOLD);
+    double validRatio = (double)validDisparityPixels / totalPixels * 100.0;
+
+    logInfo("  - Valid disparity pixels (d > " + std::to_string(MIN_DISPARITY_THRESHOLD) +
+            "): " + std::to_string(validDisparityPixels) + " (" +
+            std::to_string(validRatio) + "%)");
+    logInfo("  - Disparity range: [" + std::to_string(minDisp) + ", " +
+            std::to_string(maxDisp) + "] pixels");
+    logInfo("  - Mean disparity: " + std::to_string(meanDisp) + " pixels");
+
+    // Quick fail-fast check
+    if (validDisparityPixels == 0) {
+        pImpl->lastError = "No valid disparity pixels found";
+        logInfo("  ERROR: No valid disparity pixels (all <= " +
+                std::to_string(MIN_DISPARITY_THRESHOLD) + ")");
+        return false;
+    }
+
+    // ============================================================================
+    // STAGE 2: CALIBRATION PARAMETERS
+    // ============================================================================
+
+    logInfo("\n[STAGE 2] Calibration Parameters");
+
+    // Extract intrinsic parameters
+    double fx = calibData.cameraMatrixLeft.at<double>(0, 0);
+    double fy = calibData.cameraMatrixLeft.at<double>(1, 1);
+    double cx = calibData.cameraMatrixLeft.at<double>(0, 2);
+    double cy = calibData.cameraMatrixLeft.at<double>(1, 2);
+    double baselineMm = calibData.baselineMm;
+
+    logInfo("  - Baseline: " + std::to_string(baselineMm) + "mm");
+    logInfo("  - Focal length: fx=" + std::to_string(fx) + "px, fy=" +
+            std::to_string(fy) + "px");
+    logInfo("  - Principal point: cx=" + std::to_string(cx) + "px, cy=" +
+            std::to_string(cy) + "px");
+    logInfo("  - Min disparity threshold: " + std::to_string(MIN_DISPARITY_THRESHOLD) +
+            "px (to prevent div-by-zero)");
+    logInfo("  - Depth range filter: " + std::to_string(pImpl->config.minDepthMm) +
+            "-" + std::to_string(pImpl->config.maxDepthMm) + "mm");
+
+    // ============================================================================
+    // STAGE 3: PIXEL-BY-PIXEL CONVERSION
+    // ============================================================================
+
+    logInfo("\n[STAGE 3] Pixel-by-Pixel Conversion");
+
+    // Clear and reserve memory for efficiency
+    pointCloud.clear();
+    pointCloud.width = disparity.cols;
+    pointCloud.height = disparity.rows;
+    pointCloud.isOrganized = true;
+    pointCloud.points.reserve(validDisparityPixels);  // Reserve based on estimate
+
+    logInfo("  Reserved memory for ~" + std::to_string(validDisparityPixels) + " points");
+
+    // Prepare color image
+    cv::Mat colorImage;
+    bool hasColor = false;
+    if (!leftRectified.empty()) {
+        if (leftRectified.channels() == 1) {
+            cv::cvtColor(leftRectified, colorImage, cv::COLOR_GRAY2BGR);
+        } else {
+            colorImage = leftRectified;
+        }
+        hasColor = true;
+    }
+
+    // Conversion counters
+    int pointsAdded = 0;
+    int disparityTooLow = 0;
+    int depthOutOfRange = 0;
+    int nonFiniteCoords = 0;
+    int colorExtractionFailed = 0;
+
+    // Sample logging for first 10 valid points
+    int samplePointsLogged = 0;
+    const int MAX_SAMPLE_POINTS = 10;
+
+    // Progress tracking
+    const int PROGRESS_INTERVAL = totalPixels / 20;  // 5% increments
+    int processedPixels = 0;
+
+    // Main conversion loop
+    for (int y = 0; y < disparity.rows; ++y) {
+        // Check for cancellation
+        if (pImpl->cancelRequested) {
+            logInfo("\n  Processing cancelled by user");
+            pointCloud.clear();
+            return false;
+        }
+
+        // Check timeout
+        auto currentTime = std::chrono::high_resolution_clock::now();
+        auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+            currentTime - startTime).count();
+        if (elapsedSeconds > TIMEOUT_SECONDS) {
+            logInfo("\n  ERROR: Timeout exceeded (" + std::to_string(TIMEOUT_SECONDS) + "s)");
+            pImpl->lastError = "Timeout during point cloud generation";
+            return false;
+        }
+
+        for (int x = 0; x < disparity.cols; ++x) {
+            processedPixels++;
+
+            // Progress reporting
+            if (processedPixels % PROGRESS_INTERVAL == 0) {
+                int progressPercent = (processedPixels * 100) / totalPixels;
+                if (progressPercent % 10 == 0) {  // Log at 10%, 20%, etc.
+                    logInfo("  Progress: " + std::to_string(progressPercent) + "% (" +
+                           std::to_string(pointsAdded) + " points generated)");
+                }
+            }
+
+            // Get disparity value
+            float d = disparityFloat.at<float>(y, x);
+
+            // TODO: Check disparity validity (prevent div-by-zero)
+            if (d < MIN_DISPARITY_THRESHOLD) {
+                disparityTooLow++;
+                continue;
+            }
+
+            // TODO: Calculate depth using stereo formula: depth = (baseline * focal_length) / disparity
+            float depthMm = (baselineMm * fx) / d;
+
+            // TODO: Apply inclusive depth range filter
+            if (depthMm < pImpl->config.minDepthMm || depthMm > pImpl->config.maxDepthMm) {
+                depthOutOfRange++;
+                continue;
+            }
+
+            // TODO: Project to 3D using pinhole camera model
+            float X = (x - cx) * depthMm / fx;
+            float Y = (y - cy) * depthMm / fy;
+            float Z = depthMm;
+
+            // TODO: Validate coordinates
+            if (!std::isfinite(X) || !std::isfinite(Y) || !std::isfinite(Z)) {
+                nonFiniteCoords++;
+                if (nonFiniteCoords <= 10) {
+                    logInfo("    Non-finite coordinates at (" + std::to_string(x) + ", " +
+                           std::to_string(y) + "): X=" + std::to_string(X) +
+                           ", Y=" + std::to_string(Y) + ", Z=" + std::to_string(Z));
+                }
+                continue;
+            }
+
+            // TODO: Create 3D point with color
+            Point3D pt;
+            pt.x = X;
+            pt.y = Y;
+            pt.z = Z;
+
+            // Extract color if available
+            if (hasColor && x >= 0 && x < colorImage.cols && y >= 0 && y < colorImage.rows) {
+                cv::Vec3b color = colorImage.at<cv::Vec3b>(y, x);
+                pt.b = color[0];
+                pt.g = color[1];
+                pt.r = color[2];
+            } else {
+                // Default to white if no color
+                pt.r = pt.g = pt.b = 255;
+                if (hasColor) {
+                    colorExtractionFailed++;
+                }
+            }
+
+            // Calculate confidence based on disparity magnitude
+            // Higher disparity = closer = better precision
+            float maxExpectedDisparity = 300.0f;  // Adjust based on your system
+            pt.confidence = std::min(1.0f, d / maxExpectedDisparity);
+
+            // Add point to cloud
+            pointCloud.points.push_back(pt);
+            pointsAdded++;
+
+            // Log sample points for debugging
+            if (samplePointsLogged < MAX_SAMPLE_POINTS && pointsAdded <= MAX_SAMPLE_POINTS) {
+                logInfo("\n  Point " + std::to_string(samplePointsLogged + 1) +
+                       ": pixel(u=" + std::to_string(x) + ", v=" + std::to_string(y) +
+                       "), disparity=" + std::to_string(d) + "px");
+                logInfo("    → depth = (" + std::to_string(baselineMm) + " * " +
+                       std::to_string(fx) + ") / " + std::to_string(d) + " = " +
+                       std::to_string(depthMm) + "mm ✓ (within " +
+                       std::to_string(pImpl->config.minDepthMm) + "-" +
+                       std::to_string(pImpl->config.maxDepthMm) + "mm)");
+                logInfo("    → X = (" + std::to_string(x) + " - " + std::to_string(cx) +
+                       ") * " + std::to_string(depthMm) + " / " + std::to_string(fx) +
+                       " = " + std::to_string(X) + "mm");
+                logInfo("    → Y = (" + std::to_string(y) + " - " + std::to_string(cy) +
+                       ") * " + std::to_string(depthMm) + " / " + std::to_string(fy) +
+                       " = " + std::to_string(Y) + "mm");
+                logInfo("    → Z = " + std::to_string(Z) + "mm");
+                logInfo("    → Color: RGB(" + std::to_string((int)pt.r) + ", " +
+                       std::to_string((int)pt.g) + ", " + std::to_string((int)pt.b) + ")");
+                logInfo("    → Confidence: " + std::to_string(pt.confidence));
+                logInfo("    → ✅ POINT ADDED");
+                samplePointsLogged++;
+            }
+        }
+    }
+
+    // ============================================================================
+    // STAGE 4: REJECTION ANALYSIS
+    // ============================================================================
+
+    logInfo("\n[STAGE 4] Rejection Analysis");
+    logInfo("  - Disparity too low (< " + std::to_string(MIN_DISPARITY_THRESHOLD) +
+            "px): " + std::to_string(disparityTooLow));
+    logInfo("  - Depth out of range (< " + std::to_string(pImpl->config.minDepthMm) +
+            "mm or > " + std::to_string(pImpl->config.maxDepthMm) + "mm): " +
+            std::to_string(depthOutOfRange));
+    logInfo("  - Non-finite coordinates (NaN/Inf): " + std::to_string(nonFiniteCoords));
+    if (hasColor) {
+        logInfo("  - Color extraction failed: " + std::to_string(colorExtractionFailed));
+    }
+
+    // ============================================================================
+    // STAGE 5: FINAL STATISTICS
+    // ============================================================================
+
+    auto endTime = std::chrono::high_resolution_clock::now();
+    auto processingTimeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        endTime - startTime).count();
+
+    logInfo("\n[STAGE 5] Final Statistics");
+    logInfo("  - Total valid points generated: " + std::to_string(pointsAdded));
+    logInfo("  - Success rate: " + std::to_string((double)pointsAdded / validDisparityPixels * 100.0) +
+            "% (of valid disparity pixels)");
+    logInfo("  - Overall conversion rate: " + std::to_string((double)pointsAdded / totalPixels * 100.0) +
+            "% (of all pixels)");
+
+    // Calculate average confidence
+    double avgConfidence = 0.0;
+    if (!pointCloud.points.empty()) {
+        for (const auto& pt : pointCloud.points) {
+            avgConfidence += pt.confidence;
+        }
+        avgConfidence /= pointCloud.points.size();
+    }
+    logInfo("  - Average confidence: " + std::to_string(avgConfidence));
+
+    // Memory usage
+    size_t memoryUsageMB = pointCloud.points.size() * sizeof(Point3D) / (1024 * 1024);
+    logInfo("  - Memory usage: ~" + std::to_string(memoryUsageMB) + "MB");
+    logInfo("  - Processing time: " + std::to_string(processingTimeMs) + "ms");
+
+    logInfo("\n[DIRECT DISPARITY TO 3D CONVERSION - END]");
+    logInfo("SUCCESS: Generated " + std::to_string(pointsAdded) + " 3D points");
+
+    diagLog.close();
+
+    // Final success check
+    if (pointCloud.points.empty()) {
+        pImpl->lastError = "No valid 3D points generated from disparity";
+        return false;
+    }
+
+    std::cout << "[DepthProcessor] Direct disparity conversion successful: "
+              << pointCloud.points.size() << " points generated" << std::endl;
+
+    return true;
 }
 
 } // namespace stereo
