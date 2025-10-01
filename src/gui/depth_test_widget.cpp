@@ -1339,103 +1339,20 @@ void DepthTestWidget::exportPointCloud() {
         qDebug() << "[DepthWidget] PLY path:" << QString::fromStdString(pointcloud_debug_path);
         qDebug() << "[DepthWidget] PLY exists:" << (plyExistsInDebug ? "YES" : "NO");
 
-        // Check if we can use the memory-safe file copy approach
-        if (!plyExistsInDebug) {
-            qDebug() << "[DepthWidget] WARNING: PLY not found in debug folder, will use fallback approach";
-
-            // Apply filters if requested (filters are DISABLED by default for investor demo)
-            if (pointcloud_filter_config_.enableStatisticalFilter ||
-                pointcloud_filter_config_.enableVoxelDownsampling ||
-                pointcloud_filter_config_.enableRadiusFilter) {
-
-                qDebug() << "[DepthWidget] Applying point cloud filters...";
-                if (!pointcloud_processor_->applyAdvancedFiltering(pointCloud, pointcloud_filter_config_)) {
-                    qDebug() << "[DepthWidget] WARNING: Filtering failed, using unfiltered point cloud";
-                }
-            }
-
-        } else {
-            qDebug() << "[DepthWidget] WARNING: No pre-generated point cloud available, falling back to depth map conversion";
-
-            // FALLBACK: Regenerate from depth map if point cloud not available
-            // This shouldn't happen if computePointCloud=true, but provides safety
-            if (!pointcloud_processor_->generatePointCloud(
-                    current_result_.depth_map,
-                    colorImage,
-                    pointCloud,
-                    pointcloud_filter_config_)) {
-
-                qDebug() << "[DepthWidget] generatePointCloud() FAILED";
-                QString error = QString::fromStdString(pointcloud_processor_->getLastError());
-                qDebug() << "[DepthWidget] Point cloud error:" << error;
-                QMessageBox::critical(this, "Point Cloud Generation Failed", error);
-                if (export_status_) {
-                    export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
-                    export_status_->stopPulsing();
-                }
-                return;
-            }
-            qDebug() << "[DepthWidget] Fallback generatePointCloud() completed with"
-                     << pointCloud.points.size() << "points";
-        }
-
-        qDebug() << "[DepthWidget] Assessing point cloud quality...";
-        // Assess point cloud quality
-        pointcloud::PointCloudQuality quality;
-        if (pointcloud_processor_->assessPointCloudQuality(pointCloud, quality)) {
-            qDebug() << "[DepthWidget] ========== POINT CLOUD QUALITY REPORT ==========";
-            qDebug() << "[DepthWidget] Total points:" << quality.totalPoints;
-            qDebug() << "[DepthWidget] Valid points:" << quality.validPoints;
-            qDebug() << "[DepthWidget] Valid ratio:" << (quality.validRatio * 100) << "%";
-            qDebug() << "[DepthWidget] Density:" << quality.density << "points/mm³";
-            qDebug() << "[DepthWidget] Bounding box min: ("
-                     << quality.boundingBoxMin[0] << ","
-                     << quality.boundingBoxMin[1] << ","
-                     << quality.boundingBoxMin[2] << ")";
-            qDebug() << "[DepthWidget] Bounding box max: ("
-                     << quality.boundingBoxMax[0] << ","
-                     << quality.boundingBoxMax[1] << ","
-                     << quality.boundingBoxMax[2] << ")";
-            qDebug() << "[DepthWidget] Mean nearest neighbor distance:" << quality.meanNearestNeighborDistance << "mm";
-            qDebug() << "[DepthWidget] Std nearest neighbor distance:" << quality.stdNearestNeighborDistance << "mm";
-            qDebug() << "[DepthWidget] Completeness:" << (quality.completeness * 100) << "%";
-            qDebug() << "[DepthWidget] Outlier ratio:" << (quality.outlierRatio * 100) << "%";
-            qDebug() << "[DepthWidget] Centroid: ("
-                     << quality.centroid[0] << ","
-                     << quality.centroid[1] << ","
-                     << quality.centroid[2] << ")";
-            qDebug() << "[DepthWidget] ================================================";
-
-            // CRITICAL VALIDATION: Check if point cloud survived filtering
-            if (quality.validPoints < 1000) {
-                qWarning() << "[DepthWidget] CRITICAL WARNING: Only" << quality.validPoints
-                          << "points in point cloud! Expected ~500K-990K points.";
-                qWarning() << "[DepthWidget] Point cloud may have been decimated by aggressive filtering.";
-            }
-        } else {
-            qDebug() << "[DepthWidget] Point cloud quality assessment FAILED";
-        }
-
-        qDebug() << "[DepthWidget] Generating filename...";
         // Generate filename with timestamp
         QString filename = QString("unlook_pointcloud_%1%2")
             .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"))
             .arg(QString::fromStdString(export_format_.getFileExtension()));
-        qDebug() << "[DepthWidget] Filename generated:" << filename;
 
-        qDebug() << "[DepthWidget] Creating export directory...";
         QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
         QDir().mkpath(QDir::homePath() + "/unlook_exports");
-        qDebug() << "[DepthWidget] Export directory created, filepath:" << filepath;
 
-        qDebug() << "[DepthWidget] Setting export timestamp...";
         // Set timestamp for export
         export_format_.timestamp = QDateTime::currentDateTime().toString().toStdString();
-        qDebug() << "[DepthWidget] Export timestamp set";
 
-        // SMART APPROACH: Use file from debug directory if available (ZERO memory copy!)
+        // PRIORITY 1: Use pre-generated PLY from debug folder (ZERO memory copy, ~1.2M points!)
         if (plyExistsInDebug) {
-            qDebug() << "[DepthWidget] ✅ Using PLY from debug folder (smart approach)";
+            qDebug() << "[DepthWidget] ✅ Using PLY from debug folder (DIRECT COPY, ~1.2M points)";
 
             // Remove destination if exists
             QFile::remove(filepath);
@@ -1449,11 +1366,53 @@ void DepthTestWidget::exportPointCloud() {
                 }
                 QMessageBox::information(this, "Export Successful",
                     QString("Point cloud exported successfully to:\n%1\n\nTotal points: ~1.2 million from direct disparity conversion").arg(filepath));
-                return;
+                return;  // SUCCESS - exit immediately
             } else {
-                qWarning() << "[DepthWidget] File copy failed: " << debugPlyFile.errorString();
-                qWarning() << "[DepthWidget] Falling back to standard export...";
-                // Continue with fallback approach below
+                qWarning() << "[DepthWidget] ❌ File copy failed: " << debugPlyFile.errorString();
+                qWarning() << "[DepthWidget] Falling back to regeneration from depth map...";
+                // Continue to fallback below
+            }
+        }
+
+        // FALLBACK: PLY not found or copy failed - regenerate from depth map
+        qDebug() << "[DepthWidget] PLY not available in debug folder, regenerating from depth map...";
+
+        if (!pointcloud_processor_->generatePointCloud(
+                current_result_.depth_map,
+                colorImage,
+                pointCloud,
+                pointcloud_filter_config_)) {
+
+            qDebug() << "[DepthWidget] ❌ generatePointCloud() FAILED";
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            qDebug() << "[DepthWidget] Point cloud error:" << error;
+            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
+            if (export_status_) {
+                export_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+                export_status_->stopPulsing();
+            }
+            return;
+        }
+
+        qDebug() << "[DepthWidget] Fallback regeneration completed with" << pointCloud.points.size() << "points";
+
+        // Assess point cloud quality (for fallback success message)
+        pointcloud::PointCloudQuality quality;
+        quality.validPoints = pointCloud.points.size();
+        quality.validRatio = 0.0;
+        quality.density = 0.0;
+
+        if (pointcloud_processor_->assessPointCloudQuality(pointCloud, quality)) {
+            qDebug() << "[DepthWidget] ========== FALLBACK POINT CLOUD QUALITY ==========";
+            qDebug() << "[DepthWidget] Total points:" << quality.totalPoints;
+            qDebug() << "[DepthWidget] Valid points:" << quality.validPoints;
+            qDebug() << "[DepthWidget] Valid ratio:" << (quality.validRatio * 100) << "%";
+            qDebug() << "[DepthWidget] ================================================";
+
+            // WARNING if too few points
+            if (quality.validPoints < 1000) {
+                qWarning() << "[DepthWidget] ⚠ WARNING: Only" << quality.validPoints
+                          << "points in fallback point cloud! This is a backup method.";
             }
         }
 
