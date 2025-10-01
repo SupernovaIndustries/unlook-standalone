@@ -972,11 +972,15 @@ core::DepthResult DepthProcessor::processSync(const core::StereoFramePair& frame
               << " in " << result.processing_time_ms << "ms" << std::endl;
     
     result.success = (status == core::ResultCode::SUCCESS);
-    
+
     if (result.success) {
-        std::cout << "[DepthProcessor] Depth map generated: " 
+        std::cout << "[DepthProcessor] Depth map generated: "
                   << result.depth_map.cols << "x" << result.depth_map.rows << std::endl;
-        
+
+        // CRITICAL FIX: Get point cloud file path after processFrames()
+        result.debug_pointcloud_path = pimpl_->coreProcessor->getLastPointCloudPath();
+        std::cout << "[DepthProcessor] Point cloud file path: " << result.debug_pointcloud_path << std::endl;
+
         // Calculate depth statistics
         cv::Scalar mean_depth, stddev_depth;
         cv::meanStdDev(result.depth_map, mean_depth, stddev_depth, result.depth_map > 0);

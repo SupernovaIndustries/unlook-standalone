@@ -753,7 +753,7 @@ QPushButton#led_test_off_button:pressed {
           <number>50000</number>
          </property>
          <property name="value">
-          <number>10000</number>
+          <number>20000</number>
          </property>
          <property name="orientation">
           <enum>Qt::Horizontal</enum>

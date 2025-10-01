@@ -148,8 +148,8 @@ void CameraPreviewWidget::connectSignals() {
 
 void CameraPreviewWidget::initializeAdditionalComponents() {
     // Initialize slider value labels with default values (unified for both cameras)
-    // Exposure default: 10000µs (from .ui file)
-    ui->left_exposure_value->setText("10000µs");
+    // Exposure default: 20000µs (from .ui file)
+    ui->left_exposure_value->setText("20000µs");
 
     // Gain default: 1.0x (from .ui file, slider value 100 = gain 1.0)
     ui->left_gain_value->setText("1.0x");
