@@ -1732,22 +1732,46 @@ bool DepthProcessor::generatePointCloudFromDisparity(
 
     logInfo("\n[STAGE 2] Calibration Parameters");
 
-    // Extract intrinsic parameters
-    double fx = calibData.cameraMatrixLeft.at<double>(0, 0);
-    double fy = calibData.cameraMatrixLeft.at<double>(1, 1);
-    double cx = calibData.cameraMatrixLeft.at<double>(0, 2);
-    double cy = calibData.cameraMatrixLeft.at<double>(1, 2);
-    double baselineMm = calibData.baselineMm;
+    // CRITICAL FIX: After stereoRectify(), the original camera matrix is NO LONGER VALID!
+    // We MUST use the RECTIFIED parameters from the Q matrix, not the original intrinsics.
+    //
+    // The Q matrix structure is:
+    // Q = [ 1    0       0      -cx_rect  ]
+    //     [ 0    1       0      -cy_rect  ]
+    //     [ 0    0       0       f_rect   ]
+    //     [ 0    0   -1/Tx   (cx-cx')/Tx ]
+    //
+    // Where cx_rect, cy_rect, f_rect are the RECTIFIED camera parameters.
 
-    logInfo("  - Baseline: " + std::to_string(baselineMm) + "mm");
-    logInfo("  - Focal length: fx=" + std::to_string(fx) + "px, fy=" +
-            std::to_string(fy) + "px");
-    logInfo("  - Principal point: cx=" + std::to_string(cx) + "px, cy=" +
-            std::to_string(cy) + "px");
-    logInfo("  - Min disparity threshold: " + std::to_string(MIN_DISPARITY_THRESHOLD) +
-            "px (to prevent div-by-zero)");
-    logInfo("  - Depth range filter: " + std::to_string(pImpl->config.minDepthMm) +
-            "-" + std::to_string(pImpl->config.maxDepthMm) + "mm");
+    // Extract RECTIFIED parameters from Q matrix
+    double fx_rect = calibData.Q.at<double>(2, 3);        // Rectified focal length (common for both cameras)
+    double fy_rect = fx_rect;                             // After rectification, fy = fx
+    double cx_rect = -calibData.Q.at<double>(0, 3);       // Rectified principal point X
+    double cy_rect = -calibData.Q.at<double>(1, 3);       // Rectified principal point Y
+    double Tx_inv = calibData.Q.at<double>(3, 2);         // -1/Tx where Tx is baseline
+    double baselineMm = std::abs(1.0 / Tx_inv);           // Baseline (absolute value)
+
+    // Log BOTH original and rectified parameters for verification
+    logInfo("  - ORIGINAL (pre-rectification) parameters:");
+    logInfo("    fx_left = " + std::to_string(calibData.cameraMatrixLeft.at<double>(0, 0)) + "px");
+    logInfo("    cx_left = " + std::to_string(calibData.cameraMatrixLeft.at<double>(0, 2)) + "px");
+    logInfo("    cy_left = " + std::to_string(calibData.cameraMatrixLeft.at<double>(1, 2)) + "px");
+
+    logInfo("  - RECTIFIED (post-rectification) parameters used for conversion:");
+    logInfo("    Baseline: " + std::to_string(baselineMm) + "mm");
+    logInfo("    Focal length: fx=" + std::to_string(fx_rect) + "px, fy=" + std::to_string(fy_rect) + "px");
+    logInfo("    Principal point: cx=" + std::to_string(cx_rect) + "px, cy=" + std::to_string(cy_rect) + "px");
+
+    logInfo("  - Conversion parameters:");
+    logInfo("    Min disparity threshold: " + std::to_string(MIN_DISPARITY_THRESHOLD) + "px (to prevent div-by-zero)");
+    logInfo("    Depth range filter: " + std::to_string(pImpl->config.minDepthMm) + "-" +
+            std::to_string(pImpl->config.maxDepthMm) + "mm");
+
+    // Use rectified parameters for conversion (not the original ones!)
+    double fx = fx_rect;
+    double fy = fy_rect;
+    double cx = cx_rect;
+    double cy = cy_rect;
 
     // ============================================================================
     // STAGE 3: PIXEL-BY-PIXEL CONVERSION
@@ -1831,16 +1855,19 @@ bool DepthProcessor::generatePointCloudFromDisparity(
                 continue;
             }
 
-            // TODO: Calculate depth using stereo formula: depth = (baseline * focal_length) / disparity
+            // Calculate depth using stereo formula with RECTIFIED parameters
+            // Z = (baseline * fx_rectified) / disparity
             float depthMm = (baselineMm * fx) / d;
 
-            // TODO: Apply inclusive depth range filter
+            // Apply depth range filter
             if (depthMm < pImpl->config.minDepthMm || depthMm > pImpl->config.maxDepthMm) {
                 depthOutOfRange++;
                 continue;
             }
 
-            // TODO: Project to 3D using pinhole camera model
+            // Project to 3D using RECTIFIED pinhole camera model
+            // X = (u - cx_rectified) * Z / fx_rectified
+            // Y = (v - cy_rectified) * Z / fy_rectified
             float X = (x - cx) * depthMm / fx;
             float Y = (y - cy) * depthMm / fy;
             float Z = depthMm;
