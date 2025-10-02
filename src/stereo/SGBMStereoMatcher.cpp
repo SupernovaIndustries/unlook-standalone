@@ -12,50 +12,51 @@ namespace unlook {
 namespace stereo {
 
 SGBMStereoMatcher::SGBMStereoMatcher() {
-    // OPTIMIZED PARAMETERS FOR CM5 CORTEX-A76 PERFORMANCE
+    // OPTIMIZED PARAMETERS FOR HIGHEST QUALITY DEPTH MAPS
     // Target: 100-6000mm depth range with 0.005mm precision
     // 70.017mm baseline with IMX296 1456x1088 cameras
 
     // Disparity range CRITICAL for depth coverage
     params_.minDisparity = 0;         // Start from 0 to capture far objects
-    params_.numDisparities = 256;     // INCREASED from 160 to 256 for extended depth range
+    params_.numDisparities = 256;     // Extended range for depth coverage
                                       // Must be divisible by 16 for SIMD optimization
-                                      // Math: Z = (70.017mm * ~1000px) / disparity
-                                      // Min depth (d=256): 273mm, Max depth (d=1): 70m
+                                      // Math: Z = (70.017mm * 1755px) / disparity
+                                      // Min depth (d=256): 479mm, Max depth (d=1): 122m
 
-    // Block size optimized for CM5 processing power
-    params_.blockSize = 11;           // INCREASED from 7 to 11 for better texture context
-                                      // Larger block = more reliable matches at computational cost
-                                      // CM5 Cortex-A76 can handle this easily
+    // Block size REDUCED for FINER DETAIL PRESERVATION
+    params_.blockSize = 7;            // REDUCED from 11 to 7 for better detail capture
+                                      // Smaller blocks = finer texture details
+                                      // Better for precision measurement applications
 
-    // Recalculate P1/P2 based on new blockSize=11 for optimal smoothness
+    // P1/P2 recalculated for blockSize=7 with LESS AGGRESSIVE smoothing
     // P1 controls small disparity changes (±1 pixel)
     // P2 controls large disparity changes (>1 pixel)
-    params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
-    params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 11 * 11 = 3872
+    params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
+    params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 7 * 7 = 1176 (REDUCED for less smoothing)
+                                                              // Lower P2 = preserve more detail
 
-    // Uniqueness and texture thresholds - VERY PERMISSIVE for maximum coverage
-    params_.uniquenessRatio = 5;      // MODERATE: 5 allows more matches while WLS filter cleans up
-                                      // Not too strict to preserve coverage
-    params_.textureThreshold = 10;    // DEFAULT VALUE: Maximum permissiveness
-                                      // Let WLS filter and post-processing clean up noise
-                                      // CRITICAL: Low threshold prevents empty disparity maps
-                                      // We rely on WLS filter + uniquenessRatio for quality
-    params_.preFilterCap = 63;        // INCREASED from 31 for better pre-filtering
-                                      // Maximum allowed value for best edge preservation
+    // Uniqueness threshold INCREASED for HIGHER QUALITY matches
+    params_.uniquenessRatio = 10;     // INCREASED from 5 to 10 for better quality
+                                      // Higher value = more selective, better precision
+    params_.textureThreshold = 10;    // Keep low threshold for coverage
+                                      // WLS filter will clean up noise
+    params_.preFilterCap = 63;        // Maximum value for best edge preservation
 
-    // Speckle filtering - more aggressive for cleaner depth maps
-    params_.speckleWindowSize = 100;  // INCREASED from 50 to 100 for better noise removal
-    params_.speckleRange = 32;        // INCREASED from 16 to 32 for wider disparity tolerance
+    // Speckle filtering - LESS AGGRESSIVE to preserve valid small regions
+    params_.speckleWindowSize = 50;   // REDUCED from 100 to 50 (less aggressive)
+                                      // Smaller window = preserve more small valid regions
+    params_.speckleRange = 16;        // REDUCED from 32 to 16 (more conservative)
+                                      // Tighter range = better quality filtering
 
-    // WLS filter parameters optimized for edge preservation
+    // WLS filter parameters - LESS AGGRESSIVE for detail preservation
     params_.useWLSFilter = true;
-    params_.wlsLambda = 8000.0;       // Standard lambda
-    params_.wlsSigma = 1.2;           // Lower sigma for edge preservation
+    params_.wlsLambda = 4000.0;       // REDUCED from 8000 to 4000 (less aggressive smoothing)
+                                      // Lower lambda = preserve more fine details
+    params_.wlsSigma = 1.5;           // INCREASED from 1.2 to 1.5 for better color/depth alignment
 
-    // Enable left-right check for confidence
+    // Left-right check with TIGHTER tolerance for HIGHER PRECISION
     params_.leftRightCheck = true;
-    params_.disp12MaxDiff = 2;        // Allow 2 pixel difference
+    params_.disp12MaxDiff = 1;        // REDUCED from 2 to 1 (more strict, higher quality)
 
     // Create SGBM matcher with optimized parameters
     sgbm_ = cv::StereoSGBM::create(
@@ -352,20 +353,20 @@ void SGBMStereoMatcher::setPrecisionMode(bool highPrecision) {
         params_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;
 
         // Adjust P1/P2 for high precision (less smoothing)
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
-        params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 11 * 11 = 2904 (reduced smoothing)
+        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
+        params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 7 * 7 = 1176 (reduced smoothing)
     } else {
         // OPTIMIZED FOR CM5 CORTEX-A76 - FAST MODE
         params_.uniquenessRatio = 15;     // Even stricter for speed
         params_.speckleWindowSize = 50;   // Smaller for speed
-        params_.speckleRange = 32;
-        params_.disp12MaxDiff = 3;        // More relaxed for speed
+        params_.speckleRange = 16;        // Match main params
+        params_.disp12MaxDiff = 1;        // Match main params for consistency
         params_.textureThreshold = 100;   // Lower threshold for more coverage
         params_.mode = cv::StereoSGBM::MODE_SGBM;  // 5-directional for speed
 
-        // More smoothing for fast mode
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 11 * 11 = 968
-        params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 11 * 11 = 3872
+        // Recalculated for blockSize=7
+        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
+        params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 7 * 7 = 1568
     }
 
     updateSGBMParameters();
