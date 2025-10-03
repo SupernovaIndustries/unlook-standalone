@@ -71,8 +71,12 @@ bool DepthProcessor::loadCalibration(const std::string& calibration_file) {
         fs["camera_matrix_right"] >> camera_matrix_right_;
         fs["dist_coeffs_left"] >> dist_coeffs_left_;
         fs["dist_coeffs_right"] >> dist_coeffs_right_;
-        fs["rotation_matrix"] >> rotation_matrix_;
-        fs["translation_vector"] >> translation_vector_;
+
+        // CRITICAL FIX: Use correct YAML keys ("R" and "T", not "rotation_matrix" and "translation_vector")
+        // This was causing stereoRectify() to use empty matrices, generating WRONG Q matrix!
+        // Result: 28% depth error because Q matrix had incorrect baseline/focal length
+        fs["R"] >> rotation_matrix_;
+        fs["T"] >> translation_vector_;
         
         // Compute rectification maps
         cv::Size image_size(1456, 1088); // IMX296 resolution
