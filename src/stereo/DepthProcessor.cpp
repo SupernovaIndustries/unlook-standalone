@@ -56,13 +56,13 @@ public:
         // Based on IEEE/ISO stereo vision standards and actual measurement capabilities
         // Automatically calculated from baseline geometry and practical limitations
 
-        // INVESTOR DEMO FIX: Correct depth range for 70mm baseline stereo system
-        // Working range verified by user: 400-4000mm
+        // CLOSE-RANGE SCANNING: Focus on hand/controller at 400-600mm
+        // Filters out flat background at ~1m and beyond
         config.minDepthMm = 400.0f;
-        config.maxDepthMm = 4000.0f;
+        config.maxDepthMm = 600.0f;
 
         std::cout << "[DepthProcessor] Depth range configured: "
-                  << config.minDepthMm << "-" << config.maxDepthMm << "mm" << std::endl;
+                  << config.minDepthMm << "-" << config.maxDepthMm << "mm (close-range mode)" << std::endl;
 
         // Filtering parameters - less aggressive to preserve precision
         config.medianKernelSize = 3;     // Smaller kernel (was 5)
@@ -104,14 +104,10 @@ void DepthProcessor::updateDepthRangeFromCalibration() {
     float focal_length_px = static_cast<float>(calibData.cameraMatrixLeft.at<double>(0, 0));  // fx
 
     // Calculate optimal depth range based on stereo geometry
-    // Minimum depth: 3x baseline (standard stereo vision practice) + safety margin
-    float theoretical_min = 3.0f * baseline_mm;
-    pImpl->config.minDepthMm = std::max(theoretical_min, 200.0f);  // Minimum 200mm safety
-
-    // Maximum depth: Based on minimum disparity precision (typically 0.5-1.0 pixels)
-    float min_disparity_precision = 0.5f;  // Conservative estimate
-    float theoretical_max = (baseline_mm * focal_length_px) / min_disparity_precision;
-    pImpl->config.maxDepthMm = std::min(theoretical_max, 5000.0f);  // Practical maximum
+    // CLOSE-RANGE MODE: Override theoretical limits for hand scanning at 400-600mm
+    // User request: filter out flat background at ~1m, focus on nearby objects
+    pImpl->config.minDepthMm = 400.0f;  // Close-range minimum
+    pImpl->config.maxDepthMm = 600.0f;  // Close-range maximum (filters background)
 
     std::cout << "[DepthProcessor] Dynamic depth range calculated from calibration:" << std::endl;
     std::cout << "  Baseline: " << baseline_mm << "mm" << std::endl;
@@ -1868,9 +1864,10 @@ bool DepthProcessor::generatePointCloudFromDisparity(
             // Project to 3D using RECTIFIED pinhole camera model
             // X = (u - cx_rectified) * Z / fx_rectified
             // Y = (v - cy_rectified) * Z / fy_rectified
+            // CRITICAL: Z negativo per convenzione camera (oggetti davanti alla camera hanno Z < 0)
             float X = (x - cx) * depthMm / fx;
             float Y = (y - cy) * depthMm / fy;
-            float Z = depthMm;
+            float Z = -depthMm;  // INVERTED: far objects should be negative Z
 
             // TODO: Validate coordinates
             if (!std::isfinite(X) || !std::isfinite(Y) || !std::isfinite(Z)) {
