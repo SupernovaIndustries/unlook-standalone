@@ -71,21 +71,20 @@ bool DepthProcessor::loadCalibration(const std::string& calibration_file) {
         fs["camera_matrix_right"] >> camera_matrix_right_;
         fs["dist_coeffs_left"] >> dist_coeffs_left_;
         fs["dist_coeffs_right"] >> dist_coeffs_right_;
-
-        // CRITICAL FIX: Use correct YAML keys ("R" and "T", not "rotation_matrix" and "translation_vector")
-        // This was causing stereoRectify() to use empty matrices, generating WRONG Q matrix!
-        // Result: 28% depth error because Q matrix had incorrect baseline/focal length
         fs["R"] >> rotation_matrix_;
         fs["T"] >> translation_vector_;
-        
-        // Compute rectification maps
-        cv::Size image_size(1456, 1088); // IMX296 resolution
-        cv::stereoRectify(camera_matrix_left_, dist_coeffs_left_,
-                         camera_matrix_right_, dist_coeffs_right_,
-                         image_size, rotation_matrix_, translation_vector_,
-                         rectification_left_, rectification_right_,
-                         projection_left_, projection_right_,
-                         disparity_to_depth_map_);
+
+        // CRITICAL: Load pre-computed rectification matrices from BoofCV calibration
+        // These have industrial precision (RMS 0.24px) - DO NOT recalculate with stereoRectify!
+        fs["R1"] >> rectification_left_;
+        fs["R2"] >> rectification_right_;
+        fs["P1"] >> projection_left_;
+        fs["P2"] >> projection_right_;
+        fs["Q"] >> disparity_to_depth_map_;
+
+        std::cout << "Loaded BoofCV pre-computed rectification matrices (industrial precision)" << std::endl;
+        std::cout << "  Q matrix baseline: " << std::abs(1.0 / disparity_to_depth_map_.at<double>(3, 2)) << "mm" << std::endl;
+        std::cout << "  Q matrix focal length: " << disparity_to_depth_map_.at<double>(2, 3) << "px" << std::endl;
         
         // Generate rectification maps
         cv::initUndistortRectifyMap(camera_matrix_left_, dist_coeffs_left_,
