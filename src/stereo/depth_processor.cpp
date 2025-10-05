@@ -82,9 +82,26 @@ bool DepthProcessor::loadCalibration(const std::string& calibration_file) {
         fs["P2"] >> projection_right_;
         fs["Q"] >> disparity_to_depth_map_;
 
-        std::cout << "Loaded BoofCV pre-computed rectification matrices (industrial precision)" << std::endl;
-        std::cout << "  Q matrix baseline: " << std::abs(1.0 / disparity_to_depth_map_.at<double>(3, 2)) << "mm" << std::endl;
-        std::cout << "  Q matrix focal length: " << disparity_to_depth_map_.at<double>(2, 3) << "px" << std::endl;
+        std::cout << "✓ Loaded BoofCV pre-computed rectification matrices (industrial precision)" << std::endl;
+
+        // CRITICAL VERIFICATION: Log Q matrix parameters
+        double q_baseline = std::abs(1.0 / disparity_to_depth_map_.at<double>(3, 2));
+        double q_focal = disparity_to_depth_map_.at<double>(2, 3);
+        double q_cx = -disparity_to_depth_map_.at<double>(0, 3);
+        double q_cy = -disparity_to_depth_map_.at<double>(1, 3);
+
+        std::cout << "  Q matrix baseline: " << q_baseline << "mm (should be 70.017)" << std::endl;
+        std::cout << "  Q matrix focal length: " << q_focal << "px (should be 1755.436)" << std::endl;
+        std::cout << "  Q matrix cx: " << q_cx << "px (should be 713.058)" << std::endl;
+        std::cout << "  Q matrix cy: " << q_cy << "px (should be 515.472)" << std::endl;
+
+        // Verify Q matrix is correct
+        if (std::abs(q_baseline - 70.017) > 0.01) {
+            std::cerr << "❌ WARNING: Q baseline (" << q_baseline << ") != expected 70.017mm!" << std::endl;
+        }
+        if (std::abs(q_focal - 1755.436) > 1.0) {
+            std::cerr << "❌ WARNING: Q focal (" << q_focal << ") != expected 1755.436px!" << std::endl;
+        }
         
         // Generate rectification maps
         cv::initUndistortRectifyMap(camera_matrix_left_, dist_coeffs_left_,

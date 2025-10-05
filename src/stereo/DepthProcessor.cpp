@@ -56,10 +56,10 @@ public:
         // Based on IEEE/ISO stereo vision standards and actual measurement capabilities
         // Automatically calculated from baseline geometry and practical limitations
 
-        // CLOSE-RANGE SCANNING: Focus on hand/controller at 400-600mm
-        // Filters out flat background at ~1m and beyond
-        config.minDepthMm = 400.0f;
-        config.maxDepthMm = 600.0f;
+        // TEMPORARY: Wide range for debugging (will optimize after verification)
+        // TODO: Return to 400-600mm after fixing disparity matching
+        config.minDepthMm = 300.0f;
+        config.maxDepthMm = 2000.0f;
 
         std::cout << "[DepthProcessor] Depth range configured: "
                   << config.minDepthMm << "-" << config.maxDepthMm << "mm (close-range mode)" << std::endl;
@@ -104,10 +104,10 @@ void DepthProcessor::updateDepthRangeFromCalibration() {
     float focal_length_px = static_cast<float>(calibData.cameraMatrixLeft.at<double>(0, 0));  // fx
 
     // Calculate optimal depth range based on stereo geometry
-    // CLOSE-RANGE MODE: Override theoretical limits for hand scanning at 400-600mm
-    // User request: filter out flat background at ~1m, focus on nearby objects
-    pImpl->config.minDepthMm = 400.0f;  // Close-range minimum
-    pImpl->config.maxDepthMm = 600.0f;  // Close-range maximum (filters background)
+    // TEMPORARY: Wide range for debugging disparity matching issues
+    // TODO: Return to 400-600mm after fixing SGBM parameters
+    pImpl->config.minDepthMm = 300.0f;
+    pImpl->config.maxDepthMm = 2000.0f;
 
     std::cout << "[DepthProcessor] Dynamic depth range calculated from calibration:" << std::endl;
     std::cout << "  Baseline: " << baseline_mm << "mm" << std::endl;
