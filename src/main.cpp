@@ -34,9 +34,9 @@ int main(int argc, char *argv[])
     // ========================================
     auto& logger = unlook::core::Logger::getInstance();
 
-    // Initialize with timestamped log file in /home/unlook/log
+    // Initialize with timestamped log file in home directory
     // Falls back to console-only if directory creation fails
-    bool logInitSuccess = logger.initializeWithTimestamp("/home/unlook/log", unlook::core::LogLevel::DEBUG);
+    bool logInitSuccess = logger.initializeWithTimestamp("/home/alessandro/unlook_logs", unlook::core::LogLevel::DEBUG);
 
     if (logInitSuccess) {
         std::cout << "[LOGGING] File logging initialized: " << logger.getCurrentLogFile() << std::endl;
