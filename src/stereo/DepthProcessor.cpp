@@ -104,10 +104,10 @@ void DepthProcessor::updateDepthRangeFromCalibration() {
     float focal_length_px = static_cast<float>(calibData.cameraMatrixLeft.at<double>(0, 0));  // fx
 
     // Calculate optimal depth range based on stereo geometry
-    // FIXED: SGBM num_disparities increased to 320+ to support close-range scanning
-    // Close-range mode for scanning objects at 400-600mm
-    pImpl->config.minDepthMm = 400.0f;
-    pImpl->config.maxDepthMm = 600.0f;
+    // WIDENED: Expanded range for testing while investigating epipolar misalignment
+    // 1-pixel vertical offset in epipolar lines causes disparity errors
+    pImpl->config.minDepthMm = 300.0f;
+    pImpl->config.maxDepthMm = 2000.0f;
 
     std::cout << "[DepthProcessor] Dynamic depth range calculated from calibration:" << std::endl;
     std::cout << "  Baseline: " << baseline_mm << "mm" << std::endl;
@@ -626,16 +626,38 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
     
     try {
         if (format == "ply" || format == "PLY") {
+            // CRITICAL FIX: Count valid points BEFORE writing header to avoid EOF error in MeshLab
+            size_t validPointCount = 0;
+            for (const auto& point : pointCloud.points) {
+                // Z is NEGATIVE (camera convention), use absolute value for depth filtering
+                float depthMm = std::abs(point.z);
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                    depthMm >= pImpl->config.minDepthMm && depthMm <= pImpl->config.maxDepthMm) {
+                    validPointCount++;
+                }
+            }
+
+            std::cout << "[DepthProcessor] PLY Export: " << validPointCount << " valid points (from "
+                      << pointCloud.points.size() << " total, filtered by depth range "
+                      << pImpl->config.minDepthMm << "-" << pImpl->config.maxDepthMm << "mm)" << std::endl;
+
+            if (validPointCount == 0) {
+                pImpl->lastError = "No valid points after depth filtering";
+                std::cerr << "ERROR: All points filtered out by depth range "
+                          << pImpl->config.minDepthMm << "-" << pImpl->config.maxDepthMm << "mm" << std::endl;
+                return false;
+            }
+
             std::ofstream file(filename);
             if (!file.is_open()) {
                 pImpl->lastError = "Failed to open file: " + filename;
                 return false;
             }
-            
-            // Write PLY header
+
+            // Write PLY header with CORRECT point count
             file << "ply\n";
             file << "format ascii 1.0\n";
-            file << "element vertex " << pointCloud.points.size() << "\n";
+            file << "element vertex " << validPointCount << "\n";  // Use filtered count!
             file << "property float x\n";
             file << "property float y\n";
             file << "property float z\n";
@@ -644,12 +666,14 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             file << "property uchar blue\n";
             file << "property float confidence\n";
             file << "end_header\n";
-            
+
             // Write points
             for (const auto& point : pointCloud.points) {
+                // Z is NEGATIVE (camera convention), use absolute value for depth filtering
+                float depthMm = std::abs(point.z);
                 // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
                 if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
-                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
+                    depthMm >= pImpl->config.minDepthMm && depthMm <= pImpl->config.maxDepthMm) {
                     file << point.x << " " << point.y << " " << point.z << " "
                          << (int)point.r << " " << (int)point.g << " " << (int)point.b << " "
                          << point.confidence << "\n";
@@ -668,9 +692,11 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             
             // Write simple XYZ format
             for (const auto& point : pointCloud.points) {
+                // Z is NEGATIVE (camera convention), use absolute value for depth filtering
+                float depthMm = std::abs(point.z);
                 // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
                 if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
-                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
+                    depthMm >= pImpl->config.minDepthMm && depthMm <= pImpl->config.maxDepthMm) {
                     file << point.x << " " << point.y << " " << point.z << "\n";
                 }
             }
@@ -679,31 +705,47 @@ bool DepthProcessor::exportPointCloud(const PointCloud& pointCloud,
             return true;
             
         } else if (format == "pcd" || format == "PCD") {
-            // PCL PCD format
+            // PCL PCD format - Count valid points first
+            size_t validPointCount = 0;
+            for (const auto& point : pointCloud.points) {
+                float depthMm = std::abs(point.z);
+                if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+                    depthMm >= pImpl->config.minDepthMm && depthMm <= pImpl->config.maxDepthMm) {
+                    validPointCount++;
+                }
+            }
+
+            if (validPointCount == 0) {
+                pImpl->lastError = "No valid points after depth filtering";
+                return false;
+            }
+
             std::ofstream file(filename);
             if (!file.is_open()) {
                 pImpl->lastError = "Failed to open file: " + filename;
                 return false;
             }
-            
-            // Write PCD header
+
+            // Write PCD header with CORRECT point count
             file << "# .PCD v0.7 - Point Cloud Data file format\n";
             file << "VERSION 0.7\n";
             file << "FIELDS x y z rgb\n";
             file << "SIZE 4 4 4 4\n";
             file << "TYPE F F F U\n";
             file << "COUNT 1 1 1 1\n";
-            file << "WIDTH " << pointCloud.points.size() << "\n";
+            file << "WIDTH " << validPointCount << "\n";
             file << "HEIGHT 1\n";
             file << "VIEWPOINT 0 0 0 1 0 0 0\n";
-            file << "POINTS " << pointCloud.points.size() << "\n";
+            file << "POINTS " << validPointCount << "\n";
             file << "DATA ascii\n";
-            
+
             // Write points with packed RGB
             for (const auto& point : pointCloud.points) {
+                // Z is NEGATIVE (camera convention), use absolute value for depth filtering
+                float depthMm = std::abs(point.z);
                 // INDUSTRIAL STANDARD: Use inclusive range check and handle NaN properly
                 if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
-                    point.z >= pImpl->config.minDepthMm && point.z <= pImpl->config.maxDepthMm) {
+                    depthMm >= pImpl->config.minDepthMm && depthMm <= pImpl->config.maxDepthMm) {
                     uint32_t rgb = ((uint32_t)point.r << 16) | ((uint32_t)point.g << 8) | point.b;
                     file << point.x << " " << point.y << " " << point.z << " " << rgb << "\n";
                 }

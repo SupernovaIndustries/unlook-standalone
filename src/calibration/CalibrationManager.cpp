@@ -170,7 +170,15 @@ public:
             fs["P1"] >> calibData.P1;
             fs["P2"] >> calibData.P2;
             fs["Q"] >> calibData.Q;
-            
+
+            // DEBUG: Verify rectification matrices were loaded
+            std::cout << "[CalibrationManager] After loading from YAML:" << std::endl;
+            std::cout << "  R1 empty: " << calibData.R1.empty() << ", size: " << calibData.R1.size() << std::endl;
+            std::cout << "  R2 empty: " << calibData.R2.empty() << ", size: " << calibData.R2.size() << std::endl;
+            std::cout << "  P1 empty: " << calibData.P1.empty() << ", size: " << calibData.P1.size() << std::endl;
+            std::cout << "  P2 empty: " << calibData.P2.empty() << ", size: " << calibData.P2.size() << std::endl;
+            std::cout << "  Q empty: " << calibData.Q.empty() << ", size: " << calibData.Q.size() << std::endl;
+
             fs.release();
             
             // Compute baseline from T vector if not explicitly stored
@@ -281,12 +289,48 @@ public:
         }
         
         try {
+            // DEBUG: Check if rectification matrices need to be computed
+            std::cout << "[CalibrationManager] computeRectificationMapsInternal called with alpha=" << alpha << std::endl;
+            std::cout << "  R1 empty: " << calibData.R1.empty() << ", R2 empty: " << calibData.R2.empty() << std::endl;
+            std::cout << "  P1 empty: " << calibData.P1.empty() << ", P2 empty: " << calibData.P2.empty() << std::endl;
+
+            // CRITICAL: Verify P1/P2 principal points (cy MUST be identical for horizontal epipolar lines)
+            if (!calibData.P1.empty() && !calibData.P2.empty()) {
+                double cx_left = calibData.P1.at<double>(0, 2);
+                double cy_left = calibData.P1.at<double>(1, 2);
+                double fx_left = calibData.P1.at<double>(0, 0);
+                double fy_left = calibData.P1.at<double>(1, 1);
+
+                double cx_right = calibData.P2.at<double>(0, 2);
+                double cy_right = calibData.P2.at<double>(1, 2);
+                double fx_right = calibData.P2.at<double>(0, 0);
+                double fy_right = calibData.P2.at<double>(1, 1);
+
+                std::cout << "  ===== RECTIFIED PROJECTION MATRICES ANALYSIS =====" << std::endl;
+                std::cout << "  P1 (LEFT):  fx=" << fx_left << ", fy=" << fy_left
+                         << ", cx=" << cx_left << ", cy=" << cy_left << std::endl;
+                std::cout << "  P2 (RIGHT): fx=" << fx_right << ", fy=" << fy_right
+                         << ", cx=" << cx_right << ", cy=" << cy_right << std::endl;
+                std::cout << "  cy difference (RIGHT-LEFT): " << (cy_right - cy_left) << " pixels" << std::endl;
+
+                if (std::abs(cy_right - cy_left) > 0.1) {
+                    std::cerr << "  ⚠️  WARNING: cy offset detected! Epipolar lines will NOT be aligned!" << std::endl;
+                    std::cerr << "  ⚠️  This causes SGBM to search on wrong scanlines → incorrect disparity!" << std::endl;
+                } else {
+                    std::cout << "  ✓ cy values are aligned (offset < 0.1px)" << std::endl;
+                }
+                std::cout << "  ==================================================" << std::endl;
+            }
+
             // If rectification matrices are not available, compute them
-            if (calibData.R1.empty() || calibData.R2.empty() || 
+            if (calibData.R1.empty() || calibData.R2.empty() ||
                 calibData.P1.empty() || calibData.P2.empty()) {
-                
+
+                std::cout << "[CalibrationManager] WARNING: Rectification matrices missing! RECALCULATING with stereoRectify!" << std::endl;
+                std::cout << "  THIS IS WRONG - Should use pre-computed BoofCV matrices!" << std::endl;
+
                 cv::Rect validRoi1, validRoi2;
-                
+
                 cv::stereoRectify(
                     calibData.cameraMatrixLeft, calibData.distCoeffsLeft,
                     calibData.cameraMatrixRight, calibData.distCoeffsRight,
@@ -300,8 +344,12 @@ public:
                     calibData.imageSize,
                     &validRoi1, &validRoi2
                 );
+
+                std::cout << "[CalibrationManager] RECALCULATION COMPLETE - epipolar lines will NOT match BoofCV!" << std::endl;
+            } else {
+                std::cout << "[CalibrationManager] Using pre-computed BoofCV rectification matrices (CORRECT!)" << std::endl;
             }
-            
+
             // Compute rectification maps for left camera
             cv::initUndistortRectifyMap(
                 calibData.cameraMatrixLeft, calibData.distCoeffsLeft,

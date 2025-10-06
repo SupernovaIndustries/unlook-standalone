@@ -1390,7 +1390,25 @@ void DepthTestWidget::exportPointCloud() {
 
         // PRIORITY 1: Use pre-generated PLY from debug folder (ZERO memory copy, ~1.2M points!)
         if (plyExistsInDebug) {
-            qDebug() << "[DepthWidget] ✅ Using PLY from debug folder (DIRECT COPY, ~1.2M points)";
+            // Read actual point count from PLY header
+            size_t actualPointCount = 0;
+            QFile plyFile(QString::fromStdString(pointcloud_debug_path));
+            if (plyFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&plyFile);
+                while (!in.atEnd()) {
+                    QString line = in.readLine().trimmed();
+                    if (line.startsWith("element vertex ")) {
+                        bool ok;
+                        actualPointCount = line.mid(15).toULongLong(&ok);
+                        if (!ok) actualPointCount = 0;
+                        break;
+                    }
+                    if (line == "end_header") break;
+                }
+                plyFile.close();
+            }
+
+            qDebug() << "[DepthWidget] ✅ Using PLY from debug folder (" << actualPointCount << " points)";
 
             // Remove destination if exists
             QFile::remove(filepath);
@@ -1402,8 +1420,13 @@ void DepthTestWidget::exportPointCloud() {
                                              widgets::StatusDisplay::StatusType::SUCCESS);
                     export_status_->stopPulsing();
                 }
+
+                QString pointCountStr = actualPointCount > 0
+                    ? QString::number(actualPointCount) + " points"
+                    : "~1.2 million points (count unavailable)";
+
                 QMessageBox::information(this, "Export Successful",
-                    QString("Point cloud exported successfully to:\n%1\n\nTotal points: ~1.2 million from direct disparity conversion").arg(filepath));
+                    QString("Point cloud exported successfully to:\n%1\n\nTotal points: %2 from direct disparity conversion").arg(filepath).arg(pointCountStr));
                 return;  // SUCCESS - exit immediately
             } else {
                 qWarning() << "[DepthWidget] ❌ File copy failed: " << debugPlyFile.errorString();
