@@ -58,9 +58,9 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
     const double BASELINE_MM = 70.017;  // From calib_boofcv_test3.yaml
     const double FOCAL_PIXELS = 1775.0; // Average from camera matrices
     
-    // FIXED: Limit disparity range to OpenCV SGBM practical limits
-    const int MAX_NUM_DISPARITIES = 256; // OpenCV SGBM practical limit
-    const double MIN_DEPTH_MM = 400.0;   // Adjusted for reasonable disparity range
+    // FIXED: Increased disparity range to support close-range scanning (400mm)
+    const int MAX_NUM_DISPARITIES = 320; // INCREASED from 256 to 320 for 400mm range
+    const double MIN_DEPTH_MM = 400.0;   // Close-range scanning target
     const double MAX_DEPTH_MM = 3000.0;  // Extended range for better coverage
     
     // Calculate disparity range with practical limits
@@ -519,11 +519,12 @@ core::ResultCode DepthProcessor::processFrames(const cv::Mat& left_frame,
         
         // Optionally provide disparity map
         if (disparity_map != nullptr) {
-            // Convert disparity to 8-bit for visualization
-            double minVal, maxVal;
-            cv::minMaxLoc(result.disparity_map, &minVal, &maxVal);
-            result.disparity_map.convertTo(*disparity_map, CV_8U, 255.0 / (maxVal - minVal), 
-                                          -minVal * 255.0 / (maxVal - minVal));
+            // CRITICAL FIX: Keep disparity as FLOAT32, not CV_8U!
+            // CV_8U clips to 255, but we need up to 320 for close-range (400mm) scanning
+            // GUI uses this for point cloud generation which needs full precision
+            *disparity_map = result.disparity_map.clone();  // Keep as CV_32F
+
+            std::cout << "[API DepthProcessor] Disparity map preserved as float32 (no CV_8U clipping)" << std::endl;
         }
         
         auto endTime = std::chrono::high_resolution_clock::now();

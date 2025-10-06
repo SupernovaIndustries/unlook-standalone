@@ -104,10 +104,10 @@ void DepthProcessor::updateDepthRangeFromCalibration() {
     float focal_length_px = static_cast<float>(calibData.cameraMatrixLeft.at<double>(0, 0));  // fx
 
     // Calculate optimal depth range based on stereo geometry
-    // TEMPORARY: Wide range for debugging disparity matching issues
-    // TODO: Return to 400-600mm after fixing SGBM parameters
-    pImpl->config.minDepthMm = 300.0f;
-    pImpl->config.maxDepthMm = 2000.0f;
+    // FIXED: SGBM num_disparities increased to 320+ to support close-range scanning
+    // Close-range mode for scanning objects at 400-600mm
+    pImpl->config.minDepthMm = 400.0f;
+    pImpl->config.maxDepthMm = 600.0f;
 
     std::cout << "[DepthProcessor] Dynamic depth range calculated from calibration:" << std::endl;
     std::cout << "  Baseline: " << baseline_mm << "mm" << std::endl;

@@ -14,7 +14,7 @@ DepthProcessor::DepthProcessor()
     // Initialize SGBM matcher with default parameters optimized for 70mm baseline
     sgbm_matcher_ = cv::StereoSGBM::create(
         0,     // minDisparity
-        160,   // numDisparities (covers 70mm baseline range)
+        320,   // numDisparities (increased to 320 for close-range 400mm scanning)
         7,     // blockSize (optimal for precision)
         8 * 3 * 7 * 7,   // P1
         32 * 3 * 7 * 7,  // P2
@@ -27,8 +27,10 @@ DepthProcessor::DepthProcessor()
     );
     
     // Initialize with default stereo config
+    // CRITICAL: num_disparities increased to 320 for close-range scanning (400mm = ~307px disparity)
+    // Must be divisible by 16 for SGBM
     stereo_config_.min_disparity = 0;
-    stereo_config_.num_disparities = 160;
+    stereo_config_.num_disparities = 320;  // Increased from 160 to cover 400mm range
     stereo_config_.block_size = 7;
     stereo_config_.p1 = 8 * 3 * 7 * 7;
     stereo_config_.p2 = 32 * 3 * 7 * 7;
@@ -40,10 +42,15 @@ DepthProcessor::DepthProcessor()
     stereo_config_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;
     stereo_config_.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
     stereo_config_.quality = core::DepthQuality::BALANCED;
-    
+
+    // CRITICAL FIX: Apply stereo_config_ parameters to sgbm_matcher_
+    // The create() above used 160, but we need 320 for close-range scanning
+    configureStereo(stereo_config_);
+
     stats_start_time_ = std::chrono::high_resolution_clock::now();
-    
+
     std::cout << "[stereo::DepthProcessor] Initialized with 70mm baseline optimization" << std::endl;
+    std::cout << "[stereo::DepthProcessor] SGBM configured with num_disparities=" << stereo_config_.num_disparities << std::endl;
 }
 
 DepthProcessor::~DepthProcessor() {
@@ -376,7 +383,7 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality,
     
     switch (quality) {
         case core::DepthQuality::FAST_LOW:
-            config.num_disparities = 96;   // Reduced for speed
+            config.num_disparities = 256;   // Increased from 96 for 400mm range (307px disparity needed)
             config.block_size = 9;          // Larger block for speed
             config.uniqueness_ratio = 5;   // Less strict
             config.p1 = 8 * 3 * 9 * 9;
@@ -389,7 +396,7 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality,
             break;
             
         case core::DepthQuality::BALANCED:
-            config.num_disparities = 160;  // Good coverage for 70mm baseline
+            config.num_disparities = 320;  // Increased from 160 to cover 400mm (307px disparity needed)
             config.block_size = 7;         // Balanced
             config.uniqueness_ratio = 5;   // Moderate strictness
             config.p1 = 8 * 3 * 7 * 7;
@@ -402,7 +409,7 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality,
             break;
             
         case core::DepthQuality::SLOW_HIGH:
-            config.num_disparities = 256;  // Maximum coverage
+            config.num_disparities = 384;  // Increased from 256 for maximum close-range coverage
             config.block_size = 5;         // Smaller for detail
             config.uniqueness_ratio = 3;   // Very strict for precision
             config.p1 = 8 * 3 * 5 * 5;

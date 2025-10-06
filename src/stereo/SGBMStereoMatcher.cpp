@@ -18,45 +18,52 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
 
     // Disparity range CRITICAL for depth coverage
     params_.minDisparity = 0;         // Start from 0 to capture far objects
-    params_.numDisparities = 256;     // Extended range for depth coverage
+    params_.numDisparities = 320;     // INCREASED to 320 for close-range scanning (400mm)
                                       // Must be divisible by 16 for SIMD optimization
                                       // Math: Z = (70.017mm * 1755px) / disparity
-                                      // Min depth (d=256): 479mm, Max depth (d=1): 122m
+                                      // Min depth (d=320): 383mm, Max depth (d=1): 122m
+                                      // Covers 400-600mm close-range scanning target
 
-    // Block size REDUCED for FINER DETAIL PRESERVATION
-    params_.blockSize = 7;            // REDUCED from 11 to 7 for better detail capture
-                                      // Smaller blocks = finer texture details
-                                      // Better for precision measurement applications
+    // Block size OPTIMIZED for high-quality detail preservation
+    params_.blockSize = 7;            // Small blocks for fine texture details
+                                      // Optimal for precision measurement applications
 
-    // P1/P2 recalculated for blockSize=7 with LESS AGGRESSIVE smoothing
-    // P1 controls small disparity changes (±1 pixel)
-    // P2 controls large disparity changes (>1 pixel)
-    params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
-    params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 7 * 7 = 1176 (REDUCED for less smoothing)
-                                                              // Lower P2 = preserve more detail
+    // P1/P2 OPTIMIZED for HIGH QUALITY stereo matching
+    // P1 controls small disparity changes (±1 pixel) - encourages smoothness
+    // P2 controls large disparity changes (>1 pixel) - penalizes discontinuities
+    // CRITICAL: P2 must be significantly higher than P1 for quality matching
+    params_.P1 = 8 * params_.blockSize * params_.blockSize;    // 8 * 7 * 7 = 392
+    params_.P2 = 96 * params_.blockSize * params_.blockSize;   // 96 * 7 * 7 = 4704
+                                                               // HIGH P2 for smooth, high-quality depth maps
+                                                               // Standard ratio P2/P1 = 12 for quality
+                                                               // Higher P2 = better smoothing, less noise
 
-    // Uniqueness threshold INCREASED for HIGHER QUALITY matches
-    params_.uniquenessRatio = 10;     // INCREASED from 5 to 10 for better quality
-                                      // Higher value = more selective, better precision
-    params_.textureThreshold = 10;    // Keep low threshold for coverage
+    // Uniqueness ratio BALANCED for quality vs coverage
+    params_.uniquenessRatio = 5;      // REDUCED from 10 to 5 for better coverage
+                                      // Lower = accept more matches (better for textured scenes)
+                                      // 5 is optimal for face/object scanning
+    params_.textureThreshold = 10;    // Low threshold for good coverage
                                       // WLS filter will clean up noise
     params_.preFilterCap = 63;        // Maximum value for best edge preservation
 
-    // Speckle filtering - LESS AGGRESSIVE to preserve valid small regions
-    params_.speckleWindowSize = 50;   // REDUCED from 100 to 50 (less aggressive)
-                                      // Smaller window = preserve more small valid regions
-    params_.speckleRange = 16;        // REDUCED from 32 to 16 (more conservative)
-                                      // Tighter range = better quality filtering
+    // Speckle filtering - MODERATE for quality
+    params_.speckleWindowSize = 100;  // INCREASED to 100 for better noise removal
+                                      // Larger window = cleaner results
+    params_.speckleRange = 32;        // INCREASED to 32 for better filtering
+                                      // Wider range = remove more noise
 
-    // WLS filter parameters - LESS AGGRESSIVE for detail preservation
+    // WLS filter parameters - OPTIMIZED for high quality
     params_.useWLSFilter = true;
-    params_.wlsLambda = 4000.0;       // REDUCED from 8000 to 4000 (less aggressive smoothing)
-                                      // Lower lambda = preserve more fine details
-    params_.wlsSigma = 1.5;           // INCREASED from 1.2 to 1.5 for better color/depth alignment
+    params_.wlsLambda = 8000.0;       // INCREASED to 8000 for better smoothing
+                                      // Higher lambda = smoother depth maps
+                                      // Essential for high-quality face scanning
+    params_.wlsSigma = 1.5;           // Optimal for color/depth alignment
 
-    // Left-right check with TIGHTER tolerance for HIGHER PRECISION
+    // Left-right check with REASONABLE tolerance for high quality
     params_.leftRightCheck = true;
-    params_.disp12MaxDiff = 1;        // REDUCED from 2 to 1 (more strict, higher quality)
+    params_.disp12MaxDiff = 2;        // INCREASED from 1 to 2 (more reasonable tolerance)
+                                      // Too strict (1) eliminates good matches
+                                      // 2 is optimal balance quality/coverage
 
     // Create SGBM matcher with optimized parameters
     sgbm_ = cv::StereoSGBM::create(

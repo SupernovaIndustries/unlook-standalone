@@ -758,7 +758,45 @@ void DepthTestWidget::saveDebugImages(const core::StereoFramePair& frame_pair, c
                     if (tempCalibManager->rectifyImages(leftGray, rightGray, leftRectified, rightRectified)) {
                         cv::imwrite(debug_dir + "/03_left_rectified.png", leftRectified);
                         cv::imwrite(debug_dir + "/04_right_rectified.png", rightRectified);
+
+                        // EPIPOLAR LINES VISUALIZATION - Critical for stereo validation
+                        cv::Mat leftWithLines = leftRectified.clone();
+                        cv::Mat rightWithLines = rightRectified.clone();
+
+                        // Convert to BGR if grayscale
+                        if (leftWithLines.channels() == 1) {
+                            cv::cvtColor(leftWithLines, leftWithLines, cv::COLOR_GRAY2BGR);
+                        }
+                        if (rightWithLines.channels() == 1) {
+                            cv::cvtColor(rightWithLines, rightWithLines, cv::COLOR_GRAY2BGR);
+                        }
+
+                        // Draw horizontal epipolar lines every 50 pixels
+                        int lineSpacing = 50;
+                        for (int y = 0; y < leftWithLines.rows; y += lineSpacing) {
+                            // Alternating colors for better visibility
+                            cv::Scalar color = (y / lineSpacing) % 2 == 0 ? cv::Scalar(0, 255, 0) : cv::Scalar(255, 0, 0);
+                            cv::line(leftWithLines, cv::Point(0, y), cv::Point(leftWithLines.cols - 1, y), color, 1);
+                            cv::line(rightWithLines, cv::Point(0, y), cv::Point(rightWithLines.cols - 1, y), color, 1);
+                        }
+
+                        // Create side-by-side composite with epipolar lines
+                        cv::Mat epipolarComposite;
+                        cv::hconcat(leftWithLines, rightWithLines, epipolarComposite);
+
+                        // Add text label
+                        cv::putText(epipolarComposite, "LEFT (Camera 1)", cv::Point(20, 30),
+                                   cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 0), 2);
+                        cv::putText(epipolarComposite, "RIGHT (Camera 0)", cv::Point(leftWithLines.cols + 20, 30),
+                                   cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(255, 255, 0), 2);
+                        cv::putText(epipolarComposite, "Epipolar lines should be HORIZONTAL and ALIGNED",
+                                   cv::Point(20, epipolarComposite.rows - 20),
+                                   cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(0, 255, 255), 2);
+
+                        cv::imwrite(debug_dir + "/05_epipolar_validation.png", epipolarComposite);
+
                         qDebug() << "[DepthWidget] Rectified images saved successfully";
+                        qDebug() << "[DepthWidget] Epipolar lines visualization saved to 05_epipolar_validation.png";
                     } else {
                         qWarning() << "[DepthWidget] Failed to rectify images for debug saving";
                     }
