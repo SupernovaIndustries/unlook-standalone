@@ -160,15 +160,15 @@ void DepthTestWidget::captureStereoFrame() {
                 as1170->initialize();
             }
 
-            // Activate both LED1 (VCSEL) and LED2 (Flood) at 250mA (tested working value)
-            // 350mA fails to activate physically, 150mA works, using 250mA as compromise
-            // AS1170 may have internal protection limiting effective current
-            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 250);
-            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 250);
+            // TEST: Reduced to 150mA to check over-exposure hypothesis
+            // Previous 250mA may have caused image saturation → loss of texture → SGBM failure
+            // 150mA physically works, testing if lower power improves coverage
+            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
+            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
 
             leds_activated = led1_success && led2_success;
             if (leds_activated) {
-                qDebug() << "[DepthWidget] Both LEDs activated successfully at 250mA for depth capture";
+                qDebug() << "[DepthWidget] Both LEDs activated at 150mA for depth capture (testing over-exposure fix)";
             } else {
                 qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
             }
