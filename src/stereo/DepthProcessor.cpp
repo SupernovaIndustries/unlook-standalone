@@ -1947,6 +1947,17 @@ bool DepthProcessor::generatePointCloudFromDisparity(
             float maxExpectedDisparity = 300.0f;  // Adjust based on your system
             pt.confidence = std::min(1.0f, d / maxExpectedDisparity);
 
+            // CRITICAL: Filter low-confidence points (eliminates noisy depth from low-texture zones)
+            // Low disparity (<20px) = far objects or bad matches → unreliable depth
+            const float MIN_CONFIDENCE = 0.05f;  // ~15px disparity minimum (based on 300px max)
+            const float MIN_DISPARITY_FOR_CONFIDENCE = 10.0f;  // Absolute minimum disparity
+
+            if (pt.confidence < MIN_CONFIDENCE || d < MIN_DISPARITY_FOR_CONFIDENCE) {
+                // Skip this point - too low confidence or too far/unreliable
+                depthOutOfRange++;  // Count as filtered
+                continue;
+            }
+
             // Add point to cloud
             pointCloud.points.push_back(pt);
             pointsAdded++;

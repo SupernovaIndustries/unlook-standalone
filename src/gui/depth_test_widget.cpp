@@ -159,13 +159,14 @@ void DepthTestWidget::captureStereoFrame() {
                 as1170->initialize();
             }
 
-            // Activate both LED1 (VCSEL) and LED2 (Flood) at 150mA for optimal depth capture illumination
-            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
-            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+            // Activate both LED1 (VCSEL) and LED2 (Flood) at 350mA for maximum texture projection
+            // VCSEL pattern projection requires higher power for dark/uniform surfaces
+            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
+            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 350);
 
             leds_activated = led1_success && led2_success;
             if (leds_activated) {
-                qDebug() << "[DepthWidget] Both LEDs activated successfully at 150mA for depth capture";
+                qDebug() << "[DepthWidget] Both LEDs activated successfully at 350mA for depth capture";
             } else {
                 qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
             }
