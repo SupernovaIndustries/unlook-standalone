@@ -305,7 +305,7 @@ private:
     uint64_t strobe_counter_{0};
 
     // Safety limits
-    static constexpr uint16_t MAX_SAFE_CURRENT_MA = 450;  // AS1170 hardware limit: 450mA per LED
+    static constexpr uint16_t MAX_SAFE_CURRENT_MA = 446;  // AS1170 hardware limit: 446mA (127 * 3.515625)
     static constexpr uint32_t MIN_STROBE_DURATION_US = 100;
     static constexpr uint32_t MAX_STROBE_DURATION_US = 5000;
     static constexpr double MIN_STROBE_FREQUENCY_HZ = 0.1;

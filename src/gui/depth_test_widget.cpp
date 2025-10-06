@@ -1194,9 +1194,9 @@ void DepthTestWidget::initializeVCSELProjector() {
     hardware::VCSELProjector::ProjectorConfig vcsel_config;
     vcsel_config.mode = hardware::VCSELProjector::ProjectionMode::DEPTH_CAPTURE;
     vcsel_config.pattern = hardware::VCSELProjector::PatternType::DOTS_15K;
-    vcsel_config.vcsel_current_ma = 120;  // REDUCED from 250: prevent overexposure
-    vcsel_config.flood_current_ma = 0;    // DISABLED: flood reduces pattern contrast
-    vcsel_config.enable_flood_assist = false;  // DISABLED: flood washes out dot pattern
+    vcsel_config.vcsel_current_ma = 350;  // High power for dark/uniform surfaces (AS1170 limit: 450mA)
+    vcsel_config.flood_current_ma = 350;  // Flood assist for better texture on low-light surfaces
+    vcsel_config.enable_flood_assist = true;  // Enable flood for maximum texture projection
     vcsel_config.projection_duration_ms = 15;  // Match camera exposure (15ms)
     vcsel_config.max_duty_cycle = 0.3f;  // 30% max duty cycle
     vcsel_config.enable_thermal_protection = true;
