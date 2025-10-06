@@ -58,19 +58,23 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
     const double BASELINE_MM = 70.017;  // From calib_boofcv_test3.yaml
     const double FOCAL_PIXELS = 1775.0; // Average from camera matrices
     
-    // FIXED: Increased disparity range to support close-range scanning (400mm)
-    const int MAX_NUM_DISPARITIES = 320; // INCREASED from 256 to 320 for 400mm range
-    const double MIN_DEPTH_MM = 400.0;   // Close-range scanning target
+    // FIXED: Increased disparity range to support close-range scanning (320mm)
+    const int MAX_NUM_DISPARITIES = 384; // For 320mm: (70.017 × 1755) / 320 = 384px
+    const double MIN_DEPTH_MM = 320.0;   // Close-range scanning target
     const double MAX_DEPTH_MM = 3000.0;  // Extended range for better coverage
-    
-    // Calculate disparity range with practical limits
-    int theoretical_max_disp = static_cast<int>((BASELINE_MM * FOCAL_PIXELS) / MIN_DEPTH_MM);
-    int theoretical_min_disp = static_cast<int>((BASELINE_MM * FOCAL_PIXELS) / MAX_DEPTH_MM);
-    
-    // Apply practical constraints  
-    params.minDisparity = std::max(0, theoretical_min_disp);
-    int raw_num_disparities = std::min(MAX_NUM_DISPARITIES, theoretical_max_disp - params.minDisparity);
-    params.numDisparities = ((raw_num_disparities + 15) / 16) * 16; // Must be multiple of 16
+
+    // CRITICAL FIX: Use config.num_disparities if explicitly set (from presets)
+    if (config.num_disparities > 0) {
+        // User/preset specified value - use it directly (must be multiple of 16)
+        params.numDisparities = ((config.num_disparities + 15) / 16) * 16;
+    } else {
+        // Auto-calculate from geometry if not specified
+        int theoretical_max_disp = static_cast<int>((BASELINE_MM * FOCAL_PIXELS) / MIN_DEPTH_MM);
+        int raw_num_disparities = std::min(MAX_NUM_DISPARITIES, theoretical_max_disp);
+        params.numDisparities = ((raw_num_disparities + 15) / 16) * 16;
+    }
+
+    params.minDisparity = config.min_disparity >= 0 ? config.min_disparity : 0;
     params.blockSize = config.block_size > 0 ? config.block_size : 11; // Optimal for 1456x1088
     // FIXED: Reasonable smoothness parameters (previous values were too high)
     int channels = 1; // Grayscale processing for stereo matching
@@ -205,7 +209,7 @@ public:
         
         // SGBM parameters optimized for 70mm baseline and 0.005mm precision target
         stereoConfig.min_disparity = 0;
-        stereoConfig.num_disparities = 160;  // Covers depth range for 70mm baseline
+        stereoConfig.num_disparities = 320;  // FIXED: 320 for close-range (400mm) scanning
         stereoConfig.block_size = 7;         // Optimal for precision
         stereoConfig.p1 = 8 * 3 * 7 * 7;    // 8*channels*blockSize^2
         stereoConfig.p2 = 32 * 3 * 7 * 7;   // 32*channels*blockSize^2
@@ -873,9 +877,10 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality, core
     config.algorithm = algorithm;
     
     // Quality-specific parameters
+    // CRITICAL FIX: Increased numDisparities for close-range scanning
     switch (quality) {
         case core::DepthQuality::FAST_LOW:
-            config.num_disparities = 48;
+            config.num_disparities = 256;  // FIXED: 256 for fast close-range
             config.block_size = 7;
             config.p1 = 200;
             config.p2 = 800;
@@ -884,9 +889,9 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality, core
             config.speckle_window_size = 50;
             config.speckle_range = 1;
             break;
-            
+
         case core::DepthQuality::BALANCED:
-            config.num_disparities = 64;
+            config.num_disparities = 320;  // FIXED: 320 for balanced close-range (400mm)
             config.block_size = 9;
             config.p1 = 216;
             config.p2 = 864;
@@ -895,9 +900,9 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality, core
             config.speckle_window_size = 100;
             config.speckle_range = 2;
             break;
-            
+
         case core::DepthQuality::SLOW_HIGH:
-            config.num_disparities = 96;
+            config.num_disparities = 384;  // FIXED: 384 for maximum close-range (320mm)
             config.block_size = 11;
             config.p1 = 243;
             config.p2 = 972;

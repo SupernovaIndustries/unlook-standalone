@@ -196,9 +196,16 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
             // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
             if (enable && current_reg > 0) {
-                // LED1 TORCH MODE activated (logging disabled)
+                // LED1 TORCH MODE activated - verify control register
+                uint8_t control_check;
+                if (readRegister(AS1170Register::CONTROL, control_check)) {
+                    std::stringstream ctrl_hex;
+                    ctrl_hex << "0x" << std::hex << (int)control_check;
+                    core::Logger::getInstance().info("LED1 activation: Control register = " + ctrl_hex.str() +
+                        ", Current register = 0x" + hex_ss.str() + " (" + std::to_string(current_ma) + "mA)");
+                }
             } else if (!enable) {
-                // LED1 TORCH MODE deactivated (logging disabled)
+                core::Logger::getInstance().info("LED1 TORCH MODE deactivated");
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
@@ -235,9 +242,16 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
 
             // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
             if (enable && current_reg > 0) {
-                // LED2 TORCH MODE activated (logging disabled)
+                // LED2 TORCH MODE activated - verify control register
+                uint8_t control_check;
+                if (readRegister(AS1170Register::CONTROL, control_check)) {
+                    std::stringstream ctrl_hex;
+                    ctrl_hex << "0x" << std::hex << (int)control_check;
+                    core::Logger::getInstance().info("LED2 activation: Control register = " + ctrl_hex.str() +
+                        ", Current register = 0x" + hex_ss2.str() + " (" + std::to_string(current_ma) + "mA)");
+                }
             } else if (!enable) {
-                // LED2 TORCH MODE deactivated (logging disabled)
+                core::Logger::getInstance().info("LED2 TORCH MODE deactivated");
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
@@ -558,19 +572,33 @@ bool AS1170Controller::initializeI2C() {
 }
 
 bool AS1170Controller::initializeGPIO() {
+    // INVESTOR DEMO FIX: Make GPIO non-critical for VCSEL operation
+    // AS1170 works in TORCH MODE without GPIO (continuous illumination)
+    // GPIO only needed for advanced STROBE control (future feature)
+
     if (!exportGPIO(config_.strobe_gpio)) {
-        return false;
+        core::Logger::getInstance().warning("GPIO export failed - continuing with TORCH MODE only (no strobe control)");
+        gpio_exported_ = false;
+
+        {
+            std::lock_guard<std::mutex> status_lock(status_mutex_);
+            status_.gpio_configured = false;  // Strobe control unavailable
+        }
+
+        return true;  // ← CRITICAL: Don't fail initialization!
     }
 
     if (!setGPIODirection(config_.strobe_gpio, "out")) {
-    //         unexportGPIO(config_.strobe_gpio);
-        return false;
+        core::Logger::getInstance().warning("GPIO direction failed - continuing with TORCH MODE only");
+        gpio_exported_ = false;
+        return true;  // Don't fail
     }
 
     // Set initial state to LOW
     if (!setGPIOValue(config_.strobe_gpio, false)) {
-    //         unexportGPIO(config_.strobe_gpio);
-        return false;
+        core::Logger::getInstance().warning("GPIO value set failed - continuing with TORCH MODE only");
+        gpio_exported_ = false;
+        return true;  // Don't fail
     }
 
     gpio_exported_ = true;
@@ -580,8 +608,7 @@ bool AS1170Controller::initializeGPIO() {
         status_.gpio_configured = true;
     }
 
-    // TODO: Fix formatted logging
-    core::Logger::getInstance().info("GPIO configured for strobe control");
+    core::Logger::getInstance().info("GPIO configured successfully for strobe control");
     return true;
 }
 

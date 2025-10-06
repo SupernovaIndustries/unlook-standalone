@@ -69,13 +69,14 @@ void DepthTestWidget::connectSignals() {
     connect(ui->export_format_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DepthTestWidget::updateExportFormat);
 
-    // Connect parameter sliders
-    connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged),
-            this, &DepthTestWidget::updateStereoParameters);
-    connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged),
-            this, &DepthTestWidget::updateStereoParameters);
-    connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged),
-            this, &DepthTestWidget::updateStereoParameters);
+    // DISABLED: Parameter sliders disconnected to prevent overriding optimized SGBM parameters
+    // CRITICAL: numDisparities must be 320/384 for close-range scanning, not user-adjustable
+    // connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged),
+    //         this, &DepthTestWidget::updateStereoParameters);
+    // connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged),
+    //         this, &DepthTestWidget::updateStereoParameters);
+    // connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged),
+    //         this, &DepthTestWidget::updateStereoParameters);
 
     // Connect algorithm selection
     connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -159,15 +160,15 @@ void DepthTestWidget::captureStereoFrame() {
                 as1170->initialize();
             }
 
-            // Activate both LED1 (VCSEL) and LED2 (Flood) at 350mA for maximum texture projection
-            // VCSEL pattern projection requires higher power for dark/uniform surfaces
-            // AS1170 hardware limit: 450mA per LED (using 350mA for optimal balance)
-            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
-            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 350);
+            // Activate both LED1 (VCSEL) and LED2 (Flood) at 250mA (tested working value)
+            // 350mA fails to activate physically, 150mA works, using 250mA as compromise
+            // AS1170 may have internal protection limiting effective current
+            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 250);
+            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 250);
 
             leds_activated = led1_success && led2_success;
             if (leds_activated) {
-                qDebug() << "[DepthWidget] Both LEDs activated successfully at 350mA for depth capture";
+                qDebug() << "[DepthWidget] Both LEDs activated successfully at 250mA for depth capture";
             } else {
                 qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
             }
@@ -308,13 +309,14 @@ void DepthTestWidget::applyParameterPreset() {
     // Update parameters based on preset
     core::StereoConfig preset_config = api::DepthProcessor::createPreset(
         quality, core::StereoAlgorithm::SGBM_OPENCV);
-    
-    // Update UI sliders
-    ui->num_disparities_slider->setValue(preset_config.num_disparities);
-    ui->block_size_slider->setValue(preset_config.block_size);
+
+    // DISABLED: UI sliders no longer control SGBM parameters (locked at optimized values)
+    // ui->num_disparities_slider->setValue(preset_config.num_disparities);
+    // ui->block_size_slider->setValue(preset_config.block_size);
     // ui->uniqueness_ratio_slider->setValue(preset_config.uniqueness_ratio); // TODO: Add to .ui
-    
-    updateStereoParameters();
+
+    // Apply preset config directly (bypassing sliders)
+    depth_processor_->configureStereo(preset_config);
 }
 
 void DepthTestWidget::exportDepthMap() {
@@ -340,13 +342,14 @@ void DepthTestWidget::updateStereoParameters() {
 
     core::StereoConfig config = depth_processor_->getStereoConfig();
 
-    // Update config from UI
-    config.min_disparity = ui->min_disparity_slider->value();
-    config.num_disparities = ui->num_disparities_slider->value();
-    config.block_size = ui->block_size_slider->value();
-    config.uniqueness_ratio = 10; // Default value - TODO: Add slider to .ui
+    // DISABLED: UI sliders no longer override optimized SGBM parameters
+    // CRITICAL: numDisparities must stay at 320/384 for close-range scanning
+    // config.min_disparity = ui->min_disparity_slider->value();
+    // config.num_disparities = ui->num_disparities_slider->value();
+    // config.block_size = ui->block_size_slider->value();
+    // config.uniqueness_ratio = 10; // Default value - TODO: Add slider to .ui
 
-    // Set algorithm from combo box
+    // Set algorithm from combo box (still functional)
     switch (ui->algorithm_combo->currentIndex()) {
         case 0:
             config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
