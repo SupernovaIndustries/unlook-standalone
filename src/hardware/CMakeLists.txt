@@ -10,6 +10,7 @@ cmake_minimum_required(VERSION 3.16)
 # Create hardware library
 set(HARDWARE_SOURCES
     AS1170Controller.cpp
+    AS1170DualVCSELController.cpp
     LEDSyncManager.cpp
     LEDThermalManager.cpp
     VCSELProjector.cpp
@@ -18,6 +19,7 @@ set(HARDWARE_SOURCES
 
 set(HARDWARE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/AS1170Controller.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/hardware/AS1170DualVCSELController.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/LEDSyncManager.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/LEDThermalManager.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/VCSELProjector.hpp

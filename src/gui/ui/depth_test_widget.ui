@@ -21,36 +21,6 @@ QWidget#DepthTestWidget {
     font-family: &quot;Inter&quot;, sans-serif;
 }
 
-/* Supernova-tech Sliders */
-QSlider::groove:horizontal {
-    background: #1A2B2A;
-    height: 6px;
-    border-radius: 3px;
-}
-
-QSlider::handle:horizontal {
-    background: #00E5CC;
-    border: 2px solid #00B8A3;
-    width: 20px;
-    height: 20px;
-    border-radius: 12px;
-    margin: -8px 0;
-}
-
-QSlider::handle:horizontal:hover {
-    background: #00B8A3;
-    border: 2px solid #00E5CC;
-}
-
-QSlider::handle:horizontal:pressed {
-    background: #008B7A;
-}
-
-QSlider::sub-page:horizontal {
-    background: #00E5CC;
-    border-radius: 3px;
-}
-
 /* Supernova-tech ComboBox */
 QComboBox {
     background: #1A2B2A;
@@ -472,6 +442,68 @@ QPushButton#save_pointcloud_button:disabled {
             </widget>
            </item>
            <item>
+            <widget class="QCheckBox" name="ambient_subtract_checkbox">
+             <property name="minimumSize">
+              <size>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>800</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <family>Inter</family>
+               <pointsize>9</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Supernova-tech Checkbox */
+QCheckBox {
+    color: #FFFFFF;
+    font-family: &quot;Inter&quot;, sans-serif;
+    font-weight: 700;
+    spacing: 8px;
+    min-height: 48px;
+}
+
+QCheckBox::indicator {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #008B7A;
+    border-radius: 4px;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #00E5CC;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:checked {
+    background: #00E5CC;
+    border: 2px solid #00B8A3;
+}
+
+QCheckBox::indicator:checked:hover {
+    background: #00FFE6;
+    border: 2px solid #00E5CC;
+}</string>
+             </property>
+             <property name="text">
+              <string>Enable Ambient Subtraction (3-Frame)</string>
+             </property>
+             <property name="checked">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QCheckBox" name="disable_filters_checkbox">
              <property name="minimumSize">
               <size>
@@ -531,239 +563,51 @@ QCheckBox::indicator:checked:hover {
             </widget>
            </item>
            <item>
-            <widget class="QComboBox" name="algorithm_combo">
+            <widget class="QLabel" name="status_label">
+             <property name="text">
+              <string>Processing Status:</string>
+             </property>
+             <property name="font">
+              <font>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">color: #00E5CC;</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QListWidget" name="status_list">
              <property name="minimumSize">
               <size>
                <width>140</width>
-               <height>32</height>
+               <height>100</height>
               </size>
              </property>
              <property name="maximumSize">
               <size>
                <width>800</width>
-               <height>36</height>
+               <height>150</height>
               </size>
              </property>
-             <property name="font">
-              <font>
-               <pointsize>-1</pointsize>
-               <bold>false</bold>
-              </font>
-             </property>
              <property name="styleSheet">
-              <string notr="true">/* Custom style handled by parent widget */
+              <string notr="true">QListWidget {
+    background-color: #0a0a0a;
+    border: 1px solid #1a1a1a;
+    border-radius: 4px;
+    padding: 2px;
+    color: #00ffff;
+    font-family: &quot;Courier&quot;, monospace;
+    font-size: 10px;
+}
 
-
-</string>
-             </property>
-             <item>
-              <property name="text">
-               <string>OpenCV SGBM</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>BoofCV Dense Block Matching (Fast)</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>BoofCV Dense Semi-Global Matching</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>BoofCV Sub-pixel Block Matching</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>BoofCV Sub-pixel SGM (Highest Precision)</string>
-              </property>
-             </item>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="parameters_label">
-             <property name="font">
-              <font>
-               <family>Inter</family>
-               <pointsize>8</pointsize>
-               <bold>true</bold>
-              </font>
-             </property>
-             <property name="styleSheet">
-              <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
-             </property>
-             <property name="text">
-              <string>Parameters</string>
+QListWidget::item {
+    padding: 1px;
+    border-bottom: 1px solid #1a1a1a;
+}</string>
              </property>
             </widget>
-           </item>
-           <item>
-            <layout class="QVBoxLayout" name="verticalLayout">
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout">
-               <item>
-                <widget class="QLabel" name="block_size_label">
-                 <property name="font">
-                  <font>
-                   <family>Inter</family>
-                   <pointsize>7</pointsize>
-                   <bold>true</bold>
-                  </font>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
-                 </property>
-                 <property name="text">
-                  <string>Block Size</string>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignCenter</set>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QLabel" name="min_disparity_label">
-                 <property name="font">
-                  <font>
-                   <family>Inter</family>
-                   <pointsize>7</pointsize>
-                   <bold>true</bold>
-                  </font>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
-                 </property>
-                 <property name="text">
-                  <string>Min Disparity</string>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignCenter</set>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QLabel" name="num_disparities_label">
-                 <property name="font">
-                  <font>
-                   <family>Inter</family>
-                   <pointsize>7</pointsize>
-                   <bold>true</bold>
-                  </font>
-                 </property>
-                 <property name="styleSheet">
-                  <string notr="true">color: #FFFFFF; font-family: &quot;Inter&quot;, sans-serif; font-weight: 700;</string>
-                 </property>
-                 <property name="text">
-                  <string>Disparities</string>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignCenter</set>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-             <item>
-              <layout class="QHBoxLayout" name="horizontalLayout_2">
-               <item>
-                <widget class="QSlider" name="block_size_slider">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>120</width>
-                   <height>26</height>
-                  </size>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>16777215</width>
-                   <height>100</height>
-                  </size>
-                 </property>
-                 <property name="minimum">
-                  <number>5</number>
-                 </property>
-                 <property name="maximum">
-                  <number>25</number>
-                 </property>
-                 <property name="singleStep">
-                  <number>2</number>
-                 </property>
-                 <property name="value">
-                  <number>15</number>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QSlider" name="min_disparity_slider">
-                 <property name="minimumSize">
-                  <size>
-                   <width>120</width>
-                   <height>26</height>
-                  </size>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>16777215</width>
-                   <height>100</height>
-                  </size>
-                 </property>
-                 <property name="minimum">
-                  <number>-32</number>
-                 </property>
-                 <property name="maximum">
-                  <number>32</number>
-                 </property>
-                 <property name="value">
-                  <number>0</number>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QSlider" name="num_disparities_slider">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="minimumSize">
-                  <size>
-                   <width>120</width>
-                   <height>26</height>
-                  </size>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>16777215</width>
-                   <height>100</height>
-                  </size>
-                 </property>
-                 <property name="minimum">
-                  <number>16</number>
-                 </property>
-                 <property name="maximum">
-                  <number>256</number>
-                 </property>
-                 <property name="singleStep">
-                  <number>16</number>
-                 </property>
-                 <property name="value">
-                  <number>64</number>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-            </layout>
            </item>
           </layout>
          </item>

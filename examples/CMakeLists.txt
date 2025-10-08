@@ -93,6 +93,39 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/calibration_validation_example.cpp")
     list(APPEND EXAMPLE_TARGETS calibration_validation_example)
 endif()
 
+# Dual VCSEL temporal matching test
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_dual_vcsel_temporal.cpp")
+    add_executable(test_dual_vcsel_temporal
+        test_dual_vcsel_temporal.cpp
+    )
+    target_include_directories(test_dual_vcsel_temporal PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_dual_vcsel_temporal PRIVATE
+        unlook
+        unlook_hardware
+        ${OpenCV_LIBS}
+    )
+    list(APPEND EXAMPLE_TARGETS test_dual_vcsel_temporal)
+endif()
+
+# Enhanced temporal stereo test
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_temporal_stereo_enhanced.cpp")
+    add_executable(test_temporal_stereo_enhanced
+        test_temporal_stereo_enhanced.cpp
+    )
+    target_include_directories(test_temporal_stereo_enhanced PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_temporal_stereo_enhanced PRIVATE
+        unlook
+        unlook_hardware
+        unlook_stereo
+        ${OpenCV_LIBS}
+    )
+    list(APPEND EXAMPLE_TARGETS test_temporal_stereo_enhanced)
+endif()
+
 # C API example (temporarily disabled - requires C API implementation)
 # if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c_api_example.c")
 #     add_executable(c_api_example

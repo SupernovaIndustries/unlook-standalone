@@ -3,8 +3,11 @@ set(STEREO_SOURCES
     DepthProcessor.cpp
     StereoMatcher.cpp
     SGBMStereoMatcher.cpp
+    ProgressiveStereoMatcher.cpp
     DisparityFilter.cpp
     ParameterManager.cpp
+    RawStereoProcessor.cpp
+    TemporalStereoProcessor.cpp
 )
 
 # Add BoofCV sources only if enabled
@@ -39,6 +42,8 @@ target_link_libraries(unlook_stereo
     PUBLIC
         ${OpenCV_LIBS}
         unlook_calibration
+        unlook_camera_impl
+        unlook_hardware
 )
 
 # Link Open3D if available

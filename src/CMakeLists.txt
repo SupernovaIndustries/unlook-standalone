@@ -1,6 +1,8 @@
 # Source directory CMakeLists.txt for Unlook 3D Scanner API
 
-# Build component libraries in dependency order (calibration first, then stereo, then pointcloud, hardware, mesh, then validation)
+# Build component libraries in dependency order (core first, then camera, calibration, stereo, etc)
+add_subdirectory(core)
+add_subdirectory(camera)
 add_subdirectory(calibration)
 add_subdirectory(stereo)
 # Temporarily disable pointcloud module due to mesh dependencies

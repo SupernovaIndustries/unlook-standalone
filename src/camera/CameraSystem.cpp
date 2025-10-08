@@ -81,8 +81,8 @@ CameraSystem::CameraSystem()
     // Initialize default configurations with PROPER VALUES
     left_config_.width = 1456;
     left_config_.height = 1088;
-    left_config_.exposure_time_us = 20000;  // 20ms for proper exposure
-    left_config_.gain = 3.0;                // 3x gain for indoor
+    left_config_.exposure_time_us = 25000;  // 25ms for VCSEL visibility (was 20ms)
+    left_config_.gain = 1.5;                // REDUCED: 1.5x gain for lower ISO/noise (was 3.0)
     left_config_.auto_exposure = true;      // Enable auto-exposure
     left_config_.auto_gain = false;
     

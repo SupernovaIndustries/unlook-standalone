@@ -1,5 +1,6 @@
 #include "unlook/stereo/StereoMatcher.hpp"
 #include "unlook/stereo/SGBMStereoMatcher.hpp"
+#include "unlook/stereo/ProgressiveStereoMatcher.hpp"
 #ifdef HAVE_BOOFCV
 #include "unlook/stereo/BoofCVStereoMatcher.hpp"
 #endif
@@ -174,6 +175,10 @@ std::unique_ptr<StereoMatcher> StereoMatcher::create(StereoAlgorithm algorithm) 
             return std::make_unique<SGBMStereoMatcher>();
         case StereoAlgorithm::BM:
             return std::make_unique<SGBMStereoMatcher>(); // TODO: Create BMStereoMatcher
+
+        // Custom progressive matcher
+        case StereoAlgorithm::CUSTOM:
+            return std::make_unique<ProgressiveStereoMatcher>();
             
 #ifdef HAVE_BOOFCV
         // BoofCV algorithms - all use BoofCVStereoMatcher with different configurations
@@ -212,7 +217,8 @@ std::unique_ptr<StereoMatcher> StereoMatcher::create(StereoAlgorithm algorithm) 
 std::vector<StereoAlgorithm> StereoMatcher::getAvailableAlgorithms() {
     std::vector<StereoAlgorithm> algorithms = {
         StereoAlgorithm::SGBM,
-        StereoAlgorithm::BM
+        StereoAlgorithm::BM,
+        StereoAlgorithm::CUSTOM  // Progressive matcher
     };
     
     // Add BoofCV algorithms if available

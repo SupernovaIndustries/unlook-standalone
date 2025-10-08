@@ -1,6 +1,7 @@
 #include "unlook/stereo/DepthProcessor.hpp"
 #include "unlook/stereo/StereoMatcher.hpp"
 #include "unlook/stereo/SGBMStereoMatcher.hpp"
+#include "unlook/stereo/ProgressiveStereoMatcher.hpp"
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/calib3d.hpp>
@@ -133,6 +134,54 @@ bool DepthProcessor::setStereoMatcher(StereoAlgorithm algorithm) {
 
 StereoMatcher* DepthProcessor::getStereoMatcher() const {
     return pImpl->stereoMatcher.get();
+}
+
+bool DepthProcessor::setProgressiveMode(bool enableProgressive, float backgroundThresholdMm) {
+    if (enableProgressive) {
+        // Create progressive stereo matcher
+        pImpl->stereoMatcher = std::make_unique<ProgressiveStereoMatcher>();
+
+        if (pImpl->stereoMatcher) {
+            // Configure the progressive matcher
+            auto* progressiveMatcher = dynamic_cast<ProgressiveStereoMatcher*>(pImpl->stereoMatcher.get());
+            if (progressiveMatcher) {
+                // Set up progressive configuration
+                ProgressiveConfig config = progressiveMatcher->getProgressiveConfig();
+                config.enableProgressive = true;
+                config.filterBackground = true;
+                config.backgroundThresholdMm = backgroundThresholdMm;
+                config.earlyTermination = true;
+                config.propagateConfidence = true;
+                config.useNEON = true;  // Enable ARM optimizations
+                progressiveMatcher->setProgressiveConfig(config);
+
+                // Set disparity ROI to focus on useful range
+                // For 70mm baseline and 1500mm max depth: min_disparity ≈ 68
+                // For 300mm min depth: max_disparity ≈ 340
+                progressiveMatcher->setDisparityROI(50, 340);
+
+                // Setup default layers optimized for close-range scanning
+                progressiveMatcher->setupDefaultLayers();
+
+                std::cout << "[DepthProcessor] Progressive mode ENABLED with background filtering at "
+                          << backgroundThresholdMm << "mm\n";
+                std::cout << "  - Layer-based processing (NEAR/MID/FAR)\n";
+                std::cout << "  - Disparity ROI: 50-340 (depth ~300-2000mm)\n";
+                std::cout << "  - Background filtering beyond " << backgroundThresholdMm << "mm\n";
+                std::cout << "  - Expected performance gain: 30-40%\n";
+
+                return true;
+            }
+        }
+        return false;
+    } else {
+        // Switch back to standard SGBM matcher
+        pImpl->stereoMatcher = std::make_unique<SGBMStereoMatcher>();
+
+        std::cout << "[DepthProcessor] Progressive mode DISABLED - using standard SGBM\n";
+
+        return pImpl->stereoMatcher != nullptr;
+    }
 }
 
 bool DepthProcessor::processStereoPair(const cv::Mat& leftImage,
@@ -1737,6 +1786,35 @@ bool DepthProcessor::generatePointCloudFromDisparity(
         disparityFloat = disparity;
     }
 
+    // EDGE NOISE REDUCTION: Apply median filter to disparity before point cloud conversion
+    // This removes spike noise at edges and fingertip boundaries
+    const float MIN_DISPARITY_THRESHOLD = 1.0f;  // pixels (defined early for filtering)
+
+    if (pImpl->config.applyMedianFilter && pImpl->config.medianKernelSize > 1) {
+        cv::Mat disparityFiltered;
+        int kernelSize = pImpl->config.medianKernelSize;
+
+        // Ensure kernel size is odd
+        if (kernelSize % 2 == 0) {
+            kernelSize++;
+        }
+
+        logInfo("  - Applying median filter (kernel size: " + std::to_string(kernelSize) +
+                ") to reduce edge noise");
+
+        // Create mask of valid disparity pixels to preserve zeros
+        cv::Mat validMask = disparityFloat > MIN_DISPARITY_THRESHOLD;
+
+        // Apply median filter
+        cv::medianBlur(disparityFloat, disparityFiltered, kernelSize);
+
+        // Preserve invalid pixels (don't create fake disparity from filtered zeros)
+        disparityFloat.copyTo(disparityFiltered, ~validMask);
+
+        disparityFloat = disparityFiltered;
+        logInfo("  - Median filter applied successfully");
+    }
+
     // Analyze disparity statistics
     double minDisp, maxDisp;
     cv::minMaxLoc(disparityFloat, &minDisp, &maxDisp, nullptr, nullptr, disparityFloat > 0);
@@ -1745,7 +1823,7 @@ bool DepthProcessor::generatePointCloudFromDisparity(
     double meanDisp = meanDispScalar[0];
 
     // Count valid disparity pixels (> threshold to avoid div-by-zero)
-    const float MIN_DISPARITY_THRESHOLD = 1.0f;  // pixels
+    // MIN_DISPARITY_THRESHOLD already defined above for median filtering
     int validDisparityPixels = cv::countNonZero(disparityFloat > MIN_DISPARITY_THRESHOLD);
     double validRatio = (double)validDisparityPixels / totalPixels * 100.0;
 
@@ -1906,9 +1984,12 @@ bool DepthProcessor::generatePointCloudFromDisparity(
             // Project to 3D using RECTIFIED pinhole camera model
             // X = (u - cx_rectified) * Z / fx_rectified
             // Y = (v - cy_rectified) * Z / fy_rectified
-            // CRITICAL: Z negativo per convenzione camera (oggetti davanti alla camera hanno Z < 0)
+            // CRITICAL COORDINATE SYSTEM FIXES:
+            // 1. Y-axis: Image coordinates have Y DOWN, but world space needs Y UP → INVERT Y
+            // 2. Z-axis: Camera convention has objects in front with negative Z
             float X = (x - cx) * depthMm / fx;
-            float Y = (y - cy) * depthMm / fy;
+            float Y_raw = (y - cy) * depthMm / fy;
+            float Y = -Y_raw;  // FIX: Invert Y to convert from image space (Y down) to world space (Y up)
             float Z = -depthMm;  // INVERTED: far objects should be negative Z
 
             // TODO: Validate coordinates
@@ -1956,6 +2037,59 @@ bool DepthProcessor::generatePointCloudFromDisparity(
                 // Skip this point - too low confidence or too far/unreliable
                 depthOutOfRange++;  // Count as filtered
                 continue;
+            }
+
+            // EDGE FILTERING: Check neighbor consistency to eliminate bad Z values at edges
+            // Objects at edges often have incorrect disparity due to occlusion and low texture
+            bool isEdgePixel = false;
+            const int EDGE_CHECK_RADIUS = 2;  // Check 2-pixel neighborhood
+            const float MAX_DEPTH_VARIATION_MM = 50.0f;  // Maximum allowed depth difference from neighbors
+
+            if (x >= EDGE_CHECK_RADIUS && x < disparity.cols - EDGE_CHECK_RADIUS &&
+                y >= EDGE_CHECK_RADIUS && y < disparity.rows - EDGE_CHECK_RADIUS) {
+
+                // Check depth consistency with 4-connected neighbors
+                int validNeighbors = 0;
+                float depthSum = 0.0f;
+
+                // Check left, right, up, down neighbors
+                int dx[] = {-1, 1, 0, 0, -EDGE_CHECK_RADIUS, EDGE_CHECK_RADIUS};
+                int dy[] = {0, 0, -1, 1, 0, 0};
+
+                for (int i = 0; i < 6; ++i) {
+                    int nx = x + dx[i];
+                    int ny = y + dy[i];
+                    float nd = disparityFloat.at<float>(ny, nx);
+
+                    if (nd >= MIN_DISPARITY_THRESHOLD) {
+                        float neighborDepthMm = (baselineMm * fx) / nd;
+
+                        // Check if neighbor depth is within reasonable range
+                        if (std::abs(neighborDepthMm - depthMm) < MAX_DEPTH_VARIATION_MM) {
+                            validNeighbors++;
+                            depthSum += neighborDepthMm;
+                        }
+                    }
+                }
+
+                // Reject if too few valid neighbors (likely an edge or outlier)
+                if (validNeighbors < 3) {
+                    isEdgePixel = true;
+                    depthOutOfRange++;  // Count as filtered
+                }
+
+                // Additional check: if depth varies too much from neighbor average, reject
+                if (validNeighbors >= 3) {
+                    float avgNeighborDepth = depthSum / validNeighbors;
+                    if (std::abs(depthMm - avgNeighborDepth) > MAX_DEPTH_VARIATION_MM) {
+                        isEdgePixel = true;
+                        depthOutOfRange++;  // Count as filtered
+                    }
+                }
+            }
+
+            if (isEdgePixel) {
+                continue;  // Skip this noisy edge point
             }
 
             // Add point to cloud

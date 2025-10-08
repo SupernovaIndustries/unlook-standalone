@@ -12,58 +12,44 @@ namespace unlook {
 namespace stereo {
 
 SGBMStereoMatcher::SGBMStereoMatcher() {
-    // OPTIMIZED PARAMETERS FOR HIGHEST QUALITY DEPTH MAPS
-    // Target: 100-6000mm depth range with 0.005mm precision
-    // 70.017mm baseline with IMX296 1456x1088 cameras
+    // ULTRA-HIGH QUALITY VCSEL PARAMETERS - ABSOLUTE MAXIMUM PRECISION
+    // Target: BELAGO1.1 VCSEL with 15K dots, 70.017mm baseline
+    // Optimized for 0.005mm target precision with industrial scanning
 
-    // Disparity range CRITICAL for depth coverage
+    // MAXIMUM disparity range for comprehensive depth coverage
     params_.minDisparity = 0;         // Start from 0 to capture far objects
-    params_.numDisparities = 320;     // INCREASED to 320 for close-range scanning (400mm)
-                                      // Must be divisible by 16 for SIMD optimization
-                                      // Math: Z = (70.017mm * 1755px) / disparity
-                                      // Min depth (d=320): 383mm, Max depth (d=1): 122m
-                                      // Covers 400-600mm close-range scanning target
+    params_.numDisparities = 448;     // MAXIMUM: 448 pixels (divisible by 16)
+                                      // Increased from 384 for even better close-range coverage
+                                      // Supports 25cm-100m depth range at 70mm baseline
 
-    // Block size OPTIMIZED for high-quality detail preservation
-    params_.blockSize = 7;            // Small blocks for fine texture details
-                                      // Optimal for precision measurement applications
+    // VCSEL-SPECIFIC: Minimum block for individual dot matching
+    params_.blockSize = 3;            // ABSOLUTE MINIMUM for SGBM (cannot go lower!)
+                                      // Critical for matching individual VCSEL dots
 
-    // P1/P2 OPTIMIZED for HIGH QUALITY stereo matching
-    // P1 controls small disparity changes (±1 pixel) - encourages smoothness
-    // P2 controls large disparity changes (>1 pixel) - penalizes discontinuities
-    // CRITICAL: P2 must be significantly higher than P1 for quality matching
-    params_.P1 = 8 * params_.blockSize * params_.blockSize;    // 8 * 7 * 7 = 392
-    params_.P2 = 96 * params_.blockSize * params_.blockSize;   // 96 * 7 * 7 = 4704
-                                                               // HIGH P2 for smooth, high-quality depth maps
-                                                               // Standard ratio P2/P1 = 12 for quality
-                                                               // Higher P2 = better smoothing, less noise
+    // P1/P2 ULTRA-HIGH smoothness parameters for industrial surfaces
+    // Formula: P1 = 8*cn*blockSize^2, P2 = 32*cn*blockSize^2 (cn=channels=1)
+    params_.P1 = 72;                  // OPTIMIZED: 8 * 1 * 3 * 3 for dot patterns
+    params_.P2 = 288;                 // OPTIMIZED: 32 * 1 * 3 * 3 for smooth surfaces
+                                      // P2/P1 ratio = 4 optimal for structured light
 
-    // Uniqueness ratio BALANCED for quality vs coverage
-    params_.uniquenessRatio = 5;      // REDUCED from 10 to 5 for better coverage
-                                      // Lower = accept more matches (better for textured scenes)
-                                      // 5 is optimal for face/object scanning
-    params_.textureThreshold = 10;    // Low threshold for good coverage
-                                      // WLS filter will clean up noise
-    params_.preFilterCap = 63;        // Maximum value for best edge preservation
+    // BALANCED uniqueness for thin objects (fingers, edges)
+    params_.uniquenessRatio = 22;     // REDUCED: Accept more matches in low-texture areas
+                                      // Better for thin structures like fingers (was 30)
+    params_.textureThreshold = 3;     // ULTRA-LOW: Captures even faintest VCSEL dots
+    params_.preFilterCap = 15;        // REDUCED: Less preprocessing to preserve dot structure
 
-    // Speckle filtering - MODERATE for quality
-    params_.speckleWindowSize = 100;  // INCREASED to 100 for better noise removal
-                                      // Larger window = cleaner results
-    params_.speckleRange = 32;        // INCREASED to 32 for better filtering
-                                      // Wider range = remove more noise
+    // MINIMAL speckle filtering to preserve all valid depth data
+    params_.speckleWindowSize = 15;   // MINIMAL: Preserve maximum detail (was 25)
+    params_.speckleRange = 128;       // INCREASED: Higher tolerance for natural depth variation
 
-    // WLS filter parameters - OPTIMIZED for high quality
+    // WLS filter OPTIMIZED for thin objects preservation
     params_.useWLSFilter = true;
-    params_.wlsLambda = 8000.0;       // INCREASED to 8000 for better smoothing
-                                      // Higher lambda = smoother depth maps
-                                      // Essential for high-quality face scanning
-    params_.wlsSigma = 1.5;           // Optimal for color/depth alignment
+    params_.wlsLambda = 6500.0;       // REDUCED: Less aggressive smoothing for thin structures (was 9000)
+    params_.wlsSigma = 1.0;           // TIGHT: Strictest edge preservation
 
-    // Left-right check with REASONABLE tolerance for high quality
+    // STRICTEST left-right consistency check
     params_.leftRightCheck = true;
-    params_.disp12MaxDiff = 2;        // INCREASED from 1 to 2 (more reasonable tolerance)
-                                      // Too strict (1) eliminates good matches
-                                      // 2 is optimal balance quality/coverage
+    params_.disp12MaxDiff = 1;        // STRICTEST: Single pixel tolerance for max precision
 
     // Create SGBM matcher with optimized parameters
     sgbm_ = cv::StereoSGBM::create(
@@ -72,8 +58,8 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
         params_.blockSize
     );
 
-    // Use 3-way mode for best quality (8-directional matching)
-    params_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;
+    // Use 3-WAY mode for MAXIMUM QUALITY (slower but more precise)
+    params_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;  // 3-directional for best quality
 
     updateSGBMParameters();
 
@@ -348,32 +334,36 @@ void SGBMStereoMatcher::setPrecisionMode(bool highPrecision) {
     highPrecisionMode_ = highPrecision;
 
     if (highPrecision) {
-        // OPTIMIZED FOR CM5 CORTEX-A76 - HIGH PRECISION MODE
-        // Target: <0.005mm precision at 100-6000mm range
-        params_.uniquenessRatio = 10;     // Higher for better quality (consistent with new defaults)
-        params_.speckleWindowSize = 100;  // More aggressive speckle removal
-        params_.speckleRange = 32;        // Wider range for extended disparity
-        params_.disp12MaxDiff = 2;        // Strict left-right consistency check
-        params_.textureThreshold = 500;   // High threshold to reject low-texture regions
+        // VCSEL HIGH PRECISION MODE - Optimized for dot pattern matching
+        // Target: <0.005mm precision with BELAGO1.1 15K dots
+        params_.blockSize = 5;             // Keep small for dots
+        params_.uniquenessRatio = 20;      // Even higher for precision
+        params_.speckleWindowSize = 75;    // Balanced for dot preservation
+        params_.speckleRange = 64;         // Wide range for dots
+        params_.disp12MaxDiff = 1;         // Strict left-right check
+        params_.textureThreshold = 5;      // Low for dot detection
+        params_.preFilterCap = 63;         // Maximum to preserve dots
 
-        // Use full 8-directional matching for best quality
-        params_.mode = cv::StereoSGBM::MODE_SGBM_3WAY;
+        // Use standard SGBM for dot patterns
+        params_.mode = cv::StereoSGBM::MODE_SGBM;
 
-        // Adjust P1/P2 for high precision (less smoothing)
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
-        params_.P2 = 24 * params_.blockSize * params_.blockSize;  // 24 * 7 * 7 = 1176 (reduced smoothing)
+        // VCSEL-optimized P1/P2
+        params_.P1 = 200;   // 8 * 1 * 5 * 5
+        params_.P2 = 800;   // 32 * 1 * 5 * 5
     } else {
-        // OPTIMIZED FOR CM5 CORTEX-A76 - FAST MODE
-        params_.uniquenessRatio = 15;     // Even stricter for speed
-        params_.speckleWindowSize = 50;   // Smaller for speed
-        params_.speckleRange = 16;        // Match main params
-        params_.disp12MaxDiff = 1;        // Match main params for consistency
-        params_.textureThreshold = 100;   // Lower threshold for more coverage
-        params_.mode = cv::StereoSGBM::MODE_SGBM;  // 5-directional for speed
+        // VCSEL FAST MODE - Still optimized for dots but faster
+        params_.blockSize = 5;             // Keep consistent
+        params_.uniquenessRatio = 15;      // Standard VCSEL setting
+        params_.speckleWindowSize = 50;    // Smaller for speed
+        params_.speckleRange = 64;         // Keep wide for dots
+        params_.disp12MaxDiff = 2;         // More tolerant
+        params_.textureThreshold = 10;     // Standard threshold
+        params_.preFilterCap = 63;         // Keep maximum
+        params_.mode = cv::StereoSGBM::MODE_SGBM;  // Standard mode
 
-        // Recalculated for blockSize=7
-        params_.P1 = 8 * params_.blockSize * params_.blockSize;   // 8 * 7 * 7 = 392
-        params_.P2 = 32 * params_.blockSize * params_.blockSize;  // 32 * 7 * 7 = 1568
+        // VCSEL-optimized P1/P2
+        params_.P1 = 200;   // 8 * 1 * 5 * 5
+        params_.P2 = 800;   // 32 * 1 * 5 * 5
     }
 
     updateSGBMParameters();

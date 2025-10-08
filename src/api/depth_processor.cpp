@@ -74,26 +74,23 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
         params.numDisparities = ((raw_num_disparities + 15) / 16) * 16;
     }
 
-    params.minDisparity = config.min_disparity >= 0 ? config.min_disparity : 0;
-    params.blockSize = config.block_size > 0 ? config.block_size : 11; // Optimal for 1456x1088
-    // FIXED: Reasonable smoothness parameters (previous values were too high)
-    int channels = 1; // Grayscale processing for stereo matching
-    params.P1 = config.p1 > 0 ? config.p1 : 8 * channels * params.blockSize * params.blockSize;
-    params.P2 = config.p2 > 0 ? config.p2 : 32 * channels * params.blockSize * params.blockSize;
-    
-    // Clamp to reasonable limits to prevent crashes
-    params.P1 = std::min(params.P1, 1000);  // Max reasonable P1
-    params.P2 = std::min(params.P2, 4000);  // Max reasonable P2
-    
-    // Precision parameters optimized for industrial accuracy
-    params.disp12MaxDiff = config.disp12_max_diff > 0 ? config.disp12_max_diff : 2; // Strict left-right consistency
-    params.preFilterCap = config.pre_filter_cap > 0 ? config.pre_filter_cap : 31;
-    params.uniquenessRatio = config.uniqueness_ratio > 0 ? config.uniqueness_ratio : 15; // High uniqueness for precision
-    
-    // Speckle filtering optimized for 1456x1088 resolution
-    params.speckleWindowSize = config.speckle_window_size > 0 ? config.speckle_window_size : 150; // Larger for HD resolution
-    params.speckleRange = config.speckle_range > 0 ? config.speckle_range : 2; // Strict speckle filtering
-    params.mode = config.mode;  // SGBM mode
+    // VCSEL-OPTIMIZED PARAMETERS - Hardcoded for dot pattern matching
+    params.minDisparity = 0;
+    params.blockSize = 5;           // VCSEL: Small block to capture single dot cluster
+
+    // VCSEL-specific P1/P2 for dot patterns (grayscale)
+    params.P1 = 200;                // 8 * 1 * 5 * 5 for grayscale
+    params.P2 = 800;                // 32 * 1 * 5 * 5 for grayscale
+
+    // VCSEL precision parameters
+    params.disp12MaxDiff = 2;       // Reasonable tolerance for dots
+    params.preFilterCap = 63;       // Maximum, minimal filtering to preserve dots
+    params.uniquenessRatio = 15;    // High uniqueness to avoid ambiguous dots
+
+    // VCSEL speckle filtering - moderate to preserve dots
+    params.speckleWindowSize = 50;  // Moderate speckle filtering
+    params.speckleRange = 64;       // Wide range for dot preservation
+    params.mode = cv::StereoSGBM::MODE_SGBM;  // Standard SGBM, not HH for dots
     
     // Log optimal parameters for debugging (reduced to prevent spam)
     static bool logged_once = false;
@@ -207,18 +204,18 @@ public:
         stereoConfig.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
         stereoConfig.quality = core::DepthQuality::SLOW_HIGH;
         
-        // SGBM parameters optimized for 70mm baseline and 0.005mm precision target
+        // VCSEL-OPTIMIZED parameters for dot pattern matching
         stereoConfig.min_disparity = 0;
-        stereoConfig.num_disparities = 320;  // FIXED: 320 for close-range (400mm) scanning
-        stereoConfig.block_size = 7;         // Optimal for precision
-        stereoConfig.p1 = 8 * 3 * 7 * 7;    // 8*channels*blockSize^2
-        stereoConfig.p2 = 32 * 3 * 7 * 7;   // 32*channels*blockSize^2
-        stereoConfig.disp12_max_diff = 1;
-        stereoConfig.pre_filter_cap = 63;
-        stereoConfig.uniqueness_ratio = 5;   // Strict for precision
-        stereoConfig.speckle_window_size = 100;
-        stereoConfig.speckle_range = 32;
-        stereoConfig.mode = cv::StereoSGBM::MODE_SGBM_3WAY;  // Best quality mode
+        stereoConfig.num_disparities = 320;  // Full range for close-far scanning
+        stereoConfig.block_size = 5;         // Small block for dot clusters
+        stereoConfig.p1 = 200;               // 8 * 1 * 5 * 5 for grayscale
+        stereoConfig.p2 = 800;               // 32 * 1 * 5 * 5 for grayscale
+        stereoConfig.disp12_max_diff = 2;    // Reasonable tolerance
+        stereoConfig.pre_filter_cap = 63;    // Maximum to preserve dots
+        stereoConfig.uniqueness_ratio = 15;  // High to avoid ambiguous dots
+        stereoConfig.speckle_window_size = 50;  // Moderate filtering
+        stereoConfig.speckle_range = 64;     // Wide range for dots
+        stereoConfig.mode = cv::StereoSGBM::MODE_SGBM;  // Standard SGBM for dots
         
         currentAlgorithm = StereoAlgorithm::OPENCV_SGBM;
         startTime = std::chrono::high_resolution_clock::now();
@@ -876,47 +873,46 @@ core::StereoConfig DepthProcessor::createPreset(core::DepthQuality quality, core
     // Set common parameters
     config.algorithm = algorithm;
     
-    // Quality-specific parameters
-    // CRITICAL FIX: Increased numDisparities for close-range scanning
+    // VCSEL-OPTIMIZED PRESETS for dot pattern matching
     switch (quality) {
         case core::DepthQuality::FAST_LOW:
-            config.num_disparities = 256;  // FIXED: 256 for fast close-range
-            config.block_size = 7;
-            config.p1 = 200;
-            config.p2 = 800;
-            config.disp12_max_diff = 5;
-            config.uniqueness_ratio = 5;
-            config.speckle_window_size = 50;
-            config.speckle_range = 1;
+            config.num_disparities = 256;  // Reduced for speed
+            config.block_size = 5;         // VCSEL: always 5 for dots
+            config.p1 = 200;              // VCSEL-optimized
+            config.p2 = 800;              // VCSEL-optimized
+            config.disp12_max_diff = 3;    // More tolerant for speed
+            config.uniqueness_ratio = 10;  // Lower for speed
+            config.speckle_window_size = 30;  // Smaller for speed
+            config.speckle_range = 64;    // Keep wide for dots
             break;
 
         case core::DepthQuality::BALANCED:
-            config.num_disparities = 320;  // FIXED: 320 for balanced close-range (400mm)
-            config.block_size = 9;
-            config.p1 = 216;
-            config.p2 = 864;
-            config.disp12_max_diff = 2;
-            config.uniqueness_ratio = 10;
-            config.speckle_window_size = 100;
-            config.speckle_range = 2;
+            config.num_disparities = 320;  // Standard range
+            config.block_size = 5;         // VCSEL: always 5 for dots
+            config.p1 = 200;              // VCSEL-optimized
+            config.p2 = 800;              // VCSEL-optimized
+            config.disp12_max_diff = 2;    // Balanced tolerance
+            config.uniqueness_ratio = 15;  // Standard VCSEL setting
+            config.speckle_window_size = 50;  // Moderate filtering
+            config.speckle_range = 64;    // Keep wide for dots
             break;
 
         case core::DepthQuality::SLOW_HIGH:
-            config.num_disparities = 384;  // FIXED: 384 for maximum close-range (320mm)
-            config.block_size = 11;
-            config.p1 = 243;
-            config.p2 = 972;
-            config.disp12_max_diff = 1;
-            config.uniqueness_ratio = 15;
-            config.speckle_window_size = 150;
-            config.speckle_range = 2;
+            config.num_disparities = 384;  // Maximum range
+            config.block_size = 5;         // VCSEL: always 5 for dots
+            config.p1 = 200;              // VCSEL-optimized
+            config.p2 = 800;              // VCSEL-optimized
+            config.disp12_max_diff = 1;    // Strict for precision
+            config.uniqueness_ratio = 20;  // High for best precision
+            config.speckle_window_size = 75;  // More thorough filtering
+            config.speckle_range = 64;    // Keep wide for dots
             break;
     }
-    
-    // Set other defaults
+
+    // Set VCSEL defaults
     config.min_disparity = 0;
-    config.pre_filter_cap = 63;
-    config.mode = 0; // MODE_SGBM
+    config.pre_filter_cap = 63;      // Maximum to preserve dots
+    config.mode = cv::StereoSGBM::MODE_SGBM; // Standard SGBM for dots
     
     return config;
 }

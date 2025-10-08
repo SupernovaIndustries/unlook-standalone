@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QLabel>
 #include <QComboBox>
+#include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <memory>
@@ -155,6 +156,22 @@ private slots:
      */
     void onLEDToggle();
 
+    /**
+     * @brief Set ambient subtraction weight (0.0 = no subtraction, 1.0 = full subtraction)
+     * @param weight Weight value between 0.0 and 1.0
+     */
+    void setAmbientSubtractionWeight(float weight) {
+        ambient_subtraction_weight_ = std::max(0.0f, std::min(1.0f, weight));
+    }
+
+    /**
+     * @brief Set pattern gain after ambient subtraction (default 1.5)
+     * @param gain Gain value (typically 1.0 to 2.0)
+     */
+    void setAmbientPatternGain(float gain) {
+        ambient_pattern_gain_ = std::max(0.5f, std::min(3.0f, gain));
+    }
+
 private:
     /**
      * @brief Initialize the widget UI
@@ -195,10 +212,21 @@ private:
     QWidget* createCapturePanel();
     
     /**
-     * @brief Create algorithm selection panel
+     * @brief Create algorithm selection panel (deprecated, calls createStatusPanel)
      */
     QWidget* createAlgorithmPanel();
-    
+
+    /**
+     * @brief Create real-time status panel
+     */
+    QWidget* createStatusPanel();
+
+    /**
+     * @brief Add message to status list
+     * @param message Status message to display
+     */
+    void addStatusMessage(const QString& message);
+
     /**
      * @brief Create parameter adjustment panel
      */
@@ -249,7 +277,7 @@ private:
     widgets::StatusDisplay* capture_status_;
     widgets::StatusDisplay* processing_status_;
     widgets::StatusDisplay* vcsel_status_;
-    
+
     // Visualization
     QLabel* depth_map_display_;
     QLabel* quality_metrics_label_;
@@ -259,6 +287,9 @@ private:
     bool processing_active_;
     bool live_preview_active_;
     bool led_enabled_;  // Track LED state for investor demo
+    bool ambient_subtract_enabled_;  // Track ambient subtraction state
+    float ambient_subtraction_weight_;  // Weight for ambient subtraction (0.0-1.0, default 0.3)
+    float ambient_pattern_gain_;  // Gain to apply after ambient subtraction (default 1.5)
     std::string current_debug_directory_;  // Store current debug directory for image loading
 
 #ifndef DISABLE_POINTCLOUD_FUNCTIONALITY

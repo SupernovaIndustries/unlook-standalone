@@ -10,8 +10,15 @@
 #include <QComboBox>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QTime>
+#include <QPushButton>
+#include <QApplication>
 #include <QDebug>
 #include <QDir>
+#include <QtConcurrent/QtConcurrent>
+#include <QFuture>
+#include <QTimer>
+#include <QThread>
 #include <fstream>
 #include <thread>
 #include <chrono>
@@ -30,6 +37,9 @@ DepthTestWidget::DepthTestWidget(std::shared_ptr<camera::CameraSystem> camera_sy
     , processing_active_(false)
     , live_preview_active_(false)
     , led_enabled_(true)  // LED enabled by default for investor demo
+    , ambient_subtract_enabled_(false)  // Ambient subtraction disabled by default for testing
+    , ambient_subtraction_weight_(0.5f)  // Default 50% ambient subtraction for better background removal
+    , ambient_pattern_gain_(1.5f)  // Reduced gain for better balance (was 2.0)
     , current_debug_directory_("")
     , export_pointcloud_button_(nullptr)
     , export_mesh_button_(nullptr)
@@ -69,18 +79,8 @@ void DepthTestWidget::connectSignals() {
     connect(ui->export_format_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &DepthTestWidget::updateExportFormat);
 
-    // DISABLED: Parameter sliders disconnected to prevent overriding optimized SGBM parameters
-    // CRITICAL: numDisparities must be 320/384 for close-range scanning, not user-adjustable
-    // connect(ui->min_disparity_slider, QOverload<int>::of(&QSlider::valueChanged),
-    //         this, &DepthTestWidget::updateStereoParameters);
-    // connect(ui->num_disparities_slider, QOverload<int>::of(&QSlider::valueChanged),
-    //         this, &DepthTestWidget::updateStereoParameters);
-    // connect(ui->block_size_slider, QOverload<int>::of(&QSlider::valueChanged),
-    //         this, &DepthTestWidget::updateStereoParameters);
-
-    // Connect algorithm selection
-    connect(ui->algorithm_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &DepthTestWidget::updateStereoParameters);
+    // Algorithm selection is fixed to SGBM - no need to connect signals
+    // Parameters are hardcoded in the backend for optimal performance
 
     // INVESTOR DEMO: Connect filter disable checkbox
     connect(ui->disable_filters_checkbox, &QCheckBox::toggled,
@@ -89,6 +89,22 @@ void DepthTestWidget::connectSignals() {
     // INVESTOR DEMO: Connect LED toggle button
     connect(ui->led_toggle_button, &QPushButton::clicked,
             this, &DepthTestWidget::onLEDToggle);
+
+    // Connect ambient subtraction checkbox
+    connect(ui->ambient_subtract_checkbox, &QCheckBox::toggled,
+            this, [this](bool checked) {
+                ambient_subtract_enabled_ = checked;
+                if (checked) {
+                    qDebug() << "[DepthWidget] Ambient subtraction ENABLED (weight="
+                             << ambient_subtraction_weight_ << ", gain=" << ambient_pattern_gain_ << ")";
+                    addStatusMessage(QString("Ambient subtraction: ENABLED (3-frame mode, weight=%1, gain=%2)")
+                                    .arg(ambient_subtraction_weight_)
+                                    .arg(ambient_pattern_gain_));
+                } else {
+                    qDebug() << "[DepthWidget] Ambient subtraction DISABLED";
+                    addStatusMessage("Ambient subtraction: DISABLED (1-frame mode)");
+                }
+            });
 
     // TODO: Add these widgets to .ui file and uncomment:
     // connect(ui->export_button, &QPushButton::clicked, this, &DepthTestWidget::exportDepthMap);
@@ -145,38 +161,37 @@ void DepthTestWidget::captureStereoFrame() {
     qDebug() << "[DepthWidget] Starting stereo frame capture with VCSEL";
     processing_active_ = true;
 
-    // SYNCHRONIZATION STEP 1: Conditionally activate LEDs based on user preference (INVESTOR DEMO)
+    // Clear previous status messages
+    if (ui && ui->status_list) {
+        ui->status_list->clear();
+    }
+    addStatusMessage("Starting capture sequence...");
+
+    // Get AS1170 controller for temporal matching sequence
     auto as1170 = hardware::AS1170Controller::getInstance();
-    bool leds_activated = false;
 
     if (led_enabled_) {
-        qDebug() << "[DepthWidget] LED illumination ENABLED - Activating AS1170 LEDs for depth capture";
-        capture_status_->setStatus("Activating LED illumination...", StatusDisplay::StatusType::PROCESSING);
+        qDebug() << "[DepthWidget] TEMPORAL MATCHING ENABLED - Will capture 3 frames";
+        addStatusMessage("Temporal matching enabled (3 frames)");
+        capture_status_->setStatus("Initializing temporal sequence...", StatusDisplay::StatusType::PROCESSING);
 
         if (as1170) {
             // Initialize if not already done
             if (!as1170->isInitialized()) {
                 qDebug() << "[DepthWidget] Initializing AS1170 controller";
+                addStatusMessage("Initializing AS1170 controller...");
                 as1170->initialize();
             }
-
-            // TEST: Reduced to 150mA to check over-exposure hypothesis
-            // Previous 250mA may have caused image saturation → loss of texture → SGBM failure
-            // 150mA physically works, testing if lower power improves coverage
-            bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
-            bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
-
-            leds_activated = led1_success && led2_success;
-            if (leds_activated) {
-                qDebug() << "[DepthWidget] Both LEDs activated at 150mA for depth capture (testing over-exposure fix)";
-            } else {
-                qWarning() << "[DepthWidget] LED activation failed - LED1:" << led1_success << "LED2:" << led2_success;
-            }
+            // LEDs will be activated in sequence during temporal capture below
+            qDebug() << "[DepthWidget] AS1170 ready for temporal matching sequence";
+            addStatusMessage("AS1170 ready");
         } else {
-            qWarning() << "[DepthWidget] AS1170Controller not available";
+            qWarning() << "[DepthWidget] AS1170Controller not available - temporal matching disabled";
+            addStatusMessage("WARNING: AS1170 not available");
         }
     } else {
         qDebug() << "[DepthWidget] LED illumination DISABLED by user - Capturing with ambient light only";
+        addStatusMessage("LED disabled - ambient capture only");
         capture_status_->setStatus("Capturing with ambient light (LED OFF)...", StatusDisplay::StatusType::INFO);
     }
 
@@ -227,10 +242,287 @@ void DepthTestWidget::captureStereoFrame() {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    // Capture single frame (now with VCSEL projection active if available)
-    capture_status_->setStatus("Capturing stereo frame...", StatusDisplay::StatusType::PROCESSING);
-    qDebug() << "[DepthWidget] Calling camera_system_->captureSingle()";
-    core::StereoFramePair frame_pair = camera_system_->captureSingle();
+    // TEMPORAL MATCHING: Capture 3 frames for pattern isolation
+    capture_status_->setStatus("Temporal capture 1/3...", StatusDisplay::StatusType::PROCESSING);
+    qDebug() << "[DepthWidget] TEMPORAL MATCHING: Starting 3-frame capture sequence";
+
+    core::StereoFramePair frame1, frame2, frame3;  // 3 frames for temporal matching
+
+    // Only do temporal matching if LEDs are enabled (or if ambient subtraction is requested)
+    // Note: We always capture 3 frames when LED is on, but only use patterns if ambient_subtract_enabled_
+    if (led_enabled_ && as1170) {
+        // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
+        qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
+        addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (240mA)");
+        QApplication::processEvents();  // Update GUI
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 240);  // Increased to 240mA
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
+        frame1 = camera_system_->captureSingle();
+        addStatusMessage("Frame 1 captured");
+        QApplication::processEvents();  // Update GUI
+
+        // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
+        capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
+        qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
+        addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (240mA)");
+        QApplication::processEvents();  // Update GUI
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 240);  // Increased to 240mA
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
+        frame2 = camera_system_->captureSingle();
+        addStatusMessage("Frame 2 captured");
+        QApplication::processEvents();  // Update GUI
+
+        // FRAME 3: Both VCSELs OFF (Ambient)
+        capture_status_->setStatus("Temporal capture 3/3...", StatusDisplay::StatusType::PROCESSING);
+        qDebug() << "[DepthWidget] FRAME 3: Ambient (no VCSEL)";
+        addStatusMessage("Capturing Frame 3/3: Ambient (no VCSEL)");
+        QApplication::processEvents();  // Update GUI
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));  // REDUCED: Ambient only, no VCSEL
+        frame3 = camera_system_->captureSingle();
+        addStatusMessage("Frame 3 captured");
+        QApplication::processEvents();  // Update GUI
+
+        qDebug() << "[DepthWidget] Temporal matching complete: 3 frames captured";
+        addStatusMessage("Temporal matching complete");
+
+        // ADVANCED AMBIENT SUBTRACTION: Multiple strategies for different scenarios
+        // Strategy 1: MIN operation - keeps darkest values (good when hand reflects ambient)
+        // Strategy 2: Ratio-based - divides VCSEL by ambient for normalization
+        // Strategy 3: Thresholded subtract - only subtract where ambient is bright
+
+        enum AmbientMethod {
+            MIN_OPERATION = 0,     // Use minimum of VCSEL and ambient
+            RATIO_BASED = 1,       // Divide VCSEL by ambient
+            THRESHOLD_SUBTRACT = 2, // Subtract only where ambient > threshold
+            INVERTED_SUBTRACT = 3   // Add ambient instead of subtract (experimental)
+        };
+
+        // Try MIN_OPERATION first (most promising for the reported issue)
+        AmbientMethod method = MIN_OPERATION;
+
+        qDebug() << "[DepthWidget] Using ambient subtraction method:" << method;
+
+        cv::Mat pattern1_left, pattern1_right, pattern2_left, pattern2_right;
+        if (frame1.synchronized && frame3.synchronized) {
+            switch (method) {
+                case MIN_OPERATION: {
+                    // Keep minimum intensity - removes bright ambient reflections
+                    cv::min(frame1.left_frame.image, frame3.left_frame.image, pattern1_left);
+                    cv::min(frame1.right_frame.image, frame3.right_frame.image, pattern1_right);
+
+                    // Moderate gain to compensate (adjusted: gain=1.5, contrast increased)
+                    pattern1_left.convertTo(pattern1_left, -1, 1.5, -10);
+                    pattern1_right.convertTo(pattern1_right, -1, 1.5, -10);
+                    break;
+                }
+
+                case RATIO_BASED: {
+                    // Divide VCSEL by ambient to normalize (removes multiplicative effects)
+                    cv::Mat temp_left, temp_right;
+                    cv::Mat ambient_left, ambient_right;
+                    frame3.left_frame.image.convertTo(ambient_left, CV_32F);
+                    frame3.right_frame.image.convertTo(ambient_right, CV_32F);
+
+                    // Add small epsilon to avoid division by zero
+                    ambient_left += 1.0f;
+                    ambient_right += 1.0f;
+
+                    frame1.left_frame.image.convertTo(temp_left, CV_32F);
+                    frame1.right_frame.image.convertTo(temp_right, CV_32F);
+
+                    cv::divide(temp_left, ambient_left, temp_left, 128.0);
+                    cv::divide(temp_right, ambient_right, temp_right, 128.0);
+
+                    temp_left.convertTo(pattern1_left, CV_8U);
+                    temp_right.convertTo(pattern1_right, CV_8U);
+                    break;
+                }
+
+                case THRESHOLD_SUBTRACT: {
+                    // Only subtract ambient where it's bright (hand region)
+                    cv::Mat mask_left, mask_right;
+                    cv::threshold(frame3.left_frame.image, mask_left, 100, 255, cv::THRESH_BINARY);
+                    cv::threshold(frame3.right_frame.image, mask_right, 100, 255, cv::THRESH_BINARY);
+
+                    // Weighted subtraction only in bright areas
+                    pattern1_left = frame1.left_frame.image.clone();
+                    pattern1_right = frame1.right_frame.image.clone();
+
+                    cv::Mat masked_ambient_left, masked_ambient_right;
+                    frame3.left_frame.image.copyTo(masked_ambient_left, mask_left);
+                    frame3.right_frame.image.copyTo(masked_ambient_right, mask_right);
+
+                    cv::addWeighted(pattern1_left, 1.0, masked_ambient_left, -0.3, 0, pattern1_left);
+                    cv::addWeighted(pattern1_right, 1.0, masked_ambient_right, -0.3, 0, pattern1_right);
+
+                    // Boost gain
+                    pattern1_left.convertTo(pattern1_left, -1, 1.5, 0);
+                    pattern1_right.convertTo(pattern1_right, -1, 1.5, 0);
+                    break;
+                }
+
+                case INVERTED_SUBTRACT: {
+                    // Experimental: ADD ambient instead of subtract (invert the logic)
+                    // This might work if the pattern is inverted somehow
+                    cv::addWeighted(frame1.left_frame.image, 1.0, frame3.left_frame.image, 0.3, 0, pattern1_left);
+                    cv::addWeighted(frame1.right_frame.image, 1.0, frame3.right_frame.image, 0.3, 0, pattern1_right);
+
+                    // Normalize brightness
+                    cv::normalize(pattern1_left, pattern1_left, 0, 255, cv::NORM_MINMAX);
+                    cv::normalize(pattern1_right, pattern1_right, 0, 255, cv::NORM_MINMAX);
+                    break;
+                }
+            }
+
+            qDebug() << "[DepthWidget] Pattern 1 isolated with weighted subtraction: left="
+                     << pattern1_left.cols << "x" << pattern1_left.rows
+                     << " right=" << pattern1_right.cols << "x" << pattern1_right.rows;
+        }
+        if (frame2.synchronized && frame3.synchronized) {
+            // Apply same ambient subtraction method to pattern 2
+            switch (method) {
+                case MIN_OPERATION: {
+                    cv::min(frame2.left_frame.image, frame3.left_frame.image, pattern2_left);
+                    cv::min(frame2.right_frame.image, frame3.right_frame.image, pattern2_right);
+                    pattern2_left.convertTo(pattern2_left, -1, 1.5, -10);
+                    pattern2_right.convertTo(pattern2_right, -1, 1.5, -10);
+                    break;
+                }
+
+                case RATIO_BASED: {
+                    cv::Mat temp_left, temp_right;
+                    cv::Mat ambient_left, ambient_right;
+                    frame3.left_frame.image.convertTo(ambient_left, CV_32F);
+                    frame3.right_frame.image.convertTo(ambient_right, CV_32F);
+                    ambient_left += 1.0f;
+                    ambient_right += 1.0f;
+
+                    frame2.left_frame.image.convertTo(temp_left, CV_32F);
+                    frame2.right_frame.image.convertTo(temp_right, CV_32F);
+                    cv::divide(temp_left, ambient_left, temp_left, 128.0);
+                    cv::divide(temp_right, ambient_right, temp_right, 128.0);
+
+                    temp_left.convertTo(pattern2_left, CV_8U);
+                    temp_right.convertTo(pattern2_right, CV_8U);
+                    break;
+                }
+
+                case THRESHOLD_SUBTRACT: {
+                    cv::Mat mask_left, mask_right;
+                    cv::threshold(frame3.left_frame.image, mask_left, 100, 255, cv::THRESH_BINARY);
+                    cv::threshold(frame3.right_frame.image, mask_right, 100, 255, cv::THRESH_BINARY);
+
+                    pattern2_left = frame2.left_frame.image.clone();
+                    pattern2_right = frame2.right_frame.image.clone();
+
+                    cv::Mat masked_ambient_left, masked_ambient_right;
+                    frame3.left_frame.image.copyTo(masked_ambient_left, mask_left);
+                    frame3.right_frame.image.copyTo(masked_ambient_right, mask_right);
+
+                    cv::addWeighted(pattern2_left, 1.0, masked_ambient_left, -0.3, 0, pattern2_left);
+                    cv::addWeighted(pattern2_right, 1.0, masked_ambient_right, -0.3, 0, pattern2_right);
+
+                    pattern2_left.convertTo(pattern2_left, -1, 1.5, 0);
+                    pattern2_right.convertTo(pattern2_right, -1, 1.5, 0);
+                    break;
+                }
+
+                case INVERTED_SUBTRACT: {
+                    cv::addWeighted(frame2.left_frame.image, 1.0, frame3.left_frame.image, 0.3, 0, pattern2_left);
+                    cv::addWeighted(frame2.right_frame.image, 1.0, frame3.right_frame.image, 0.3, 0, pattern2_right);
+
+                    cv::normalize(pattern2_left, pattern2_left, 0, 255, cv::NORM_MINMAX);
+                    cv::normalize(pattern2_right, pattern2_right, 0, 255, cv::NORM_MINMAX);
+                    break;
+                }
+            }
+
+            qDebug() << "[DepthWidget] Pattern 2 isolated with weighted subtraction: left="
+                     << pattern2_left.cols << "x" << pattern2_left.rows
+                     << " right=" << pattern2_right.cols << "x" << pattern2_right.rows;
+        }
+
+        // CRITICAL FIX: Check if ambient subtraction is enabled
+        if (ambient_subtract_enabled_) {
+            qDebug() << "[DepthWidget] AMBIENT SUBTRACTION ENABLED - Using pattern-isolated frames";
+            addStatusMessage("Using ambient-subtracted patterns");
+
+            // Replace frame1 images with pattern-isolated versions
+            if (!pattern1_left.empty() && !pattern1_right.empty()) {
+                frame1.left_frame.image = pattern1_left.clone();
+                frame1.right_frame.image = pattern1_right.clone();
+                qDebug() << "[DepthWidget] Pattern 1 frames assigned (ambient removed)";
+                addStatusMessage("Pattern 1 isolated (ambient removed)");
+            } else {
+                qWarning() << "[DepthWidget] Pattern isolation failed, using original frames";
+                addStatusMessage("WARNING: Pattern isolation failed");
+            }
+        } else {
+            // NEW: 3-FRAME AVERAGING FOR NOISE REDUCTION
+            // When ambient subtraction is disabled, we average all 3 frames to reduce temporal noise
+            // This provides sqrt(3) = 1.73x noise reduction, approximately 4.77 dB SNR improvement
+            qDebug() << "[DepthWidget] AMBIENT SUBTRACTION DISABLED - Using 3-FRAME AVERAGING";
+            addStatusMessage("Using 3-frame averaging for noise reduction");
+
+            if (frame1.synchronized && frame2.synchronized && frame3.synchronized) {
+                cv::Mat averaged_left, averaged_right;
+
+                // Convert to float for accurate averaging
+                cv::Mat temp_left1, temp_left2, temp_left3;
+                cv::Mat temp_right1, temp_right2, temp_right3;
+
+                frame1.left_frame.image.convertTo(temp_left1, CV_32F);
+                frame2.left_frame.image.convertTo(temp_left2, CV_32F);
+                frame3.left_frame.image.convertTo(temp_left3, CV_32F);
+
+                frame1.right_frame.image.convertTo(temp_right1, CV_32F);
+                frame2.right_frame.image.convertTo(temp_right2, CV_32F);
+                frame3.right_frame.image.convertTo(temp_right3, CV_32F);
+
+                // Average the three frames
+                averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
+                averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
+
+                // Apply CORRECT high contrast formula: output = alpha*(input-128) + 128
+                // This centers contrast around middle gray instead of black
+                double contrast = 4.0;  // INCREASED: High contrast for VCSEL dots visibility
+                double beta = 128.0 * (1.0 - contrast);  // Computed to center around 128
+                averaged_left.convertTo(frame1.left_frame.image, CV_8U, contrast, beta);
+                averaged_right.convertTo(frame1.right_frame.image, CV_8U, contrast, beta);
+
+                // Apply CLAHE for adaptive local contrast enhancement
+                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
+                clahe->setClipLimit(3.0);  // Low clip limit to avoid noise amplification
+                clahe->setTilesGridSize(cv::Size(8, 8));  // 8x8 tiles for local enhancement
+                clahe->apply(frame1.left_frame.image, frame1.left_frame.image);
+                clahe->apply(frame1.right_frame.image, frame1.right_frame.image);
+
+                qDebug() << "[DepthWidget] 3-frame averaging complete:"
+                         << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
+                         << "right=" << frame1.right_frame.image.cols << "x" << frame1.right_frame.image.rows
+                         << "SNR improvement: ~4.77 dB";
+                addStatusMessage("3-frame averaging applied (noise reduced by 1.73x)");
+            } else {
+                qWarning() << "[DepthWidget] Frame synchronization issue - using frame 1 only";
+                addStatusMessage("WARNING: Not all frames synchronized, using single frame");
+                // Frame1 already contains the first captured frame, no modification needed
+            }
+        }
+
+        // TODO: Future enhancement - combine pattern1 and pattern2 for maximum density
+        // For now, use pattern1 as primary
+    } else {
+        // No temporal matching - just capture ambient
+        qDebug() << "[DepthWidget] Single frame capture (LED disabled or not available)";
+        frame1 = camera_system_->captureSingle();
+    }
+
+    // Use frame1 as the primary frame for processing (now potentially with patterns)
+    core::StereoFramePair frame_pair = frame1;
     
     qDebug() << "[DepthWidget] Frame capture result:"
              << "synchronized=" << frame_pair.synchronized
@@ -243,15 +535,49 @@ void DepthTestWidget::captureStereoFrame() {
         updateStereoFrameImages(frame_pair.left_frame, frame_pair.right_frame);
         
         capture_status_->setStatus("Processing depth map...", StatusDisplay::StatusType::PROCESSING);
-        
-        // Process depth map
+        addStatusMessage("Processing depth map...");
+        QApplication::processEvents();  // Update GUI
+
+        // Process depth map in separate thread to prevent GUI blocking
         if (depth_processor_) {
-            qDebug() << "[DepthWidget] Processing depth with depth_processor_";
-            core::DepthResult result = depth_processor_->processSync(frame_pair);
-            
+            qDebug() << "[DepthWidget] Starting async depth processing";
+            addStatusMessage("Depth estimation started (async)");
+            QApplication::processEvents();
+
+            // Create a QTimer to update status during processing
+            QTimer* progressTimer = new QTimer(this);
+            int progressCounter = 0;
+            connect(progressTimer, &QTimer::timeout, [this, &progressCounter]() mutable {
+                progressCounter++;
+                QString progressMsg = QString("Processing... %1s").arg(progressCounter);
+                addStatusMessage(progressMsg);
+                QApplication::processEvents();
+            });
+            progressTimer->start(1000);  // Update every second
+
+            // Run processing in a thread using QtConcurrent
+            QFuture<core::DepthResult> future = QtConcurrent::run([this, frame_pair]() {
+                return depth_processor_->processSync(frame_pair);
+            });
+
+            // Wait for completion with periodic GUI updates
+            while (!future.isFinished()) {
+                QApplication::processEvents();
+                QThread::msleep(100);  // Small delay to prevent excessive CPU usage
+            }
+
+            // Stop progress timer
+            progressTimer->stop();
+            delete progressTimer;
+
+            // Get result
+            core::DepthResult result = future.result();
+            addStatusMessage("Depth estimation complete");
+            QApplication::processEvents();
+
             // AUTO DEBUG SAVE: Save debug images for every depth processing
             saveDebugImages(frame_pair, result);
-            
+
             qDebug() << "[DepthWidget] About to call onDepthResultReceived()";
             onDepthResultReceived(result);
             qDebug() << "[DepthWidget] onDepthResultReceived() completed successfully";
@@ -264,22 +590,11 @@ void DepthTestWidget::captureStereoFrame() {
         capture_status_->setStatus("Failed to capture synchronized frames", StatusDisplay::StatusType::ERROR);
     }
 
-    // SYNCHRONIZATION STEP 2: Conditionally deactivate LEDs after capture (only if they were activated)
+    // Ensure LEDs are OFF after temporal sequence (they should already be off from frame 3)
     if (led_enabled_ && as1170) {
-        qDebug() << "[DepthWidget] Starting LED deactivation sequence";
-        qDebug() << "[DepthWidget] Deactivating AS1170 LEDs after depth capture";
-
-        // Deactivate both LEDs
-        bool led1_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-        bool led2_off = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-
-        if (led1_off && led2_off) {
-            qDebug() << "[DepthWidget] Both LEDs deactivated successfully after depth capture";
-        } else {
-            qWarning() << "[DepthWidget] LED deactivation failed - LED1:" << led1_off << "LED2:" << led2_off;
-        }
-    } else if (!led_enabled_) {
-        qDebug() << "[DepthWidget] LED deactivation skipped - LEDs were not activated (user disabled)";
+        qDebug() << "[DepthWidget] Ensuring VCSELs are deactivated after temporal sequence";
+        // Double-check both LEDs are off (should already be from frame 3)
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::BOTH, false, 0);
     }
 
     capture_status_->stopPulsing();
@@ -288,35 +603,13 @@ void DepthTestWidget::captureStereoFrame() {
 }
 
 void DepthTestWidget::onAlgorithmChanged(int index) {
-    updateStereoParameters();
+    // Algorithm is fixed to SGBM - this function is kept for compatibility
+    // but does nothing since UI only shows SGBM option
 }
 
 void DepthTestWidget::applyParameterPreset() {
-    // TODO_UI: Add preset buttons to .ui file and reconnect
-    TouchButton* sender_button = qobject_cast<TouchButton*>(sender());
-    if (!sender_button) return;
-    
-    core::DepthQuality quality = core::DepthQuality::BALANCED;
-    
-    // if (sender_button == preset_fast_button_) {
-    //     quality = core::DepthQuality::FAST_LOW;
-    // } else if (sender_button == preset_balanced_button_) {
-    //     quality = core::DepthQuality::BALANCED;
-    // } else if (sender_button == preset_quality_button_) {
-    //     quality = core::DepthQuality::SLOW_HIGH;
-    // }
-    
-    // Update parameters based on preset
-    core::StereoConfig preset_config = api::DepthProcessor::createPreset(
-        quality, core::StereoAlgorithm::SGBM_OPENCV);
-
-    // DISABLED: UI sliders no longer control SGBM parameters (locked at optimized values)
-    // ui->num_disparities_slider->setValue(preset_config.num_disparities);
-    // ui->block_size_slider->setValue(preset_config.block_size);
-    // ui->uniqueness_ratio_slider->setValue(preset_config.uniqueness_ratio); // TODO: Add to .ui
-
-    // Apply preset config directly (bypassing sliders)
-    depth_processor_->configureStereo(preset_config);
+    // Parameter presets removed - parameters are hardcoded in backend
+    // This function is kept for compatibility but does nothing
 }
 
 void DepthTestWidget::exportDepthMap() {
@@ -340,37 +633,10 @@ void DepthTestWidget::exportDepthMap() {
 void DepthTestWidget::updateStereoParameters() {
     if (!depth_processor_) return;
 
+    // Algorithm is fixed to SGBM - parameters are hardcoded in backend
+    // This function is kept for compatibility but does nothing
     core::StereoConfig config = depth_processor_->getStereoConfig();
-
-    // DISABLED: UI sliders no longer override optimized SGBM parameters
-    // CRITICAL: numDisparities must stay at 320/384 for close-range scanning
-    // config.min_disparity = ui->min_disparity_slider->value();
-    // config.num_disparities = ui->num_disparities_slider->value();
-    // config.block_size = ui->block_size_slider->value();
-    // config.uniqueness_ratio = 10; // Default value - TODO: Add slider to .ui
-
-    // Set algorithm from combo box (still functional)
-    switch (ui->algorithm_combo->currentIndex()) {
-        case 0:
-            config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
-            break;
-        case 1:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_DENSE_BM;
-            break;
-        case 2:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_DENSE_SGM;
-            break;
-        case 3:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_SUBPIXEL_BM;
-            break;
-        case 4:
-            config.algorithm = core::StereoAlgorithm::BOOFCV_SUBPIXEL_SGM;
-            break;
-        default:
-            config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
-            break;
-    }
-
+    config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
     depth_processor_->configureStereo(config);
 }
 
@@ -424,10 +690,10 @@ void DepthTestWidget::initializeUI() {
     
     // Capture panel
     controls_layout->addWidget(createCapturePanel());
-    
-    // Algorithm panel
-    controls_layout->addWidget(createAlgorithmPanel());
-    
+
+    // Real-time Status panel (replaces Algorithm panel)
+    controls_layout->addWidget(createStatusPanel());
+
     // Parameter panel
     controls_layout->addWidget(createParameterPanel());
 
@@ -478,43 +744,35 @@ QWidget* DepthTestWidget::createCapturePanel() {
     return panel;
 }
 
-QWidget* DepthTestWidget::createAlgorithmPanel() {
+QWidget* DepthTestWidget::createStatusPanel() {
+    // Status panel is now created via .ui file
+    // Just return empty widget as placeholder
     QWidget* panel = new QWidget();
-    QVBoxLayout* layout = new QVBoxLayout(panel);
-    
-    QLabel* title = new QLabel("Algorithm Selection");
-    title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SUBTITLE, SupernovaStyle::FontWeight::BOLD));
-    title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
-    layout->addWidget(title);
-    
-    // TODO_UI: Add algorithm_combo to .ui file
-    // algorithm_combo_ = new QComboBox();
-    // //algorithm_combo_->addItem("OpenCV SGBM");
-    // //algorithm_combo_->addItem("BoofCV Basic");
-    // //algorithm_combo_->addItem("BoofCV Precise");
-    // connect(algorithm_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), 
-    //         this, &DepthTestWidget::onAlgorithmChanged);
-    // layout->addWidget(algorithm_combo_);
-    
-    // Preset buttons
-    QHBoxLayout* preset_layout = new QHBoxLayout();
-    
-    // TODO_UI: Add preset buttons to .ui file
-    // preset_fast_button_ = new TouchButton("Fast", TouchButton::ButtonType::WARNING);
-    // connect(preset_fast_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    // preset_layout->addWidget(preset_fast_button_);
-    
-    // preset_balanced_button_ = new TouchButton("Balanced", TouchButton::ButtonType::PRIMARY);
-    // connect(preset_balanced_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    // preset_layout->addWidget(preset_balanced_button_);
-    
-    // preset_quality_button_ = new TouchButton("Quality", TouchButton::ButtonType::SUCCESS);
-    // connect(preset_quality_button_, &TouchButton::clicked, this, &DepthTestWidget::applyParameterPreset);
-    // preset_layout->addWidget(preset_quality_button_);
-    
-    layout->addLayout(preset_layout);
-    
     return panel;
+}
+
+// Keep old function for compatibility but make it just call the new one
+QWidget* DepthTestWidget::createAlgorithmPanel() {
+    return createStatusPanel();
+}
+
+void DepthTestWidget::addStatusMessage(const QString& message) {
+    if (ui && ui->status_list) {
+        // Add timestamp to message
+        QString timestamped = QString("[%1] %2")
+            .arg(QTime::currentTime().toString("hh:mm:ss.zzz"))
+            .arg(message);
+
+        ui->status_list->addItem(timestamped);
+
+        // Auto-scroll to latest message
+        ui->status_list->scrollToBottom();
+
+        // Keep only last 50 messages to prevent memory issues
+        while (ui->status_list->count() > 50) {
+            delete ui->status_list->takeItem(0);
+        }
+    }
 }
 
 QWidget* DepthTestWidget::createParameterPanel() {

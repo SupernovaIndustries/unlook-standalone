@@ -564,29 +564,7 @@ struct CameraSystem::CameraImpl {
             }
         }
     }
-    
-    // Extract timestamp from request metadata
-    uint64_t extractTimestamp(libcamera::Request* request) {
-        const libcamera::ControlList& metadata = request->metadata();
-        
-        // Try to get sensor timestamp
-        auto timestamp_ctrl = metadata.get(libcamera::controls::SensorTimestamp);
-        if (timestamp_ctrl) {
-            return *timestamp_ctrl;
-        }
-        
-        // Fallback to system time
-        return std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count();
-    }
-    
-    // Update synchronization statistics
-    void updateSyncStatistics(double sync_error_ms) {
-        std::lock_guard<std::mutex> lock(stats_mutex);
-        total_sync_error_ms += sync_error_ms;
-        sync_sample_count++;
-    }
-    
+
     // Stop capture
     void stopCapture() {
         capture_running = false;

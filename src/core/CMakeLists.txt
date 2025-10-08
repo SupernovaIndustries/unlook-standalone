@@ -1,10 +1,10 @@
 # Core module - fundamental functionality
 
 set(CORE_SOURCES
-    logger.cpp
+    Logger.cpp
     config.cpp
     exception.cpp
-    timer.cpp
+    Timer.cpp
 )
 
 set(CORE_HEADERS
