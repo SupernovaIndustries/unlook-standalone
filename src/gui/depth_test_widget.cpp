@@ -281,7 +281,7 @@ void DepthTestWidget::captureStereoFrame() {
         QApplication::processEvents();  // Update GUI
         as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
         as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(30));  // REDUCED: Ambient only, no VCSEL
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Ambient frame delay
         frame3 = camera_system_->captureSingle();
         addStatusMessage("Frame 3 captured");
         QApplication::processEvents();  // Update GUI
@@ -462,8 +462,9 @@ void DepthTestWidget::captureStereoFrame() {
                 addStatusMessage("WARNING: Pattern isolation failed");
             }
         } else {
-            // NEW: 3-FRAME AVERAGING FOR NOISE REDUCTION
-            // When ambient subtraction is disabled, we average all 3 frames to reduce temporal noise
+            // 3-FRAME AVERAGING FOR NOISE REDUCTION
+            // Average all 3 frames (VCSEL1, VCSEL2, Ambient) to reduce temporal noise
+            // Apply moderate contrast enhancement to final averaged result
             // This provides sqrt(3) = 1.73x noise reduction, approximately 4.77 dB SNR improvement
             qDebug() << "[DepthWidget] AMBIENT SUBTRACTION DISABLED - Using 3-FRAME AVERAGING";
             addStatusMessage("Using 3-frame averaging for noise reduction");
@@ -483,13 +484,13 @@ void DepthTestWidget::captureStereoFrame() {
                 frame2.right_frame.image.convertTo(temp_right2, CV_32F);
                 frame3.right_frame.image.convertTo(temp_right3, CV_32F);
 
-                // Average the three frames
+                // Average all three frames (VCSEL1 + VCSEL2 + Ambient)
                 averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
                 averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
 
-                // Apply CORRECT high contrast formula: output = alpha*(input-128) + 128
+                // Apply moderate contrast formula: output = alpha*(input-128) + 128
                 // This centers contrast around middle gray instead of black
-                double contrast = 4.0;  // INCREASED: High contrast for VCSEL dots visibility
+                double contrast = 2.5;  // Moderate contrast for VCSEL dots visibility
                 double beta = 128.0 * (1.0 - contrast);  // Computed to center around 128
                 averaged_left.convertTo(frame1.left_frame.image, CV_8U, contrast, beta);
                 averaged_right.convertTo(frame1.right_frame.image, CV_8U, contrast, beta);
@@ -504,7 +505,7 @@ void DepthTestWidget::captureStereoFrame() {
                 qDebug() << "[DepthWidget] 3-frame averaging complete:"
                          << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
                          << "right=" << frame1.right_frame.image.cols << "x" << frame1.right_frame.image.rows
-                         << "SNR improvement: ~4.77 dB";
+                         << "SNR improvement: ~4.77 dB, contrast: 2.5x";
                 addStatusMessage("3-frame averaging applied (noise reduced by 1.73x)");
             } else {
                 qWarning() << "[DepthWidget] Frame synchronization issue - using frame 1 only";
