@@ -488,9 +488,9 @@ void DepthTestWidget::captureStereoFrame() {
                 averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
                 averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
 
-                // Apply LOW contrast formula: output = alpha*(input-128) + 128
+                // Apply VERY LOW contrast formula: output = alpha*(input-128) + 128
                 // This centers contrast around middle gray instead of black
-                double contrast = 1.3;  // Low contrast to avoid over-darkening
+                double contrast = 1.15;  // Very low contrast to avoid over-darkening
                 double beta = 128.0 * (1.0 - contrast);  // Computed to center around 128
                 averaged_left.convertTo(frame1.left_frame.image, CV_8U, contrast, beta);
                 averaged_right.convertTo(frame1.right_frame.image, CV_8U, contrast, beta);
@@ -505,8 +505,8 @@ void DepthTestWidget::captureStereoFrame() {
                 qDebug() << "[DepthWidget] 3-frame averaging complete:"
                          << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
                          << "right=" << frame1.right_frame.image.cols << "x" << frame1.right_frame.image.rows
-                         << "SNR improvement: ~4.77 dB, contrast: 1.3x";
-                addStatusMessage("3-frame averaging applied (noise reduced by 1.73x, low contrast)");
+                         << "SNR improvement: ~4.77 dB, contrast: 1.15x";
+                addStatusMessage("3-frame averaging applied (noise reduced by 1.73x, very low contrast)");
             } else {
                 qWarning() << "[DepthWidget] Frame synchronization issue - using frame 1 only";
                 addStatusMessage("WARNING: Not all frames synchronized, using single frame");
