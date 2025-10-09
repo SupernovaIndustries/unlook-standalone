@@ -73,7 +73,7 @@ public:
             i2c_bus(1),                           // I2C bus number (FINAL CONFIG: bus 1)
             i2c_address(0x30),                    // I2C address (FINAL CONFIG: 0x30)
             strobe_gpio(19),                      // GPIO pin for strobe control (FINAL CONFIG: GPIO 19)
-            target_current_ma(500),               // INCREASED: 500mA for high VCSEL visibility
+            target_current_ma(446),               // AS1170 hardware maximum: 446mA (127 * 3.515625)
             flash_mode(FlashMode::FLASH_MODE),
             strobe_type(StrobeType::LEVEL_SENSITIVE),
             flash_timeout_ms(129),                // Flash timeout in ms

@@ -283,7 +283,7 @@ private:
 
     // Safety limits
     static constexpr uint16_t MAX_SAFE_CURRENT_MA = 200;     // Conservative limit
-    static constexpr uint16_t ABSOLUTE_MAX_CURRENT_MA = 500; // INCREASED: 500mA limit for high visibility
+    static constexpr uint16_t ABSOLUTE_MAX_CURRENT_MA = 446; // AS1170 hardware maximum: 446mA (127 * 3.515625)
     static constexpr uint32_t MAX_ON_TIME_MS = 10000;        // 10 second max continuous
     static constexpr float MAX_SAFE_TEMP_C = 70.0f;          // Maximum safe temperature
 
