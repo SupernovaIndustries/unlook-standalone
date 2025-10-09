@@ -44,7 +44,7 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
 
     // WLS filter OPTIMIZED for thin objects preservation
     params_.useWLSFilter = true;
-    params_.wlsLambda = 6000.0;       // REDUCED: Less aggressive smoothing for thin structures (was 6500)
+    params_.wlsLambda = 5500.0;       // REDUCED: Less aggressive smoothing for thin structures (was 6000)
     params_.wlsSigma = 1.0;           // TIGHT: Strictest edge preservation
 
     // STRICTEST left-right consistency check

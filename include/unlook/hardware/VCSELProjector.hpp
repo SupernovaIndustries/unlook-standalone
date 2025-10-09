@@ -102,8 +102,8 @@ public:
         ProjectorConfig() :
             mode(ProjectionMode::DEPTH_CAPTURE),
             pattern(PatternType::DOTS_15K),
-            vcsel_current_ma(440),       // VCSEL current (LED1) - AS1170 hardware limit: 446mA
-            flood_current_ma(440),       // Flood current (LED2) - AS1170 hardware limit: 446mA
+            vcsel_current_ma(500),       // INCREASED: 500mA for high VCSEL visibility
+            flood_current_ma(500),       // INCREASED: 500mA for high flood visibility
             enable_flood_assist(true),   // Use flood for low-light assist
             projection_duration_ms(50),  // Pattern projection duration
             cool_down_delay_ms(100),     // Cool down between projections
