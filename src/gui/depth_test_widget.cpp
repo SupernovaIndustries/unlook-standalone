@@ -488,9 +488,9 @@ void DepthTestWidget::captureStereoFrame() {
                 averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
                 averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
 
-                // Apply VERY LOW contrast formula: output = alpha*(input-128) + 128
-                // This centers contrast around middle gray instead of black
-                double contrast = 1.15;  // Very low contrast to avoid over-darkening
+                // NO contrast adjustment: output = input (contrast = 1.0)
+                // This preserves original image brightness
+                double contrast = 1.0;  // No contrast adjustment
                 double beta = 128.0 * (1.0 - contrast);  // Computed to center around 128
                 averaged_left.convertTo(frame1.left_frame.image, CV_8U, contrast, beta);
                 averaged_right.convertTo(frame1.right_frame.image, CV_8U, contrast, beta);
