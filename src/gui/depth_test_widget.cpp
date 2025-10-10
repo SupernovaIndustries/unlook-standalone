@@ -253,9 +253,9 @@ void DepthTestWidget::captureStereoFrame() {
     if (led_enabled_ && as1170) {
         // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
         qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
-        addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (450mA)");
+        addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
         QApplication::processEvents();  // Update GUI
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 450);  // INCREASED: 450mA for high visibility
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
         as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
         frame1 = camera_system_->captureSingle();
@@ -265,10 +265,10 @@ void DepthTestWidget::captureStereoFrame() {
         // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
         capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
         qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
-        addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (450mA)");
+        addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
         QApplication::processEvents();  // Update GUI
         as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 450);  // INCREASED: 450mA for high visibility
+        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
         std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
         frame2 = camera_system_->captureSingle();
         addStatusMessage("Frame 2 captured");
