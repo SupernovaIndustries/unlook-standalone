@@ -488,25 +488,15 @@ void DepthTestWidget::captureStereoFrame() {
                 averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
                 averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
 
-                // NO contrast adjustment: output = input (contrast = 1.0)
-                // This preserves original image brightness
-                double contrast = 1.0;  // No contrast adjustment
-                double beta = 128.0 * (1.0 - contrast);  // Computed to center around 128
-                averaged_left.convertTo(frame1.left_frame.image, CV_8U, contrast, beta);
-                averaged_right.convertTo(frame1.right_frame.image, CV_8U, contrast, beta);
-
-                // Apply CLAHE for adaptive local contrast enhancement
-                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
-                clahe->setClipLimit(3.0);  // Low clip limit to avoid noise amplification
-                clahe->setTilesGridSize(cv::Size(8, 8));  // 8x8 tiles for local enhancement
-                clahe->apply(frame1.left_frame.image, frame1.left_frame.image);
-                clahe->apply(frame1.right_frame.image, frame1.right_frame.image);
+                // Convert averaged frames directly to 8-bit (no contrast or CLAHE)
+                averaged_left.convertTo(frame1.left_frame.image, CV_8U);
+                averaged_right.convertTo(frame1.right_frame.image, CV_8U);
 
                 qDebug() << "[DepthWidget] 3-frame averaging complete:"
                          << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
                          << "right=" << frame1.right_frame.image.cols << "x" << frame1.right_frame.image.rows
-                         << "SNR improvement: ~4.77 dB, contrast: 1.15x";
-                addStatusMessage("3-frame averaging applied (noise reduced by 1.73x, very low contrast)");
+                         << "SNR improvement: ~4.77 dB, NO contrast/CLAHE";
+                addStatusMessage("3-frame averaging applied (pure averaging, no processing)");
             } else {
                 qWarning() << "[DepthWidget] Frame synchronization issue - using frame 1 only";
                 addStatusMessage("WARNING: Not all frames synchronized, using single frame");
