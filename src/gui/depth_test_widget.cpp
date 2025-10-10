@@ -146,6 +146,9 @@ void DepthTestWidget::hideEvent(QHideEvent* event) {
 void DepthTestWidget::captureStereoFrame() {
     qDebug() << "[DepthWidget] captureStereoFrame() called";
 
+    // Reset debug directory for new capture
+    current_debug_directory_.clear();
+
     if (!camera_system_) {
         qDebug() << "[DepthWidget] ERROR: camera_system_ is null";
         processing_status_->setStatus("Camera system not initialized", StatusDisplay::StatusType::ERROR);
@@ -470,6 +473,27 @@ void DepthTestWidget::captureStereoFrame() {
             addStatusMessage("Using 3-frame averaging for noise reduction");
 
             if (frame1.synchronized && frame2.synchronized && frame3.synchronized) {
+                // SAVE ORIGINAL 3 FRAMES BEFORE AVERAGING (for debugging)
+                // Create debug directory early to save individual frames
+                std::string debug_dir = createDebugDirectory();
+                current_debug_directory_ = debug_dir;
+
+                qDebug() << "[DepthWidget] Saving 3 original frames to debug dir:" << QString::fromStdString(debug_dir);
+
+                // Save VCSEL1 frame (frame1)
+                cv::imwrite(debug_dir + "/00a_frame1_vcsel1_left.png", frame1.left_frame.image);
+                cv::imwrite(debug_dir + "/00a_frame1_vcsel1_right.png", frame1.right_frame.image);
+
+                // Save VCSEL2 frame (frame2)
+                cv::imwrite(debug_dir + "/00b_frame2_vcsel2_left.png", frame2.left_frame.image);
+                cv::imwrite(debug_dir + "/00b_frame2_vcsel2_right.png", frame2.right_frame.image);
+
+                // Save Ambient frame (frame3)
+                cv::imwrite(debug_dir + "/00c_frame3_ambient_left.png", frame3.left_frame.image);
+                cv::imwrite(debug_dir + "/00c_frame3_ambient_right.png", frame3.right_frame.image);
+
+                qDebug() << "[DepthWidget] All 3 original frames saved to debug folder";
+
                 cv::Mat averaged_left, averaged_right;
 
                 // Convert to float for accurate averaging
@@ -491,6 +515,10 @@ void DepthTestWidget::captureStereoFrame() {
                 // Convert averaged frames directly to 8-bit (no contrast or CLAHE)
                 averaged_left.convertTo(frame1.left_frame.image, CV_8U);
                 averaged_right.convertTo(frame1.right_frame.image, CV_8U);
+
+                // Save averaged frame (this will be overwritten by saveDebugImages as 01_left_original.png)
+                cv::imwrite(debug_dir + "/00d_averaged_left.png", frame1.left_frame.image);
+                cv::imwrite(debug_dir + "/00d_averaged_right.png", frame1.right_frame.image);
 
                 qDebug() << "[DepthWidget] 3-frame averaging complete:"
                          << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
@@ -968,13 +996,17 @@ void DepthTestWidget::onLiveFrameReceived(const core::StereoFramePair& frame_pai
 
 void DepthTestWidget::saveDebugImages(const core::StereoFramePair& frame_pair, const core::DepthResult& result) {
     try {
-        // Create debug directory with timestamp
-        std::string debug_dir = createDebugDirectory();
-
-        // Store debug directory for visualization access
-        current_debug_directory_ = debug_dir;
-
-        qDebug() << "[DepthWidget] Saving debug images to:" << QString::fromStdString(debug_dir);
+        // Use existing debug directory if already created (from 3-frame averaging)
+        // Otherwise create new one
+        std::string debug_dir;
+        if (current_debug_directory_.empty()) {
+            debug_dir = createDebugDirectory();
+            current_debug_directory_ = debug_dir;
+            qDebug() << "[DepthWidget] Created new debug directory:" << QString::fromStdString(debug_dir);
+        } else {
+            debug_dir = current_debug_directory_;
+            qDebug() << "[DepthWidget] Using existing debug directory:" << QString::fromStdString(debug_dir);
+        }
         
         // Save original stereo frames
         if (!frame_pair.left_frame.image.empty()) {
