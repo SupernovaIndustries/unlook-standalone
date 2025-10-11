@@ -683,8 +683,10 @@ bool AS1170Controller::configureAS1170Registers() {
     core::Logger::getInstance().info("Current control register value: " + current_hex.str());
 
     // Configure for TORCH mode (continuous LED operation) per specifiche produttore
-    // TORCH MODE: 0x1A = mode=10 (TORCH) + out_on=1 + auto_strobe=1 per specifiche AS1170
-    uint8_t target_control = 0x1A;  // 0x1A = 00011010 = mode=10 (TORCH) + out_on=1 + auto_strobe=1
+    // TORCH MODE: 0x50 = 01010000 = MODE[6:5]=10 (TORCH) + OUT_ON[4]=1
+    // Bit 6-5: MODE = 10 (binary) = TORCH mode
+    // Bit 4: OUT_ON = 1 (output enable)
+    uint8_t target_control = 0x50;  // FIXED: 0x50 for correct TORCH mode (was 0x1A which had MODE=00=disabled)
 
     std::stringstream target_hex;
     target_hex << "0x" << std::hex << (int)target_control;
