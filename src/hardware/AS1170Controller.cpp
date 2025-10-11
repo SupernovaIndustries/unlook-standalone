@@ -639,7 +639,7 @@ bool AS1170Controller::detectI2CAddress() {
 }
 
 bool AS1170Controller::configureAS1170Registers() {
-    core::Logger::getInstance().info("Configuring AS1170 registers for INDICATOR MODE (continuous LED operation)");
+    core::Logger::getInstance().info("Configuring AS1170 registers for FLASH MODE per OSRAM/ams specification");
 
     // Following exact OSRAM initialization sequence with 250mA adaptation
 
@@ -682,12 +682,11 @@ bool AS1170Controller::configureAS1170Registers() {
     current_hex << "0x" << std::hex << (int)current_control;
     core::Logger::getInstance().info("Current control register value: " + current_hex.str());
 
-    // Configure for INDICATOR mode (continuous LED operation without strobe)
-    // INDICATOR MODE: 0x30 = 00110000 = MODE[6:5]=01 (INDICATOR) + OUT_ON[4]=1
-    // Bit 6-5: MODE = 01 (binary) = INDICATOR mode (continuous on, no strobe needed)
-    // Bit 4: OUT_ON = 1 (output enable)
-    // Note: TORCH mode (10) requires strobe GPIO which we don't have working
-    uint8_t target_control = 0x30;  // INDICATOR mode for continuous operation
+    // Configure for FLASH mode per OSRAM/ams specification
+    // FLASH MODE: 0x1B = 00011011 per exact OSRAM initialization sequence
+    // From OSRAM: "mode setting = 11 / flash mode, out_on = 1, auto_strobe = 1"
+    // This is the OFFICIAL value from ams OSRAM technical support
+    uint8_t target_control = 0x1B;  // FLASH mode per OSRAM specification
 
     std::stringstream target_hex;
     target_hex << "0x" << std::hex << (int)target_control;
@@ -710,10 +709,10 @@ bool AS1170Controller::configureAS1170Registers() {
                 core::Logger::getInstance().info("Control register readback: " + readback_hex.str() +
                     " (target: " + target_hex.str() + ")");
 
-                // Check if control register matches target (0x30 for INDICATOR mode)
+                // Check if control register matches target (0x1B for FLASH mode)
                 if (control_readback == target_control) {  // Exact match required
                     control_written = true;
-                    core::Logger::getInstance().info("Control register configured successfully for INDICATOR MODE");
+                    core::Logger::getInstance().info("Control register configured successfully for FLASH MODE (OSRAM spec)");
                 } else {
                     core::Logger::getInstance().warning("Control register critical bits not set correctly, retrying...");
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
