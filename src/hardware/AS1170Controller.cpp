@@ -639,7 +639,7 @@ bool AS1170Controller::detectI2CAddress() {
 }
 
 bool AS1170Controller::configureAS1170Registers() {
-    core::Logger::getInstance().info("Configuring AS1170 registers for TORCH MODE (250mA adaptation)");
+    core::Logger::getInstance().info("Configuring AS1170 registers for INDICATOR MODE (continuous LED operation)");
 
     // Following exact OSRAM initialization sequence with 250mA adaptation
 
@@ -682,11 +682,12 @@ bool AS1170Controller::configureAS1170Registers() {
     current_hex << "0x" << std::hex << (int)current_control;
     core::Logger::getInstance().info("Current control register value: " + current_hex.str());
 
-    // Configure for TORCH mode (continuous LED operation) per specifiche produttore
-    // TORCH MODE: 0x50 = 01010000 = MODE[6:5]=10 (TORCH) + OUT_ON[4]=1
-    // Bit 6-5: MODE = 10 (binary) = TORCH mode
+    // Configure for INDICATOR mode (continuous LED operation without strobe)
+    // INDICATOR MODE: 0x30 = 00110000 = MODE[6:5]=01 (INDICATOR) + OUT_ON[4]=1
+    // Bit 6-5: MODE = 01 (binary) = INDICATOR mode (continuous on, no strobe needed)
     // Bit 4: OUT_ON = 1 (output enable)
-    uint8_t target_control = 0x50;  // FIXED: 0x50 for correct TORCH mode (was 0x1A which had MODE=00=disabled)
+    // Note: TORCH mode (10) requires strobe GPIO which we don't have working
+    uint8_t target_control = 0x30;  // INDICATOR mode for continuous operation
 
     std::stringstream target_hex;
     target_hex << "0x" << std::hex << (int)target_control;
@@ -709,10 +710,10 @@ bool AS1170Controller::configureAS1170Registers() {
                 core::Logger::getInstance().info("Control register readback: " + readback_hex.str() +
                     " (target: " + target_hex.str() + ")");
 
-                // Check if control register matches target (0x1A for TORCH mode)
+                // Check if control register matches target (0x30 for INDICATOR mode)
                 if (control_readback == target_control) {  // Exact match required
                     control_written = true;
-                    core::Logger::getInstance().info("Control register configured successfully for TORCH MODE");
+                    core::Logger::getInstance().info("Control register configured successfully for INDICATOR MODE");
                 } else {
                     core::Logger::getInstance().warning("Control register critical bits not set correctly, retrying...");
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
