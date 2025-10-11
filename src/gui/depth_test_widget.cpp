@@ -251,220 +251,78 @@ void DepthTestWidget::captureStereoFrame() {
 
     core::StereoFramePair frame1, frame2, frame3;  // 3 frames for temporal matching
 
-    // Only do temporal matching if LEDs are enabled (or if ambient subtraction is requested)
-    // Note: We always capture 3 frames when LED is on, but only use patterns if ambient_subtract_enabled_
+    // Only do temporal matching if LEDs are enabled
+    // ambient_subtract_enabled_ NOW CONTROLS CAPTURE MODE:
+    // - CHECKED: 3-frame averaging mode (VCSEL1 + VCSEL2 + Ambient)
+    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 446mA)
     if (led_enabled_ && as1170) {
-        // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
-        qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
-        addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
-        QApplication::processEvents();  // Update GUI
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
-        frame1 = camera_system_->captureSingle();
-        addStatusMessage("Frame 1 captured");
-        QApplication::processEvents();  // Update GUI
-
-        // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
-        capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
-        qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
-        addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
-        QApplication::processEvents();  // Update GUI
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));  // INCREASED: VCSEL stabilization time
-        frame2 = camera_system_->captureSingle();
-        addStatusMessage("Frame 2 captured");
-        QApplication::processEvents();  // Update GUI
-
-        // FRAME 3: Both VCSELs OFF (Ambient)
-        capture_status_->setStatus("Temporal capture 3/3...", StatusDisplay::StatusType::PROCESSING);
-        qDebug() << "[DepthWidget] FRAME 3: Ambient (no VCSEL)";
-        addStatusMessage("Capturing Frame 3/3: Ambient (no VCSEL)");
-        QApplication::processEvents();  // Update GUI
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-        as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Ambient frame delay
-        frame3 = camera_system_->captureSingle();
-        addStatusMessage("Frame 3 captured");
-        QApplication::processEvents();  // Update GUI
-
-        qDebug() << "[DepthWidget] Temporal matching complete: 3 frames captured";
-        addStatusMessage("Temporal matching complete");
-
-        // ADVANCED AMBIENT SUBTRACTION: Multiple strategies for different scenarios
-        // Strategy 1: MIN operation - keeps darkest values (good when hand reflects ambient)
-        // Strategy 2: Ratio-based - divides VCSEL by ambient for normalization
-        // Strategy 3: Thresholded subtract - only subtract where ambient is bright
-
-        enum AmbientMethod {
-            MIN_OPERATION = 0,     // Use minimum of VCSEL and ambient
-            RATIO_BASED = 1,       // Divide VCSEL by ambient
-            THRESHOLD_SUBTRACT = 2, // Subtract only where ambient > threshold
-            INVERTED_SUBTRACT = 3   // Add ambient instead of subtract (experimental)
-        };
-
-        // Try MIN_OPERATION first (most promising for the reported issue)
-        AmbientMethod method = MIN_OPERATION;
-
-        qDebug() << "[DepthWidget] Using ambient subtraction method:" << method;
-
-        cv::Mat pattern1_left, pattern1_right, pattern2_left, pattern2_right;
-        if (frame1.synchronized && frame3.synchronized) {
-            switch (method) {
-                case MIN_OPERATION: {
-                    // Keep minimum intensity - removes bright ambient reflections
-                    cv::min(frame1.left_frame.image, frame3.left_frame.image, pattern1_left);
-                    cv::min(frame1.right_frame.image, frame3.right_frame.image, pattern1_right);
-
-                    // Moderate gain to compensate (adjusted: gain=1.5, contrast increased)
-                    pattern1_left.convertTo(pattern1_left, -1, 1.5, -10);
-                    pattern1_right.convertTo(pattern1_right, -1, 1.5, -10);
-                    break;
-                }
-
-                case RATIO_BASED: {
-                    // Divide VCSEL by ambient to normalize (removes multiplicative effects)
-                    cv::Mat temp_left, temp_right;
-                    cv::Mat ambient_left, ambient_right;
-                    frame3.left_frame.image.convertTo(ambient_left, CV_32F);
-                    frame3.right_frame.image.convertTo(ambient_right, CV_32F);
-
-                    // Add small epsilon to avoid division by zero
-                    ambient_left += 1.0f;
-                    ambient_right += 1.0f;
-
-                    frame1.left_frame.image.convertTo(temp_left, CV_32F);
-                    frame1.right_frame.image.convertTo(temp_right, CV_32F);
-
-                    cv::divide(temp_left, ambient_left, temp_left, 128.0);
-                    cv::divide(temp_right, ambient_right, temp_right, 128.0);
-
-                    temp_left.convertTo(pattern1_left, CV_8U);
-                    temp_right.convertTo(pattern1_right, CV_8U);
-                    break;
-                }
-
-                case THRESHOLD_SUBTRACT: {
-                    // Only subtract ambient where it's bright (hand region)
-                    cv::Mat mask_left, mask_right;
-                    cv::threshold(frame3.left_frame.image, mask_left, 100, 255, cv::THRESH_BINARY);
-                    cv::threshold(frame3.right_frame.image, mask_right, 100, 255, cv::THRESH_BINARY);
-
-                    // Weighted subtraction only in bright areas
-                    pattern1_left = frame1.left_frame.image.clone();
-                    pattern1_right = frame1.right_frame.image.clone();
-
-                    cv::Mat masked_ambient_left, masked_ambient_right;
-                    frame3.left_frame.image.copyTo(masked_ambient_left, mask_left);
-                    frame3.right_frame.image.copyTo(masked_ambient_right, mask_right);
-
-                    cv::addWeighted(pattern1_left, 1.0, masked_ambient_left, -0.3, 0, pattern1_left);
-                    cv::addWeighted(pattern1_right, 1.0, masked_ambient_right, -0.3, 0, pattern1_right);
-
-                    // Boost gain
-                    pattern1_left.convertTo(pattern1_left, -1, 1.5, 0);
-                    pattern1_right.convertTo(pattern1_right, -1, 1.5, 0);
-                    break;
-                }
-
-                case INVERTED_SUBTRACT: {
-                    // Experimental: ADD ambient instead of subtract (invert the logic)
-                    // This might work if the pattern is inverted somehow
-                    cv::addWeighted(frame1.left_frame.image, 1.0, frame3.left_frame.image, 0.3, 0, pattern1_left);
-                    cv::addWeighted(frame1.right_frame.image, 1.0, frame3.right_frame.image, 0.3, 0, pattern1_right);
-
-                    // Normalize brightness
-                    cv::normalize(pattern1_left, pattern1_left, 0, 255, cv::NORM_MINMAX);
-                    cv::normalize(pattern1_right, pattern1_right, 0, 255, cv::NORM_MINMAX);
-                    break;
-                }
-            }
-
-            qDebug() << "[DepthWidget] Pattern 1 isolated with weighted subtraction: left="
-                     << pattern1_left.cols << "x" << pattern1_left.rows
-                     << " right=" << pattern1_right.cols << "x" << pattern1_right.rows;
-        }
-        if (frame2.synchronized && frame3.synchronized) {
-            // Apply same ambient subtraction method to pattern 2
-            switch (method) {
-                case MIN_OPERATION: {
-                    cv::min(frame2.left_frame.image, frame3.left_frame.image, pattern2_left);
-                    cv::min(frame2.right_frame.image, frame3.right_frame.image, pattern2_right);
-                    pattern2_left.convertTo(pattern2_left, -1, 1.5, -10);
-                    pattern2_right.convertTo(pattern2_right, -1, 1.5, -10);
-                    break;
-                }
-
-                case RATIO_BASED: {
-                    cv::Mat temp_left, temp_right;
-                    cv::Mat ambient_left, ambient_right;
-                    frame3.left_frame.image.convertTo(ambient_left, CV_32F);
-                    frame3.right_frame.image.convertTo(ambient_right, CV_32F);
-                    ambient_left += 1.0f;
-                    ambient_right += 1.0f;
-
-                    frame2.left_frame.image.convertTo(temp_left, CV_32F);
-                    frame2.right_frame.image.convertTo(temp_right, CV_32F);
-                    cv::divide(temp_left, ambient_left, temp_left, 128.0);
-                    cv::divide(temp_right, ambient_right, temp_right, 128.0);
-
-                    temp_left.convertTo(pattern2_left, CV_8U);
-                    temp_right.convertTo(pattern2_right, CV_8U);
-                    break;
-                }
-
-                case THRESHOLD_SUBTRACT: {
-                    cv::Mat mask_left, mask_right;
-                    cv::threshold(frame3.left_frame.image, mask_left, 100, 255, cv::THRESH_BINARY);
-                    cv::threshold(frame3.right_frame.image, mask_right, 100, 255, cv::THRESH_BINARY);
-
-                    pattern2_left = frame2.left_frame.image.clone();
-                    pattern2_right = frame2.right_frame.image.clone();
-
-                    cv::Mat masked_ambient_left, masked_ambient_right;
-                    frame3.left_frame.image.copyTo(masked_ambient_left, mask_left);
-                    frame3.right_frame.image.copyTo(masked_ambient_right, mask_right);
-
-                    cv::addWeighted(pattern2_left, 1.0, masked_ambient_left, -0.3, 0, pattern2_left);
-                    cv::addWeighted(pattern2_right, 1.0, masked_ambient_right, -0.3, 0, pattern2_right);
-
-                    pattern2_left.convertTo(pattern2_left, -1, 1.5, 0);
-                    pattern2_right.convertTo(pattern2_right, -1, 1.5, 0);
-                    break;
-                }
-
-                case INVERTED_SUBTRACT: {
-                    cv::addWeighted(frame2.left_frame.image, 1.0, frame3.left_frame.image, 0.3, 0, pattern2_left);
-                    cv::addWeighted(frame2.right_frame.image, 1.0, frame3.right_frame.image, 0.3, 0, pattern2_right);
-
-                    cv::normalize(pattern2_left, pattern2_left, 0, 255, cv::NORM_MINMAX);
-                    cv::normalize(pattern2_right, pattern2_right, 0, 255, cv::NORM_MINMAX);
-                    break;
-                }
-            }
-
-            qDebug() << "[DepthWidget] Pattern 2 isolated with weighted subtraction: left="
-                     << pattern2_left.cols << "x" << pattern2_left.rows
-                     << " right=" << pattern2_right.cols << "x" << pattern2_right.rows;
-        }
-
-        // CRITICAL FIX: Check if ambient subtraction is enabled
         if (ambient_subtract_enabled_) {
-            qDebug() << "[DepthWidget] AMBIENT SUBTRACTION ENABLED - Using pattern-isolated frames";
-            addStatusMessage("Using ambient-subtracted patterns");
+            // 3-FRAME MODE: VCSEL1 + VCSEL2 + Ambient for averaging
+            qDebug() << "[DepthWidget] 3-FRAME MODE: Capturing VCSEL1, VCSEL2, Ambient";
 
-            // Replace frame1 images with pattern-isolated versions
-            if (!pattern1_left.empty() && !pattern1_right.empty()) {
-                frame1.left_frame.image = pattern1_left.clone();
-                frame1.right_frame.image = pattern1_right.clone();
-                qDebug() << "[DepthWidget] Pattern 1 frames assigned (ambient removed)";
-                addStatusMessage("Pattern 1 isolated (ambient removed)");
-            } else {
-                qWarning() << "[DepthWidget] Pattern isolation failed, using original frames";
-                addStatusMessage("WARNING: Pattern isolation failed");
-            }
+            // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
+            qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
+            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
+            QApplication::processEvents();  // Update GUI
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            frame1 = camera_system_->captureSingle();
+            addStatusMessage("Frame 1 captured");
+            QApplication::processEvents();  // Update GUI
+
+            // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
+            capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
+            qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
+            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
+            QApplication::processEvents();  // Update GUI
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            frame2 = camera_system_->captureSingle();
+            addStatusMessage("Frame 2 captured");
+            QApplication::processEvents();  // Update GUI
+
+            // FRAME 3: Both VCSELs OFF (Ambient)
+            capture_status_->setStatus("Temporal capture 3/3...", StatusDisplay::StatusType::PROCESSING);
+            qDebug() << "[DepthWidget] FRAME 3: Ambient (no VCSEL)";
+            addStatusMessage("Capturing Frame 3/3: Ambient (no VCSEL)");
+            QApplication::processEvents();  // Update GUI
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Ambient frame delay
+            frame3 = camera_system_->captureSingle();
+            addStatusMessage("Frame 3 captured");
+            QApplication::processEvents();  // Update GUI
+
+            qDebug() << "[DepthWidget] 3-frame capture complete";
+            addStatusMessage("3-frame capture complete");
         } else {
+            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 446mA
+            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 446mA";
+            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 446mA");
+            QApplication::processEvents();  // Update GUI
+
+            // Activate VCSEL1 only
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+
+            // Capture single frame
+            frame1 = camera_system_->captureSingle();
+            addStatusMessage("Single VCSEL frame captured");
+            QApplication::processEvents();  // Update GUI
+
+            // Turn off VCSEL
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+
+            qDebug() << "[DepthWidget] Single VCSEL frame captured successfully";
+        }
+
+        // PROCESSING LOGIC UPDATED TO MATCH NEW CAPTURE BEHAVIOR:
+        // - ambient_subtract_enabled_ CHECKED: 3-frame averaging mode
+        // - ambient_subtract_enabled_ UNCHECKED: Single VCSEL frame (no processing)
+        if (ambient_subtract_enabled_) {
             // 3-FRAME AVERAGING FOR NOISE REDUCTION
             // Average all 3 frames (VCSEL1, VCSEL2, Ambient) to reduce temporal noise
             // Apply moderate contrast enhancement to final averaged result

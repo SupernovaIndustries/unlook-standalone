@@ -645,7 +645,7 @@ QPushButton#led_test_off_button:pressed {
           <number>0</number>
          </property>
          <property name="maximum">
-          <number>250</number>
+          <number>446</number>
          </property>
          <property name="value">
           <number>0</number>
