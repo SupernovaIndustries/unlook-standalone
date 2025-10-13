@@ -11,6 +11,7 @@ add_subdirectory(hardware)
 # Temporarily disable mesh module due to compilation issues
 # add_subdirectory(mesh)
 add_subdirectory(validation)
+add_subdirectory(gesture)
 
 # Core library sources (no Qt dependencies)
 set(UNLOOK_CORE_SOURCES
@@ -101,6 +102,7 @@ target_link_libraries(unlook
         # unlook_pointcloud # Temporarily disabled due to mesh dependencies
         # unlook_mesh       # Temporarily disabled due to compilation issues
         unlook_validation   # Link validation library publicly so GUI can access it
+        unlook_gesture      # Link gesture recognition library
     PRIVATE
         ${FILESYSTEM_LIB}
 )
