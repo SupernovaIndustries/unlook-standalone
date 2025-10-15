@@ -1,6 +1,7 @@
 #include "unlook/gui/main_window.hpp"
 #include "unlook/gui/camera_preview_widget.hpp"
 #include "unlook/gui/depth_test_widget.hpp"
+#include "unlook/gui/gesture_widget.hpp"
 // #include "unlook/gui/face_enrollment_widget.hpp"  // Temporarily disabled
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
@@ -218,6 +219,10 @@ void UnlookMainWindow::showDepthTest() {
     navigateToScreen(Screen::DEPTH_TEST);
 }
 
+void UnlookMainWindow::showGestureRecognition() {
+    navigateToScreen(Screen::GESTURE_RECOGNITION);
+}
+
 // void UnlookMainWindow::showFaceEnrollment() {
 //     navigateToScreen(Screen::FACE_ENROLLMENT);
 // }
@@ -279,6 +284,7 @@ void UnlookMainWindow::initializeAdditionalComponents() {
     // Connect UI signals to slots
     connect(ui->camera_preview_button, &QPushButton::clicked, this, &UnlookMainWindow::showCameraPreview);
     connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showDepthTest);
+    connect(ui->gesture_button, &QPushButton::clicked, this, &UnlookMainWindow::showGestureRecognition);
     // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
@@ -403,6 +409,32 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             ui->title_label->setText("DEPTH TEST");
             break;
 
+        case Screen::GESTURE_RECOGNITION:
+            if (!gesture_widget_) {
+                gesture_widget_ = std::make_unique<GestureWidget>(camera_system_);
+                ui->screen_stack->addWidget(gesture_widget_.get());
+
+                // Connect gesture signals
+                connect(gesture_widget_.get(), &GestureWidget::gestureDetected,
+                        this, [this](const QString& gestureName, float confidence) {
+                    qDebug() << "[MainWindow] Gesture detected:" << gestureName
+                             << "confidence:" << confidence;
+                    ui->system_status_label->setText(QString("Gesture: %1 (%.2f)")
+                                                      .arg(gestureName)
+                                                      .arg(confidence));
+                });
+
+                connect(gesture_widget_.get(), &GestureWidget::errorOccurred,
+                        this, [this](const QString& error) {
+                    qWarning() << "[MainWindow] Gesture error:" << error;
+                    ui->system_status_label->setText("Gesture Error: " + error);
+                    ui->system_status_label->setStyleSheet("color: #FF0000;");
+                });
+            }
+            ui->screen_stack->setCurrentWidget(gesture_widget_.get());
+            ui->title_label->setText("GESTURE RECOGNITION");
+            break;
+
         // case Screen::FACE_ENROLLMENT:
         //     if (!face_enrollment_widget_) {
         //         face_enrollment_widget_ = std::make_unique<FaceEnrollmentWidget>(camera_system_);
@@ -429,10 +461,11 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
 void UnlookMainWindow::updateNavigationButtons() {
     // Enable/disable navigation buttons based on camera system state
     bool camera_ready = camera_system_initialized_ && camera_system_ && camera_system_->isReady();
-    
+
     ui->camera_preview_button->setEnabled(camera_ready);
     ui->depth_test_button->setEnabled(camera_ready);
-    
+    ui->gesture_button->setEnabled(camera_ready);
+
     // Options is always available
     ui->options_button->setEnabled(true);
 }

@@ -28,8 +28,12 @@ enum class GestureType {
     UNKNOWN = 0,        ///< Unknown or no gesture detected
     OPEN_PALM,          ///< Open palm (window open command)
     CLOSED_FIST,        ///< Closed fist (window close command)
-    SWIPE_LEFT,         ///< Swipe left (close action)
-    SWIPE_RIGHT,        ///< Swipe right (open action)
+    SWIPE_LEFT,         ///< Swipe left (horizontal movement, negative X)
+    SWIPE_RIGHT,        ///< Swipe right (horizontal movement, positive X)
+    SWIPE_UP,           ///< Swipe up (vertical movement, negative Y)
+    SWIPE_DOWN,         ///< Swipe down (vertical movement, positive Y)
+    SWIPE_FORWARD,      ///< Swipe forward (hand moving toward camera, increasing size)
+    SWIPE_BACKWARD,     ///< Swipe backward (hand moving away from camera, decreasing size)
     POINT_UP,           ///< Point up (stop/pause command)
     POINT_DOWN,         ///< Point down (resume command)
     WAVE,               ///< Wave (cancel/dismiss)
@@ -151,6 +155,10 @@ struct GestureConfig {
     /// Process every Nth frame (for performance)
     int process_every_n_frames = 1;
 
+    /// ONNX model paths (must be absolute paths or relative to executable)
+    std::string palm_detection_model_path = "";
+    std::string hand_landmark_model_path = "";
+
     /**
      * @brief Validate configuration
      * @return true if configuration is valid
@@ -188,6 +196,10 @@ inline std::string gesture_type_to_string(GestureType type) {
         case GestureType::CLOSED_FIST: return "ClosedFist";
         case GestureType::SWIPE_LEFT: return "SwipeLeft";
         case GestureType::SWIPE_RIGHT: return "SwipeRight";
+        case GestureType::SWIPE_UP: return "SwipeUp";
+        case GestureType::SWIPE_DOWN: return "SwipeDown";
+        case GestureType::SWIPE_FORWARD: return "SwipeForward";
+        case GestureType::SWIPE_BACKWARD: return "SwipeBackward";
         case GestureType::POINT_UP: return "PointUp";
         case GestureType::POINT_DOWN: return "PointDown";
         case GestureType::WAVE: return "Wave";

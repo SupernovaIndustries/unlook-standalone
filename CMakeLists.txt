@@ -222,6 +222,9 @@ if(BOOFCV_ENABLED AND JNI_INCLUDE_DIRS)
     include_directories(${JNI_INCLUDE_DIRS})
 endif()
 
+# Add CMake module path for custom Find*.cmake files
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+
 # Add subdirectories
 add_subdirectory(src)
 

@@ -1,12 +1,16 @@
 # Gesture recognition module CMakeLists.txt
 
+# Find ONNX Runtime
+find_package(ONNXRuntime REQUIRED)
+
 # Gesture library sources
 set(GESTURE_SOURCES
     GestureRecognitionSystem.cpp
-    # TODO: Add when implemented
-    # MediaPipeWrapper.cpp
-    # ONNXClassifier.cpp
-    # IPCBridge.cpp
+    HandDetector.cpp
+    HandLandmarkExtractor.cpp
+    HandTracker.cpp
+    TemporalBuffer.cpp
+    GeometricSwipeDetector.cpp
 )
 
 # Gesture library
@@ -34,10 +38,9 @@ target_include_directories(unlook_gesture
 target_link_libraries(unlook_gesture
     PUBLIC
         ${OpenCV_LIBS}
-        unlook_camera_impl
-        # TODO: Add ONNX Runtime when available
-        # ONNXRuntime::ONNXRuntime
+        ONNXRuntime::ONNXRuntime
     PRIVATE
+        unlook_camera_impl
         unlook_core
 )
 

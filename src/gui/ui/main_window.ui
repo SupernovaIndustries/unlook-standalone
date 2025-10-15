@@ -473,7 +473,7 @@ QPushButton#exit_button:pressed {
            </widget>
           </item>
           <item row="2" column="0" colspan="2">
-           <widget class="QPushButton" name="face_enrollment_button">
+           <widget class="QPushButton" name="gesture_button">
             <property name="minimumSize">
              <size>
               <width>370</width>
@@ -492,8 +492,8 @@ QPushButton#exit_button:pressed {
              <bool>false</bool>
             </property>
             <property name="styleSheet">
-             <string notr="true">/* Pure Neomorphism - Neutral with Teal Text for Face Recognition */
-QPushButton#face_enrollment_button {
+             <string notr="true">/* Pure Neomorphism - Neutral with Teal Text for Gesture Recognition */
+QPushButton#gesture_button {
     background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
         stop:0 #f0f0f0,
         stop:1 #cacaca);
@@ -509,7 +509,7 @@ QPushButton#face_enrollment_button {
     border-right: 3px solid #bebebe;
     border-bottom: 3px solid #bebebe;
 }
-QPushButton#face_enrollment_button:hover {
+QPushButton#gesture_button:hover {
     background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
         stop:0 #f5f5f5,
         stop:1 #d0d0d0);
@@ -520,7 +520,7 @@ QPushButton#face_enrollment_button:hover {
     border-right: 2px solid #c5c5c5;
     border-bottom: 2px solid #c5c5c5;
 }
-QPushButton#face_enrollment_button:pressed {
+QPushButton#gesture_button:pressed {
     background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1,
         stop:0 #cacaca,
         stop:1 #e5e5e5);
@@ -534,7 +534,7 @@ QPushButton#face_enrollment_button:pressed {
 }</string>
             </property>
             <property name="text">
-             <string>FACE ENROLLMENT</string>
+             <string>GESTURE RECOGNITION</string>
             </property>
            </widget>
           </item>

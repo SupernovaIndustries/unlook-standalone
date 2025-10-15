@@ -154,6 +154,44 @@ else()
     message(STATUS "No example applications found to build")
 endif()
 
+# Gesture recognition test (simplified - uses OpenCV VideoCapture)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gesture_test_simple.cpp")
+    add_executable(gesture_test_simple
+        gesture_test_simple.cpp
+    )
+    target_include_directories(gesture_test_simple PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(gesture_test_simple PRIVATE
+        unlook_gesture
+        unlook_core
+        ${OpenCV_LIBS}
+        Threads::Threads
+    )
+    list(APPEND EXAMPLE_TARGETS gesture_test_simple)
+    message(STATUS "Added gesture_test_simple example")
+endif()
+
+# Gesture recognition test with REAL Unlook cameras (MAIN TEST)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/gesture_test_camera.cpp")
+    add_executable(gesture_test_camera
+        gesture_test_camera.cpp
+    )
+    target_include_directories(gesture_test_camera PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(gesture_test_camera PRIVATE
+        unlook_gesture
+        unlook
+        ${OpenCV_LIBS}
+        Threads::Threads
+    )
+    list(APPEND EXAMPLE_TARGETS gesture_test_camera)
+    message(STATUS "Added gesture_test_camera example (REAL hardware cameras)")
+endif()
+
 # Install example source code for reference (all existing files)
 file(GLOB EXAMPLE_SOURCES "*.cpp" "*.c")
 if(EXAMPLE_SOURCES)

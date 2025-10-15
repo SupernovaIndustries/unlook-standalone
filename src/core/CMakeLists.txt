@@ -24,7 +24,14 @@ target_include_directories(unlook_core
         $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(unlook_core PUBLIC compiler_flags)
+# No additional link libraries needed for core module
+
+# Install target (required for export)
+install(TARGETS unlook_core
+    EXPORT UnlookTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT Development
+)
 
 # Install headers
 install(FILES ${CORE_HEADERS}

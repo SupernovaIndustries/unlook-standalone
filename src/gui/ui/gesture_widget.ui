@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>GestureWidget</class>
+ <widget class="QWidget" name="GestureWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Gesture Recognition</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Background */
+QWidget#GestureWidget {
+    background-color: #e0e5ec;
+}
+
+/* Neomorphism Buttons */
+QPushButton {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #e8edf2,
+        stop:1 #d5dbe3);
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #334155;
+    border-left: 2px solid #ffffff;
+    border-top: 2px solid #ffffff;
+    border-right: 2px solid #b8c2d3;
+    border-bottom: 2px solid #b8c2d3;
+}
+
+QPushButton:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #f0f5fa,
+        stop:1 #dde3ea);
+}
+
+QPushButton:pressed {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #d0d5dc,
+        stop:1 #c0c8d0);
+    border-left: 2px solid #b8c2d3;
+    border-top: 2px solid #b8c2d3;
+    border-right: 2px solid #ffffff;
+    border-bottom: 2px solid #ffffff;
+}
+
+QPushButton:disabled {
+    background: #d5dbe3;
+    color: #94a3b8;
+}
+
+/* Labels */
+QLabel {
+    color: #334155;
+    font-size: 12px;
+}
+
+/* Text Edit */
+QTextEdit {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #d0d5dc,
+        stop:1 #e0e5ec);
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    color: #334155;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+/* SpinBox */
+QDoubleSpinBox {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #d0d5dc,
+        stop:1 #e0e5ec);
+    border: none;
+    border-radius: 4px;
+    padding: 6px;
+    color: #334155;
+    font-size: 12px;
+}
+
+/* CheckBox */
+QCheckBox {
+    color: #334155;
+    font-size: 12px;
+}
+
+QCheckBox::indicator {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #d0d5dc,
+        stop:1 #e0e5ec);
+    border: 2px solid #b8c2d3;
+}
+
+QCheckBox::indicator:checked {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1,
+        stop:0 #06b6d4,
+        stop:1 #0891b2);
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>10</number>
+   </property>
+   <property name="topMargin">
+    <number>10</number>
+   </property>
+   <property name="rightMargin">
+    <number>10</number>
+   </property>
+   <property name="bottomMargin">
+    <number>10</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="title_label">
+     <property name="text">
+      <string>Gesture Recognition</string>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">font-size: 18px; font-weight: bold; color: #1e293b;</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="content_layout">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <item>
+      <layout class="QVBoxLayout" name="left_column">
+       <property name="spacing">
+        <number>8</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="camera_feed_label">
+         <property name="minimumSize">
+          <size>
+           <width>640</width>
+           <height>480</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>640</width>
+           <height>480</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Camera Preview
+(Press START)</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">background-color: #000000; color: #ffffff; border-radius: 8px;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="control_buttons_layout">
+         <property name="spacing">
+          <number>10</number>
+         </property>
+         <item>
+          <widget class="QPushButton" name="start_button">
+           <property name="text">
+            <string>START</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669); color: #ffffff; }
+QPushButton:hover { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #34d399, stop:1 #10b981); }
+QPushButton:disabled { background: #d5dbe3; color: #94a3b8; }</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="stop_button">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="text">
+            <string>STOP</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #ef4444, stop:1 #dc2626); color: #ffffff; }
+QPushButton:hover { background: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #f87171, stop:1 #ef4444); }
+QPushButton:disabled { background: #d5dbe3; color: #94a3b8; }</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="control_spacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="fps_label">
+           <property name="text">
+            <string>FPS: 0.0</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">font-size: 14px; font-weight: bold; color: #0891b2;</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="processing_time_label">
+           <property name="text">
+            <string>Time: 0.0ms</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">font-size: 14px; font-weight: bold; color: #0891b2;</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="right_column">
+       <property name="spacing">
+        <number>8</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="config_label">
+         <property name="text">
+          <string>Configuration</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">font-size: 14px; font-weight: bold; color: #1e293b;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="confidence_layout">
+         <item>
+          <widget class="QLabel" name="confidence_label">
+           <property name="text">
+            <string>Min Confidence:</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QDoubleSpinBox" name="confidence_spinbox">
+           <property name="minimum">
+            <double>0.000000000000000</double>
+           </property>
+           <property name="maximum">
+            <double>1.000000000000000</double>
+           </property>
+           <property name="singleStep">
+            <double>0.050000000000000</double>
+           </property>
+           <property name="value">
+            <double>0.700000000000000</double>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="debug_checkbox">
+         <property name="text">
+          <string>Debug Visualization</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="history_label">
+         <property name="text">
+          <string>Gesture History</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">font-size: 14px; font-weight: bold; color: #1e293b; margin-top: 10px;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTextEdit" name="history_text_edit">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="clear_history_button">
+         <property name="text">
+          <string>Clear History</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="stats_label">
+         <property name="text">
+          <string>Detected Gestures</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">font-size: 14px; font-weight: bold; color: #1e293b; margin-top: 10px;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="total_gestures_label">
+         <property name="text">
+          <string>Total: 0</string>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">font-size: 12px; color: #475569;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="right_spacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,243 @@
+GESTURE RECOGNITION SYSTEM - ARCHITECTURE DIAGRAM
+=================================================
+
+                         ┌─────────────────────────────────────┐
+                         │  GestureRecognitionSystem (Main)   │
+                         │  - initialize()                     │
+                         │  - process_frame()                  │
+                         │  - set_gesture_callback()           │
+                         └─────────────────┬───────────────────┘
+                                           │
+                         ┌─────────────────┴───────────────────┐
+                         │     Process Frame Pipeline          │
+                         └─────────────────────────────────────┘
+                                           │
+     ┌────────────────────────────────────┼────────────────────────────────────┐
+     │                                    │                                    │
+     ▼                                    ▼                                    ▼
+┌────────────────┐               ┌────────────────┐                 ┌────────────────┐
+│  HandDetector  │               │  HandTracker   │                 │TemporalBuffer  │
+│  (ONNX Model)  │               │ (Kalman Filter)│                 │ (Circular FIFO)│
+│                │               │                │                 │                │
+│ Input: Image   │               │ Input:         │                 │ Input:         │
+│ (640x480)      │──────────────▶│  - Detections  │────────────────▶│  - TrackedHand │
+│                │   cv::Rect[]  │  - Landmarks   │   TrackedHand   │                │
+│ Output:        │               │                │                 │ Capacity: 30   │
+│  - Bounding    │               │ Output:        │                 │ frames (~1sec) │
+│    boxes       │               │  - TrackedHand │                 │                │
+│  - Scores      │               │    with smooth │                 │ Motion Stats:  │
+│                │               │    position &  │                 │  - Displacement│
+│ Model:         │               │    velocity    │                 │  - Velocity    │
+│ 192x192 input  │               │                │                 │  - Scale change│
+│ Performance:   │               │ Features:      │                 │                │
+│  5-8ms/frame   │               │  - Occlusion   │                 │ Performance:   │
+│                │               │    handling    │                 │  O(1) push     │
+└────────┬───────┘               │  - Track IDs   │                 └────────┬───────┘
+         │                       │  - Velocity    │                          │
+         │                       │    estimation  │                          │
+         │                       │                │                          │
+         ▼                       │ Performance:   │                          ▼
+┌────────────────┐               │  <1ms/frame    │               ┌────────────────┐
+│HandLandmark    │               └────────────────┘               │GeometricSwipe  │
+│Extractor       │                                                │Detector        │
+│(ONNX Model)    │                                                │                │
+│                │                                                │ Input:         │
+│ Input:         │                                                │  TemporalBuffer│
+│  - Image       │                                                │                │
+│  - Hand ROI    │                                                │ Algorithm:     │
+│                │                                                │  Pure geometric│
+│ Output:        │                                                │  analysis      │
+│  - 21 landmark │                                                │                │
+│    points (x,y,z)                                               │ Detects:       │
+│                │                                                │  SWIPE_LEFT    │
+│ Features:      │                                                │  SWIPE_RIGHT   │
+│  - ROI expand  │                                                │  SWIPE_UP      │
+│  - Normalize   │                                                │  SWIPE_DOWN    │
+│  - MediaPipe   │                                                │  SWIPE_FORWARD │
+│    compatible  │                                                │  SWIPE_BACKWARD│
+│                │                                                │                │
+│ Model:         │                                                │ Features:      │
+│ 224x224 input  │                                                │  - Configurable│
+│                │                                                │    thresholds  │
+│ Performance:   │                                                │  - Debouncing  │
+│  3-5ms/hand    │                                                │  - Confidence  │
+└────────────────┘                                                │    scoring     │
+                                                                  │                │
+                                                                  │ Performance:   │
+                                                                  │  <0.5ms        │
+                                                                  └────────┬───────┘
+                                                                           │
+                                                                           ▼
+                                                                  ┌────────────────┐
+                                                                  │ GestureResult  │
+                                                                  │                │
+                                                                  │ - type         │
+                                                                  │ - confidence   │
+                                                                  │ - landmarks    │
+                                                                  │ - timestamp    │
+                                                                  │ - bbox         │
+                                                                  └────────────────┘
+
+DATA FLOW SEQUENCE
+==================
+
+1. INPUT: cv::Mat frame (BGR, e.g., 640x480)
+         │
+         ▼
+2. HAND DETECTION (HandDetector)
+   - Resize to 192x192
+   - ONNX inference
+   - Parse detections
+         │
+         │ std::vector<cv::Rect> (hand bounding boxes)
+         ▼
+3. LANDMARK EXTRACTION (HandLandmarkExtractor)
+   - For each detection:
+     - Expand ROI
+     - Resize to 224x224
+     - ONNX inference
+     - Parse 21 landmarks
+         │
+         │ std::vector<HandLandmarks>
+         ▼
+4. TRACKING UPDATE (HandTracker)
+   - Associate detections to tracks
+   - Kalman filter prediction
+   - Kalman filter correction
+   - Update velocities
+         │
+         │ std::vector<TrackedHand> (smoothed tracks)
+         ▼
+5. TEMPORAL BUFFERING (TemporalBuffer)
+   - Push primary hand to buffer
+   - Maintain 30-frame history
+   - Compute motion statistics
+         │
+         │ TemporalBuffer (30 frames)
+         ▼
+6. GESTURE DETECTION (GeometricSwipeDetector)
+   - Analyze displacement vector
+   - Check horizontal swipes (X-axis)
+   - Check vertical swipes (Y-axis)
+   - Check depth swipes (size change)
+   - Calculate confidence
+   - Apply debouncing
+         │
+         │ GestureType + confidence
+         ▼
+7. OUTPUT: GestureResult
+   - Trigger callback if gesture detected
+   - Update performance stats
+   - Generate debug visualization
+
+
+PERFORMANCE BUDGET (Raspberry Pi CM5)
+======================================
+
+Component                  Target Time      Actual (Expected)
+------------------------------------------------------------------
+HandDetector               5-10ms           5-8ms      ✅
+HandLandmarkExtractor      3-5ms/hand       3-5ms      ✅
+HandTracker                <1ms             ~0.5ms     ✅
+TemporalBuffer             <0.1ms           <0.1ms     ✅
+GeometricSwipeDetector     <1ms             ~0.2ms     ✅
+------------------------------------------------------------------
+TOTAL PER FRAME            10-20ms          10-15ms    ✅
+
+Expected FPS: 60-100 FPS (well above real-time requirements)
+
+
+MEMORY FOOTPRINT
+================
+
+Component                  Memory Usage
+------------------------------------------------------------------
+HandDetector               ~50MB (model weights)
+HandLandmarkExtractor      ~30MB (model weights)
+HandTracker                ~1KB per track
+TemporalBuffer             ~2KB (30 frames)
+GeometricSwipeDetector     <1KB
+------------------------------------------------------------------
+TOTAL                      ~80-85MB         ✅
+
+
+CONFIGURATION POINTS
+====================
+
+HandDetectorConfig:
+  - score_threshold: 0.6-0.8 (detection sensitivity)
+  - max_num_hands: 1-2
+
+HandLandmarkConfig:
+  - confidence_threshold: 0.5 (landmark validity)
+  - roi_expansion_factor: 1.5 (coverage)
+
+HandTrackerConfig:
+  - max_missed_frames: 5 (occlusion tolerance)
+  - position_noise: 0.1 (responsiveness)
+  - measurement_noise: 1.0 (smoothing)
+
+SwipeConfig:
+  - min_velocity: 50px/frame (swipe speed)
+  - min_displacement: 100px (swipe length)
+  - direction_threshold: 0.7 (axis dominance)
+  - scale_change_threshold: 0.25 (depth sensitivity)
+  - debounce_frames: 15 (re-trigger prevention)
+
+
+ERROR HANDLING STRATEGY
+========================
+
+Each component:
+  1. Validates inputs (nullptr checks, empty checks)
+  2. Returns bool status (success/failure)
+  3. Stores error message in last_error string
+  4. Propagates errors up the chain
+  5. Logs critical errors via unlook::core::Logger
+
+GestureRecognitionSystem:
+  - Catches component errors
+  - Aggregates error messages
+  - Returns comprehensive error state
+  - Continues processing when possible (graceful degradation)
+
+
+THREAD SAFETY
+==============
+
+Current Implementation: Single-threaded
+  - All components designed for sequential processing
+  - No internal locking (caller responsible for thread safety)
+
+Future Multi-threading Options:
+  1. Parallel detection + landmark extraction (independent hands)
+  2. Async gesture callback (separate thread)
+  3. Frame buffering (producer-consumer pattern)
+
+Note: TemporalBuffer is NOT thread-safe by design (efficiency)
+
+
+TESTING STRATEGY
+================
+
+Unit Tests (per component):
+  - HandLandmarkExtractor: Test with known hand images
+  - HandTracker: Synthetic trajectories with known outcomes
+  - TemporalBuffer: Circular buffer edge cases
+  - GeometricSwipeDetector: Synthetic motion patterns
+
+Integration Tests:
+  - Full pipeline with recorded video sequences
+  - Known gesture sequences validation
+
+Performance Tests:
+  - Benchmark each component individually
+  - Measure end-to-end latency
+  - Validate real-time performance on target hardware
+
+Robustness Tests:
+  - Occlusion scenarios
+  - Fast motion (high velocity)
+  - Multiple hands (switching)
+  - Poor lighting conditions
+  - Edge cases (hand leaving frame, etc.)
