@@ -208,13 +208,31 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
     // Step 1: Detect hands
     auto det_start = std::chrono::high_resolution_clock::now();
     std::vector<HandDetection> detections;
+
+    static int process_frame_count = 0;
+    process_frame_count++;
+
     if (!pImpl->hand_detector->detect(frame, detections)) {
         pImpl->last_error = "Hand detection failed: " +
                            pImpl->hand_detector->get_last_error();
+        LOG_ERROR(pImpl->last_error);
         return false;
     }
     auto det_end = std::chrono::high_resolution_clock::now();
     double det_time = std::chrono::duration<double, std::milli>(det_end - det_start).count();
+
+    // Log detection results periodically
+    if (process_frame_count <= 5 || process_frame_count % 50 == 0) {
+        LOG_INFO("GestureRecognitionSystem: Frame #" + std::to_string(process_frame_count));
+        LOG_INFO("  Hand detection time: " + std::to_string(det_time) + "ms");
+        LOG_INFO("  Detections found: " + std::to_string(detections.size()));
+
+        if (detections.size() > 0) {
+            LOG_INFO("  HAND DETECTED! Processing landmarks...");
+        } else {
+            LOG_DEBUG("  No hands detected in this frame");
+        }
+    }
 
     // Convert HandDetection to cv::Rect for tracker
     std::vector<cv::Rect> detection_boxes;

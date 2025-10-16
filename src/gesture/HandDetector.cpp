@@ -63,6 +63,16 @@ public:
      * @brief Preprocess image for palm detection model
      */
     cv::Mat preprocess_image(const cv::Mat& image) {
+        static int preprocess_count = 0;
+        preprocess_count++;
+
+        if (preprocess_count <= 3 || preprocess_count % 100 == 0) {
+            LOG_DEBUG("HandDetector: Preprocessing image #" + std::to_string(preprocess_count));
+            LOG_DEBUG("  Input size: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
+            LOG_DEBUG("  Input channels: " + std::to_string(image.channels()));
+            LOG_DEBUG("  Input type: " + std::to_string(image.type()));
+        }
+
         cv::Mat resized;
         cv::resize(image, resized, cv::Size(config.input_width, config.input_height));
 
@@ -77,6 +87,17 @@ public:
         // Normalize to [0, 1]
         cv::Mat normalized;
         rgb.convertTo(normalized, CV_32FC3, 1.0 / 255.0);
+
+        if (preprocess_count <= 3) {
+            // Verify normalization by checking pixel value range
+            double minVal, maxVal;
+            cv::minMaxLoc(normalized, &minVal, &maxVal);
+            LOG_DEBUG("  After normalization: min=" + std::to_string(minVal) +
+                     ", max=" + std::to_string(maxVal));
+            LOG_DEBUG("  Output size: " + std::to_string(normalized.cols) + "x" +
+                     std::to_string(normalized.rows));
+            LOG_DEBUG("  Output channels: " + std::to_string(normalized.channels()));
+        }
 
         return normalized;
     }
@@ -135,23 +156,59 @@ public:
 
         std::vector<HandDetection> detections;
 
-        // Model output format: [num_detections, 18]
-        // Each detection: [score, cx, cy, w, h, ... additional params]
-        // Note: Actual format depends on the PINTO palm detection model
+        // PINTO0309 palm detection model output format analysis
+        // Based on MediaPipe palm detection architecture with SSD anchors
+        // Expected outputs: multiple tensors with specific roles
 
         try {
-            // Get output tensor
+            // Log output tensor information for debugging
+            LOG_INFO("HandDetector: Parsing model output...");
+            LOG_INFO("  Number of output tensors: " + std::to_string(output_tensors.size()));
+
+            for (size_t i = 0; i < output_tensors.size(); ++i) {
+                auto shape_info = output_tensors[i].GetTensorTypeAndShapeInfo();
+                auto shape = shape_info.GetShape();
+
+                std::string shape_str = "  Output[" + std::to_string(i) + "] shape: [";
+                for (size_t j = 0; j < shape.size(); ++j) {
+                    shape_str += std::to_string(shape[j]);
+                    if (j < shape.size() - 1) shape_str += ", ";
+                }
+                shape_str += "]";
+                LOG_INFO(shape_str);
+            }
+
+            // Primary output tensor (usually index 0 for detection results)
             const float* output_data = output_tensors[0].GetTensorData<float>();
             auto shape_info = output_tensors[0].GetTensorTypeAndShapeInfo();
             auto shape = shape_info.GetShape();
 
             if (shape.size() < 2) {
-                last_error = "Unexpected output tensor shape";
+                last_error = "Unexpected output tensor shape (need at least 2 dimensions)";
+                LOG_ERROR(last_error);
                 return detections;
             }
 
-            int num_detections = static_cast<int>(shape[0]);
-            int num_features = static_cast<int>(shape[1]);
+            // Determine output format based on shape
+            int num_detections = 0;
+            int num_features = 0;
+
+            if (shape.size() == 2) {
+                // Format: [num_detections, features]
+                num_detections = static_cast<int>(shape[0]);
+                num_features = static_cast<int>(shape[1]);
+            } else if (shape.size() == 3) {
+                // Format: [batch, num_detections, features] - extract from batch 0
+                num_detections = static_cast<int>(shape[1]);
+                num_features = static_cast<int>(shape[2]);
+            } else {
+                last_error = "Unsupported output tensor shape dimensions: " + std::to_string(shape.size());
+                LOG_ERROR(last_error);
+                return detections;
+            }
+
+            LOG_INFO("  Parsing detections: num_detections=" + std::to_string(num_detections) +
+                    ", num_features=" + std::to_string(num_features));
 
             // Scale factors for converting from model coordinates to image coordinates
             float scale_x = static_cast<float>(original_size.width) / config.input_width;
@@ -159,21 +216,121 @@ public:
 
             std::vector<cv::Rect> boxes;
             std::vector<float> scores;
+            int detections_above_threshold = 0;
+            int total_valid_detections = 0;
 
+            // CRITICAL: Parse detections based on PINTO0309 format
             for (int i = 0; i < num_detections; ++i) {
                 const float* detection = output_data + i * num_features;
 
-                float score = detection[0];  // First element is score
-                if (score < config.score_threshold) {
+                // Extract score based on format
+                float score = 0.0f;
+
+                if (num_features == 8) {
+                    // PINTO0309 palm detection format
+                    // [0] = pd_score (detection confidence)
+                    score = detection[0];
+
+                } else if (num_features >= 18) {
+                    // MediaPipe full format: score typically at index 16 or 17
+                    score = detection[16];
+
+                    // Validate and try fallback positions if needed
+                    if (score < 0.0f || score > 1.0f) {
+                        score = detection[17];
+                    }
+                    if (score < 0.0f || score > 1.0f) {
+                        score = detection[0];  // Last resort fallback
+                    }
+
+                } else if (num_features >= 5) {
+                    // Simplified format: [score, ...]
+                    score = detection[0];
+
+                } else {
+                    LOG_WARNING("  Detection[" + std::to_string(i) + "]: Insufficient features (" +
+                               std::to_string(num_features) + ")");
                     continue;
                 }
 
-                // Parse bounding box (format may vary, adjust based on actual model output)
-                float cx = detection[1] * scale_x;
-                float cy = detection[2] * scale_y;
-                float w = detection[3] * scale_x;
-                float h = detection[4] * scale_y;
+                // Log first few detections for debugging
+                if (i < 5) {
+                    LOG_DEBUG("  Detection[" + std::to_string(i) + "]: score=" + std::to_string(score) +
+                             " (threshold=" + std::to_string(config.score_threshold) + ")");
 
+                    // Log raw values for PINTO0309 format debugging
+                    if (num_features == 8) {
+                        LOG_DEBUG("    Raw PINTO0309 values: [score=" + std::to_string(detection[0]) +
+                                 ", box_x=" + std::to_string(detection[1]) +
+                                 ", box_y=" + std::to_string(detection[2]) +
+                                 ", box_size=" + std::to_string(detection[3]) + "]");
+                    }
+                }
+
+                // Count detections above threshold
+                if (score >= config.score_threshold) {
+                    detections_above_threshold++;
+                }
+
+                // TEMPORARY DEBUG: Lower threshold to 0.01 to see ALL detections
+                float debug_threshold = std::min(config.score_threshold, 0.01f);
+
+                if (score < debug_threshold) {
+                    continue;
+                }
+
+                total_valid_detections++;
+
+                // Parse bounding box based on PINTO0309 format
+                // Reference: palm_detection.py line 196
+                // Format: pd_score, box_x, box_y, box_size, kp0_x, kp0_y, kp2_x, kp2_y
+                float cx, cy, w, h;
+
+                if (num_features == 8) {
+                    // PINTO0309 palm detection format (8 features)
+                    // [0] = pd_score (already extracted above)
+                    // [1] = box_x (center X, normalized [0,1])
+                    // [2] = box_y (center Y, normalized [0,1])
+                    // [3] = box_size (SINGLE value - bbox is SQUARE!)
+                    // [4-7] = keypoints (kp0_x, kp0_y, kp2_x, kp2_y) - not used for bbox
+
+                    float box_x = detection[1];     // center X normalized
+                    float box_y = detection[2];     // center Y normalized
+                    float box_size = detection[3];  // square box size normalized
+
+                    // Convert normalized [0,1] to pixel coordinates
+                    cx = box_x * config.input_width * scale_x;
+                    cy = box_y * config.input_height * scale_y;
+                    w = box_size * config.input_width * scale_x;
+                    h = box_size * config.input_height * scale_y;  // Same as width (square bbox)
+
+                } else if (num_features >= 18) {
+                    // MediaPipe full format with landmarks
+                    // [ymin, xmin, ymax, xmax] at indices 4-7 (normalized)
+                    float ymin = detection[4];
+                    float xmin = detection[5];
+                    float ymax = detection[6];
+                    float xmax = detection[7];
+
+                    // Convert corners to center+size
+                    cx = ((xmin + xmax) / 2.0f) * config.input_width * scale_x;
+                    cy = ((ymin + ymax) / 2.0f) * config.input_height * scale_y;
+                    w = (xmax - xmin) * config.input_width * scale_x;
+                    h = (ymax - ymin) * config.input_height * scale_y;
+
+                } else if (num_features >= 5) {
+                    // Simplified format: [score, cx, cy, w, h]
+                    cx = detection[1] * scale_x;
+                    cy = detection[2] * scale_y;
+                    w = detection[3] * scale_x;
+                    h = detection[4] * scale_y;
+
+                } else {
+                    // Insufficient features
+                    continue;
+                }
+
+                // Convert center-based to corner-based bbox
                 cv::Rect bbox(
                     static_cast<int>(cx - w / 2),
                     static_cast<int>(cy - h / 2),
@@ -181,12 +338,42 @@ public:
                     static_cast<int>(h)
                 );
 
+                // Clamp to image bounds
+                bbox.x = std::max(0, bbox.x);
+                bbox.y = std::max(0, bbox.y);
+                bbox.width = std::min(bbox.width, original_size.width - bbox.x);
+                bbox.height = std::min(bbox.height, original_size.height - bbox.y);
+
+                // Validate bbox
+                if (bbox.width <= 0 || bbox.height <= 0) {
+                    continue;
+                }
+
                 boxes.push_back(bbox);
                 scores.push_back(score);
+
+                if (i < 5) {
+                    LOG_DEBUG("  Detection[" + std::to_string(i) + "]: bbox=[" +
+                             std::to_string(bbox.x) + ", " + std::to_string(bbox.y) + ", " +
+                             std::to_string(bbox.width) + ", " + std::to_string(bbox.height) + "]");
+                }
+            }
+
+            LOG_INFO("  Total detections found: " + std::to_string(total_valid_detections) +
+                    " (above threshold: " + std::to_string(detections_above_threshold) + ")");
+
+            if (total_valid_detections == 0) {
+                LOG_WARNING("  NO DETECTIONS FOUND! Check:");
+                LOG_WARNING("    1. Is hand visible in frame?");
+                LOG_WARNING("    2. Is threshold too high? (current: " + std::to_string(config.score_threshold) + ")");
+                LOG_WARNING("    3. Is preprocessing correct? (BGR->RGB, normalization)");
+                LOG_WARNING("    4. Is model output format parsed correctly?");
             }
 
             // Apply NMS
             std::vector<int> keep_indices = nms(boxes, scores);
+
+            LOG_INFO("  After NMS: " + std::to_string(keep_indices.size()) + " detections kept");
 
             // Create final detections
             for (int idx : keep_indices) {
@@ -198,10 +385,17 @@ public:
                     det.bounding_box.y + det.bounding_box.height / 2.0f
                 );
                 detections.push_back(det);
+
+                LOG_INFO("  HAND DETECTED: score=" + std::to_string(det.score) +
+                        ", bbox=[" + std::to_string(det.bounding_box.x) + ", " +
+                        std::to_string(det.bounding_box.y) + ", " +
+                        std::to_string(det.bounding_box.width) + ", " +
+                        std::to_string(det.bounding_box.height) + "]");
             }
 
         } catch (const std::exception& e) {
             last_error = std::string("Error parsing detections: ") + e.what();
+            LOG_ERROR(last_error);
         }
 
         return detections;
@@ -290,6 +484,9 @@ bool HandDetector::is_initialized() const {
 }
 
 bool HandDetector::detect(const cv::Mat& image, std::vector<HandDetection>& detections) {
+    static int detect_call_count = 0;
+    detect_call_count++;
+
     if (!pImpl->initialized) {
         pImpl->last_error = "Detector not initialized";
         return false;
@@ -298,6 +495,11 @@ bool HandDetector::detect(const cv::Mat& image, std::vector<HandDetection>& dete
     if (image.empty()) {
         pImpl->last_error = "Empty input image";
         return false;
+    }
+
+    // Log first few calls and periodically
+    if (detect_call_count <= 5 || detect_call_count % 50 == 0) {
+        LOG_INFO("HandDetector::detect() called #" + std::to_string(detect_call_count));
     }
 
     auto start_time = std::chrono::steady_clock::now();
@@ -359,6 +561,13 @@ bool HandDetector::detect(const cv::Mat& image, std::vector<HandDetection>& dete
         auto end_time = std::chrono::steady_clock::now();
         pImpl->last_detection_time_ms = std::chrono::duration<double, std::milli>(
             end_time - start_time).count();
+
+        // Log detection results
+        if (detect_call_count <= 5 || detect_call_count % 50 == 0) {
+            LOG_INFO("HandDetector::detect() completed in " +
+                    std::to_string(pImpl->last_detection_time_ms) + "ms");
+            LOG_INFO("  Returned " + std::to_string(detections.size()) + " detections");
+        }
 
         return true;
 
