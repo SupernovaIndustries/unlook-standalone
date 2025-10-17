@@ -60,13 +60,25 @@ struct HandDetectorConfig {
     int input_height = 192;               ///< Model input height
     bool use_gpu = false;                 ///< Enable GPU acceleration (CUDA/TensorRT)
 
+    // CLAHE preprocessing configuration
+    // DISABLED: CLAHE adds 15-20ms overhead per frame (RGB->HSV->CLAHE->HSV->RGB)
+    // Total system overhead with dual CLAHE (detector + landmark): 30-40ms
+    // This was causing system lag (95-100ms total, only 10 FPS possible)
+    // Can be re-enabled later with optimizations if needed (e.g., grayscale CLAHE)
+    bool use_clahe = false;               ///< Enable CLAHE contrast enhancement
+    double clahe_clip_limit = 2.0;        ///< CLAHE contrast limiting (1.0-4.0 typical)
+    int clahe_tile_grid_width = 8;        ///< CLAHE tile grid width
+    int clahe_tile_grid_height = 8;       ///< CLAHE tile grid height
+
     /**
      * @brief Validate configuration
      */
     bool is_valid() const {
         return score_threshold > 0.0f && score_threshold <= 1.0f &&
                max_num_hands >= 1 && max_num_hands <= 2 &&
-               input_width > 0 && input_height > 0;
+               input_width > 0 && input_height > 0 &&
+               clahe_clip_limit > 0.0 &&
+               clahe_tile_grid_width > 0 && clahe_tile_grid_height > 0;
     }
 };
 

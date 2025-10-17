@@ -8,6 +8,7 @@
 
 #include <onnxruntime_cxx_api.h>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/photo.hpp>
 #include <opencv2/core/utils/logger.hpp>
 
 #include <chrono>
@@ -82,6 +83,36 @@ public:
             cv::cvtColor(resized, rgb, cv::COLOR_BGR2RGB);
         } else {
             rgb = resized.clone();
+        }
+
+        // Apply CLAHE contrast enhancement if enabled
+        if (config.use_clahe) {
+            // Convert RGB to HSV for CLAHE on V channel
+            cv::Mat hsv;
+            cv::cvtColor(rgb, hsv, cv::COLOR_RGB2HSV);
+
+            // Split channels
+            std::vector<cv::Mat> hsv_channels;
+            cv::split(hsv, hsv_channels);
+
+            // Apply CLAHE on V (Value/Brightness) channel
+            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(
+                config.clahe_clip_limit,
+                cv::Size(config.clahe_tile_grid_width, config.clahe_tile_grid_height)
+            );
+            clahe->apply(hsv_channels[2], hsv_channels[2]);
+
+            // Merge channels back
+            cv::merge(hsv_channels, hsv);
+
+            // Convert back to RGB
+            cv::cvtColor(hsv, rgb, cv::COLOR_HSV2RGB);
+
+            if (preprocess_count <= 3) {
+                LOG_INFO("  CLAHE applied: clip_limit=" + std::to_string(config.clahe_clip_limit) +
+                        ", tile_size=" + std::to_string(config.clahe_tile_grid_width) + "x" +
+                        std::to_string(config.clahe_tile_grid_height));
+            }
         }
 
         // Normalize to [0, 1]

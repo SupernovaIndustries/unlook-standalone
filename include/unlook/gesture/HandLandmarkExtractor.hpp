@@ -27,9 +27,26 @@ struct HandLandmarkConfig {
     std::string model_path = "model/hand_landmark/hand_landmark_sparse_Nx3x224x224.onnx";
     int input_width = 224;                ///< Model input width
     int input_height = 224;               ///< Model input height
-    float confidence_threshold = 0.5f;    ///< Minimum landmark confidence
+
+    // Lowered from 0.5 (50%) to 0.1 (10%) for PINTO0309 model compatibility
+    // PINTO0309 landmarks may have coordinates outside [0,1] range (outside ROI bounds)
+    // Old 50% threshold caused ALL landmark extractions to fail
+    // 10% allows extraction if at least 3/21 landmarks are valid
+    // Can be tuned upward after confirming landmark extraction works
+    float confidence_threshold = 0.1f;    ///< Minimum landmark confidence
+
     float roi_expansion_factor = 1.5f;    ///< Factor to expand detection ROI
     bool use_gpu = false;                 ///< Enable GPU acceleration
+
+    // CLAHE preprocessing configuration
+    // DISABLED: CLAHE adds 15-20ms overhead per frame (RGB->HSV->CLAHE->HSV->RGB)
+    // Total system overhead with dual CLAHE (detector + landmark): 30-40ms
+    // This was causing system lag (95-100ms total, only 10 FPS possible)
+    // Can be re-enabled later with optimizations if needed (e.g., grayscale CLAHE)
+    bool use_clahe = false;               ///< Enable CLAHE contrast enhancement
+    double clahe_clip_limit = 2.0;        ///< CLAHE contrast limiting (1.0-4.0 typical)
+    int clahe_tile_grid_width = 8;        ///< CLAHE tile grid width
+    int clahe_tile_grid_height = 8;       ///< CLAHE tile grid height
 
     /**
      * @brief Validate configuration
@@ -37,7 +54,9 @@ struct HandLandmarkConfig {
     bool is_valid() const {
         return input_width > 0 && input_height > 0 &&
                confidence_threshold > 0.0f && confidence_threshold <= 1.0f &&
-               roi_expansion_factor > 0.0f;
+               roi_expansion_factor > 0.0f &&
+               clahe_clip_limit > 0.0 &&
+               clahe_tile_grid_width > 0 && clahe_tile_grid_height > 0;
     }
 };
 

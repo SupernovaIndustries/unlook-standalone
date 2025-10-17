@@ -75,7 +75,9 @@ bool GestureRecognitionSystem::initialize(
     pImpl->hand_detector = std::make_unique<HandDetector>();
     pImpl->landmark_extractor = std::make_unique<HandLandmarkExtractor>();
     pImpl->hand_tracker = std::make_unique<HandTracker>();
-    pImpl->temporal_buffer = std::make_unique<TemporalBuffer>(30);  // 1 second at 30fps
+    // DEBUG: Reduced buffer for faster testing (15 frames = 1 second at 15fps)
+    // PRODUCTION: Use 30 frames for more stable detection
+    pImpl->temporal_buffer = std::make_unique<TemporalBuffer>(15);
     pImpl->swipe_detector = std::make_unique<GeometricSwipeDetector>();
 
     // Configure hand detector
@@ -134,13 +136,23 @@ bool GestureRecognitionSystem::initialize(
     pImpl->hand_tracker->configure(tracker_config);
 
     // Configure swipe detector
+    // DEBUG: Lower thresholds for easier initial testing
+    // PRODUCTION: After testing, restore to min_velocity=50.0f, min_displacement=100.0f
     SwipeConfig swipe_config;
-    swipe_config.min_velocity = 50.0f;
-    swipe_config.min_displacement = 100.0f;
-    swipe_config.direction_threshold = 0.7f;
-    swipe_config.scale_change_threshold = 0.25f;
-    swipe_config.min_frames = 10;
+    swipe_config.min_velocity = 5.0f;                   // DEBUG: 5px/frame (PRODUCTION: 50.0f)
+    swipe_config.min_displacement = 30.0f;              // DEBUG: 30px total (PRODUCTION: 100.0f)
+    swipe_config.min_displacement_horizontal = 30.0f;   // DEBUG: 30px horizontal (PRODUCTION: 80.0f)
+    swipe_config.min_displacement_vertical = 30.0f;     // DEBUG: 30px vertical (PRODUCTION: 80.0f)
+    swipe_config.scale_change_threshold = 0.15f;        // DEBUG: 15% scale change (PRODUCTION: 0.25f)
+    swipe_config.direction_threshold = 0.5f;            // DEBUG: More lenient (PRODUCTION: 0.7f)
+    swipe_config.min_frames = 5;                        // DEBUG: Fewer frames needed (PRODUCTION: 10)
     pImpl->swipe_detector->configure(swipe_config);
+
+    LOG_INFO("Swipe detector configured with DEBUG thresholds (low for testing)");
+    LOG_INFO("  min_velocity=" + std::to_string(swipe_config.min_velocity) + "px/frame");
+    LOG_INFO("  min_displacement=" + std::to_string(swipe_config.min_displacement) + "px");
+    LOG_INFO("  scale_change_threshold=" + std::to_string(swipe_config.scale_change_threshold));
+    LOG_INFO("  min_frames=" + std::to_string(swipe_config.min_frames));
 
     LOG_INFO("GestureRecognitionSystem initialized successfully");
     pImpl->initialized = true;
@@ -243,21 +255,34 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
     // Step 2: Extract landmarks for each detection
     auto landmark_start = std::chrono::high_resolution_clock::now();
     std::vector<HandLandmarks> landmarks_list;
+    int successful_extractions = 0;
+    int failed_extractions = 0;
+
     for (const auto& bbox : detection_boxes) {
         HandLandmarks landmarks;
         if (pImpl->landmark_extractor->extract(frame, bbox, landmarks)) {
             landmarks_list.push_back(landmarks);
+            successful_extractions++;
         } else {
             // Failed landmark extraction - use empty landmarks
             landmarks_list.push_back(HandLandmarks{});
+            failed_extractions++;
+            LOG_WARNING("Landmark extraction failed for bbox [" + std::to_string(bbox.x) + "," +
+                       std::to_string(bbox.y) + "," + std::to_string(bbox.width) + "," +
+                       std::to_string(bbox.height) + "] - " + pImpl->landmark_extractor->get_last_error());
         }
     }
     auto landmark_end = std::chrono::high_resolution_clock::now();
     double landmark_time = std::chrono::duration<double, std::milli>(landmark_end - landmark_start).count();
 
+    LOG_INFO("Landmark extraction: " + std::to_string(successful_extractions) + " successful, " +
+            std::to_string(failed_extractions) + " failed, time=" + std::to_string(landmark_time) + "ms");
+
     // Step 3: Update tracker
     pImpl->hand_tracker->update(detection_boxes, landmarks_list);
     auto tracks = pImpl->hand_tracker->get_active_tracks();
+
+    LOG_INFO("Active tracks after update: " + std::to_string(tracks.size()));
 
     // Step 4: For primary hand, update temporal buffer and detect gestures
     if (!tracks.empty()) {
@@ -266,8 +291,17 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
         // Push to temporal buffer
         pImpl->temporal_buffer->push(primary_hand);
 
+        size_t buffer_size = pImpl->temporal_buffer->size();
+        size_t buffer_capacity = pImpl->temporal_buffer->capacity();
+        bool buffer_full = pImpl->temporal_buffer->is_full();
+
+        LOG_INFO("Temporal buffer: " + std::to_string(buffer_size) + "/" +
+                std::to_string(buffer_capacity) + " (full=" + std::to_string(buffer_full) + ")");
+
         // Step 5: Detect gesture from temporal data
-        if (pImpl->temporal_buffer->is_full()) {
+        if (buffer_full) {
+            LOG_INFO("Buffer FULL - attempting gesture detection...");
+
             auto gesture_start = std::chrono::high_resolution_clock::now();
             GestureType gesture = pImpl->swipe_detector->detect(*pImpl->temporal_buffer);
             auto gesture_end = std::chrono::high_resolution_clock::now();
@@ -282,8 +316,8 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
                 result.bounding_box = primary_hand.get_bounding_box();
 
                 std::ostringstream msg;
-                msg << "Gesture detected: " << result.get_gesture_name()
-                    << " (confidence: " << result.confidence << ")";
+                msg << ">>> GESTURE DETECTED: " << result.get_gesture_name()
+                    << " (confidence: " << result.confidence << ") <<<";
                 LOG_INFO(msg.str());
 
                 // Trigger callback if set
@@ -294,11 +328,16 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
                 // Clear buffer for next gesture
                 pImpl->temporal_buffer->clear();
                 pImpl->swipe_detector->reset();
+                LOG_INFO("Buffer cleared after gesture detection");
+            } else {
+                LOG_DEBUG("Gesture detection attempted but no valid gesture found (confidence too low or motion too small)");
             }
 
             // Update classification time stats
             pImpl->avg_classification_time = (pImpl->avg_classification_time * pImpl->frame_count + gesture_time) /
                                             (pImpl->frame_count + 1);
+        } else {
+            LOG_DEBUG("Buffer not full yet, need " + std::to_string(buffer_capacity - buffer_size) + " more frames");
         }
 
         // Debug visualization
@@ -323,7 +362,7 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
             }
 
             // Draw gesture info
-            std::string info = "Buffer: " + std::to_string(pImpl->temporal_buffer->size()) + "/30";
+            std::string info = "Buffer: " + std::to_string(pImpl->temporal_buffer->size()) + "/15";
             cv::putText(pImpl->debug_frame, info, cv::Point(10, 30),
                        cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
         }

@@ -4,12 +4,16 @@
  */
 
 #include "unlook/gesture/HandLandmarkExtractor.hpp"
+#include <unlook/core/Logger.hpp>
 #include <onnxruntime_cxx_api.h>
 #include <opencv2/imgproc.hpp>
+#include <opencv2/photo.hpp>
 #include <opencv2/core/core.hpp>
 #include <chrono>
 #include <stdexcept>
 #include <cmath>
+#include <sstream>
+#include <atomic>
 
 namespace unlook {
 namespace gesture {
@@ -79,6 +83,43 @@ public:
                 return false;
             }
 
+            // ===== ONNX MODEL DEBUG LOGGING =====
+            LOG_INFO("=== ONNX MODEL DEBUG ===");
+            LOG_INFO("Model: " + config.model_path);
+            LOG_INFO("Number of inputs: " + std::to_string(num_input_nodes));
+            LOG_INFO("Number of outputs: " + std::to_string(num_output_nodes));
+
+            // Debug all outputs in detail
+            for (size_t i = 0; i < num_output_nodes; i++) {
+                auto output_name = ort_session->GetOutputNameAllocated(i, allocator);
+                std::string full_name = output_name.get();
+
+                LOG_INFO("Output[" + std::to_string(i) + "] name: '" + full_name +
+                         "' (length: " + std::to_string(full_name.length()) + ")");
+
+                // Debug character-by-character for encoding issues
+                std::ostringstream hex_dump;
+                for (size_t j = 0; j < full_name.length(); j++) {
+                    hex_dump << " [" << j << "]=" << (int)(unsigned char)full_name[j];
+                }
+                LOG_DEBUG("  Hex dump:" + hex_dump.str());
+
+                // Get output shape info
+                auto output_type_info = ort_session->GetOutputTypeInfo(i);
+                auto output_tensor_info = output_type_info.GetTensorTypeAndShapeInfo();
+                auto output_shape = output_tensor_info.GetShape();
+
+                std::ostringstream shape_str;
+                shape_str << "  Shape: [";
+                for (size_t j = 0; j < output_shape.size(); j++) {
+                    shape_str << output_shape[j];
+                    if (j < output_shape.size() - 1) shape_str << ", ";
+                }
+                shape_str << "]";
+                LOG_INFO(shape_str.str());
+            }
+            LOG_INFO("=== END ONNX MODEL DEBUG ===");
+
             // Get input name and shape
             auto input_name = ort_session->GetInputNameAllocated(0, allocator);
             input_name_str = input_name.get();
@@ -89,14 +130,29 @@ public:
             input_shape = input_tensor_info.GetShape();
 
             // Get output names and shapes for ALL outputs
-            // PINTO0309 model has 3 outputs: xyz_x21s, hand_scores, handedness
+            // PINTO0309 model has 3 outputs: xyz_x21, hand_score, lefthand_0_or_righthand_1
             output_name_strs.clear();
             output_names.clear();
+
+            // CRITICAL FIX: Reserve space to prevent reallocation and pointer invalidation
+            // When vector reallocates, ALL .c_str() pointers become invalid (dangling pointers)
+            // This was causing "output name cannot be empty" error in ONNX Runtime
+            output_name_strs.reserve(num_output_nodes);
+            output_names.reserve(num_output_nodes);
 
             for (size_t i = 0; i < num_output_nodes; i++) {
                 auto output_name = ort_session->GetOutputNameAllocated(i, allocator);
                 output_name_strs.push_back(output_name.get());
-                output_names.push_back(output_name_strs.back().c_str());
+                output_names.push_back(output_name_strs.back().c_str());  // Now safe - no reallocation
+            }
+
+            // Verification: Log collected output names to ensure validity
+            LOG_INFO("Collected " + std::to_string(output_names.size()) + " output names:");
+            for (size_t i = 0; i < output_names.size(); i++) {
+                std::string name_str(output_names[i]);
+                LOG_INFO("  output_names[" + std::to_string(i) + "] = '" + name_str +
+                         "' (length: " + std::to_string(name_str.length()) +
+                         ", ptr: " + std::to_string(reinterpret_cast<uintptr_t>(output_names[i])) + ")");
             }
 
             // Get shape of first output (landmarks: xyz_x21s)
@@ -145,6 +201,41 @@ public:
                 cv::cvtColor(resized, resized, cv::COLOR_BGR2RGB);
             }
 
+            // Apply CLAHE contrast enhancement if enabled
+            if (config.use_clahe) {
+                // Convert RGB to HSV for CLAHE on V channel
+                cv::Mat hsv;
+                cv::cvtColor(resized, hsv, cv::COLOR_RGB2HSV);
+
+                // Split channels
+                std::vector<cv::Mat> hsv_channels;
+                cv::split(hsv, hsv_channels);
+
+                // Apply CLAHE on V (Value/Brightness) channel
+                cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(
+                    config.clahe_clip_limit,
+                    cv::Size(config.clahe_tile_grid_width, config.clahe_tile_grid_height)
+                );
+                clahe->apply(hsv_channels[2], hsv_channels[2]);
+
+                // Merge channels back
+                cv::merge(hsv_channels, hsv);
+
+                // Convert back to RGB
+                cv::cvtColor(hsv, resized, cv::COLOR_HSV2RGB);
+
+                // Log CLAHE application (first few times)
+                // Thread-safe counter using std::atomic
+                static std::atomic<int> clahe_log_count{0};
+                int current_count = clahe_log_count.fetch_add(1, std::memory_order_relaxed);
+                if (current_count < 3) {
+                    LOG_DEBUG("HandLandmarkExtractor: CLAHE applied - clip_limit=" +
+                             std::to_string(config.clahe_clip_limit) +
+                             ", tile_size=" + std::to_string(config.clahe_tile_grid_width) + "x" +
+                             std::to_string(config.clahe_tile_grid_height));
+                }
+            }
+
             // Normalize to [0, 1] and convert to float
             resized.convertTo(resized, CV_32F, 1.0 / 255.0);
 
@@ -181,7 +272,9 @@ public:
         try {
             // Expected output: 21 landmarks * 3 coordinates (x, y, z)
             if (output_tensor.size() < 63) {
-                last_error = "Insufficient output data";
+                last_error = "Insufficient output data: got " + std::to_string(output_tensor.size()) +
+                             " values, expected 63 (21 landmarks * 3 coords)";
+                LOG_ERROR("HandLandmarkExtractor: " + last_error);
                 return false;
             }
 
@@ -213,7 +306,24 @@ public:
             landmarks.confidence = avg_confidence / 21.0f;
             landmarks.image_size = image_size;
 
-            return landmarks.confidence >= config.confidence_threshold;
+            // Log confidence calculation for first 5 extractions (thread-safe)
+            static std::atomic<int> confidence_log_count{0};
+            int log_count = confidence_log_count.fetch_add(1, std::memory_order_relaxed);
+            if (log_count < 5) {
+                LOG_INFO("Landmark confidence: " + std::to_string(landmarks.confidence) +
+                         " (threshold: " + std::to_string(config.confidence_threshold) +
+                         ", valid_points: " + std::to_string(static_cast<int>(avg_confidence)) + "/21)");
+            }
+
+            // Check confidence threshold with detailed error message
+            if (landmarks.confidence < config.confidence_threshold) {
+                last_error = "Confidence too low: " + std::to_string(landmarks.confidence) +
+                             " < threshold " + std::to_string(config.confidence_threshold) +
+                             " (valid_points: " + std::to_string(static_cast<int>(avg_confidence)) + "/21)";
+                return false;
+            }
+
+            return true;
 
         } catch (const std::exception& e) {
             last_error = std::string("Postprocessing error: ") + e.what();
@@ -273,11 +383,13 @@ bool HandLandmarkExtractor::extract(const cv::Mat& image,
                                      HandLandmarks& landmarks) {
     if (!pImpl->initialized) {
         pImpl->last_error = "Extractor not initialized";
+        LOG_ERROR("HandLandmarkExtractor: Not initialized");
         return false;
     }
 
     if (image.empty()) {
         pImpl->last_error = "Empty input image";
+        LOG_ERROR("HandLandmarkExtractor: Empty input image");
         return false;
     }
 
@@ -287,6 +399,7 @@ bool HandLandmarkExtractor::extract(const cv::Mat& image,
         // Preprocess image
         std::vector<float> input_tensor;
         if (!pImpl->preprocess(image, hand_roi, input_tensor)) {
+            LOG_ERROR("HandLandmarkExtractor: Preprocessing failed - " + pImpl->last_error);
             return false;
         }
 
@@ -301,15 +414,20 @@ bool HandLandmarkExtractor::extract(const cv::Mat& image,
             input_shape.size()
         );
 
-        // Run inference with ALL outputs (PINTO0309 model has 3)
+        // Run inference using the collected output_names from model metadata
+        // ONNX Runtime REQUIRES at least one output name - nullptr is NOT supported
+        // The output_names were collected during initialization (lines 130-139)
         auto output_tensors = pImpl->ort_session->Run(
             Ort::RunOptions{nullptr},
             pImpl->input_names.data(),
             &input_tensor_ort,
             1,
-            pImpl->output_names.data(),
-            pImpl->output_names.size()  // Request all outputs (3 for PINTO0309)
+            pImpl->output_names.data(),  // Use collected output names from model
+            pImpl->output_names.size()   // All outputs (PINTO0309 has 3: xyz_x21s, hand_scores, handedness)
         );
+
+        // Log number of outputs received for debugging
+        LOG_DEBUG("ONNX inference returned " + std::to_string(output_tensors.size()) + " output tensors");
 
         // Extract FIRST output data (xyz_x21s - landmarks)
         // PINTO0309 outputs: [0]=xyz_x21s [1]=hand_scores [2]=handedness
@@ -322,24 +440,64 @@ bool HandLandmarkExtractor::extract(const cv::Mat& image,
 
         std::vector<float> output_tensor(output_data, output_data + output_size);
 
-        // TODO: Optionally use output_tensors[1] for hand_scores confidence
-        // TODO: Optionally use output_tensors[2] for handedness (left/right)
+        // Log output tensor details for first few frames
+        // Thread-safe counter using std::atomic
+        static std::atomic<int> extraction_count{0};
+        int current_count = extraction_count.fetch_add(1, std::memory_order_relaxed);
+        if (current_count < 3) {
+            LOG_INFO("Output tensor size: " + std::to_string(output_size) +
+                    " (expected 63 for 21 landmarks * 3 coords)");
+        }
+
+        // TODO: Optionally use output_tensors[1] for hand_scores confidence (if size > 1)
+        // TODO: Optionally use output_tensors[2] for handedness (left/right) (if size > 2)
 
         // Postprocess results
         if (!pImpl->postprocess(output_tensor, hand_roi, image.size(), landmarks)) {
+            LOG_ERROR("HandLandmarkExtractor: Postprocessing failed - " + pImpl->last_error);
             return false;
         }
 
         auto end = std::chrono::high_resolution_clock::now();
         pImpl->last_extraction_time_ms = std::chrono::duration<double, std::milli>(end - start).count();
 
+        // Log successful extraction with clear visual indicator
+        LOG_INFO(std::string(">>> HandLandmarkExtractor: SUCCESS - 21 landmarks extracted, ") +
+                 "confidence=" + std::to_string(landmarks.confidence) +
+                 ", valid=" + std::to_string(landmarks.is_valid()) +
+                 ", time=" + std::to_string(pImpl->last_extraction_time_ms) + "ms");
+
         return true;
 
     } catch (const Ort::Exception& e) {
         pImpl->last_error = std::string("ONNX Runtime error: ") + e.what();
+        LOG_ERROR("HandLandmarkExtractor: ONNX Runtime error - " + std::string(e.what()));
+
+        // Enhanced context for debugging
+        LOG_ERROR("  Context information:");
+        LOG_ERROR("    Input tensor shape: [" + std::to_string(pImpl->config.input_height) +
+                  ", " + std::to_string(pImpl->config.input_width) + "]");
+        LOG_ERROR("    Number of output names: " + std::to_string(pImpl->output_names.size()));
+        LOG_ERROR("    Output names validity check:");
+        for (size_t i = 0; i < pImpl->output_names.size() && i < 5; i++) {
+            const char* name_ptr = pImpl->output_names[i];
+            if (name_ptr) {
+                std::string name_str(name_ptr);
+                LOG_ERROR("      output_names[" + std::to_string(i) + "] = '" + name_str +
+                         "' (length: " + std::to_string(name_str.length()) +
+                         ", valid: " + (name_str.empty() ? "NO" : "YES") + ")");
+            } else {
+                LOG_ERROR("      output_names[" + std::to_string(i) + "] = <nullptr>");
+            }
+        }
+        LOG_ERROR("    ROI: [" + std::to_string(hand_roi.x) + ", " + std::to_string(hand_roi.y) +
+                  ", " + std::to_string(hand_roi.width) + ", " + std::to_string(hand_roi.height) + "]");
+        LOG_ERROR("    Image size: " + std::to_string(image.cols) + "x" + std::to_string(image.rows));
+
         return false;
     } catch (const std::exception& e) {
         pImpl->last_error = std::string("Extraction error: ") + e.what();
+        LOG_ERROR("HandLandmarkExtractor: Exception - " + std::string(e.what()));
         return false;
     }
 }

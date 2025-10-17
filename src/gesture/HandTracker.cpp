@@ -4,6 +4,7 @@
  */
 
 #include "unlook/gesture/HandTracker.hpp"
+#include <unlook/core/Logger.hpp>
 #include <opencv2/video/tracking.hpp>
 #include <algorithm>
 #include <cmath>
@@ -283,6 +284,7 @@ void HandTracker::update(const std::vector<cv::Rect>& detections,
     }
 
     // Create new tracks for unmatched detections
+    int new_tracks_created = 0;
     for (size_t d = 0; d < detections.size(); ++d) {
         if (!detection_used[d]) {
             cv::Point2f center;
@@ -299,10 +301,12 @@ void HandTracker::update(const std::vector<cv::Rect>& detections,
             }
 
             pImpl->tracks.push_back(std::move(new_track));
+            new_tracks_created++;
         }
     }
 
     // Remove stale tracks
+    size_t tracks_before_removal = pImpl->tracks.size();
     pImpl->tracks.erase(
         std::remove_if(pImpl->tracks.begin(), pImpl->tracks.end(),
             [this](const TrackedHandInternal& track) {
@@ -311,6 +315,24 @@ void HandTracker::update(const std::vector<cv::Rect>& detections,
             }),
         pImpl->tracks.end()
     );
+    int tracks_removed = static_cast<int>(tracks_before_removal - pImpl->tracks.size());
+
+    // Count valid landmarks
+    int valid_landmarks = 0;
+    for (const auto& lm : landmarks) {
+        if (lm.is_valid()) {
+            valid_landmarks++;
+        }
+    }
+
+    // Production logging
+    LOG_INFO("HandTracker: detections=" + std::to_string(detections.size()) +
+            ", landmarks=" + std::to_string(landmarks.size()) +
+            ", valid_landmarks=" + std::to_string(valid_landmarks) +
+            ", associations=" + std::to_string(associations.size()) +
+            ", new_tracks=" + std::to_string(new_tracks_created) +
+            ", removed=" + std::to_string(tracks_removed) +
+            ", active_tracks=" + std::to_string(pImpl->tracks.size()));
 }
 
 std::vector<TrackedHand> HandTracker::get_active_tracks() const {
