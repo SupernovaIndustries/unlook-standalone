@@ -1,9 +1,9 @@
 /**
  * @file GestureRecognitionSystem.hpp
- * @brief Main gesture recognition system integrating MediaPipe and ONNX Runtime
+ * @brief Main gesture recognition system using MediaPipe
  *
  * This class provides the primary interface for hand gesture recognition,
- * combining MediaPipe for hand detection and ONNX Runtime for gesture classification.
+ * using MediaPipe for hand detection and gesture classification.
  * Designed for real-time operation on Raspberry Pi CM5.
  *
  * @copyright 2025 Unlook Project
@@ -30,16 +30,14 @@ namespace gesture {
 
 // Forward declarations
 class MediaPipeWrapper;
-class ONNXClassifier;
-class IPCBridge;
 
 /**
  * @brief Main gesture recognition system
  *
  * Provides complete pipeline for real-time hand gesture recognition:
  * 1. Acquires frames from Unlook camera system
- * 2. Detects hands using MediaPipe (via Python wrapper)
- * 3. Classifies gestures using ONNX Runtime (C++)
+ * 2. Detects hands and gestures using MediaPipe
+ * 3. Detects swipe gestures using geometric analysis
  * 4. Triggers gesture callbacks for application integration
  *
  * Example usage:
@@ -50,8 +48,8 @@ class IPCBridge;
  *
  * gesture_system.initialize(camera_system, config);
  * gesture_system.set_gesture_callback([](const GestureResult& result, void* data) {
- *     if (result.type == GestureType::OPEN_PALM) {
- *         std::cout << "Opening window..." << std::endl;
+ *     if (result.type == GestureType::SWIPE_LEFT) {
+ *         std::cout << "Swiped left..." << std::endl;
  *     }
  * }, nullptr);
  *

@@ -1,16 +1,22 @@
 # Gesture recognition module CMakeLists.txt
 
-# Find ONNX Runtime
-find_package(ONNXRuntime REQUIRED)
+# Find pybind11 and Python3 (for MediaPipe wrapper)
+find_package(pybind11 REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-# Gesture library sources
+message(STATUS "pybind11 found: ${pybind11_FOUND}")
+message(STATUS "Python3 found: ${Python3_FOUND}")
+message(STATUS "Python3 version: ${Python3_VERSION}")
+message(STATUS "Python3 include dirs: ${Python3_INCLUDE_DIRS}")
+message(STATUS "Python3 libraries: ${Python3_LIBRARIES}")
+
+# Gesture library sources (MediaPipe only, no ONNX)
 set(GESTURE_SOURCES
     GestureRecognitionSystem.cpp
-    HandDetector.cpp
-    HandLandmarkExtractor.cpp
-    HandTracker.cpp
     TemporalBuffer.cpp
     GeometricSwipeDetector.cpp
+    MediaPipeWrapper.cpp
+    MotionBlurCompensation.cpp
 )
 
 # Gesture library
@@ -32,16 +38,25 @@ target_include_directories(unlook_gesture
     PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${OpenCV_INCLUDE_DIRS}
+        ${Python3_INCLUDE_DIRS}
+        ${pybind11_INCLUDE_DIRS}
 )
 
-# Link dependencies
+# Link dependencies (MediaPipe only, no ONNX)
 target_link_libraries(unlook_gesture
     PUBLIC
         ${OpenCV_LIBS}
-        ONNXRuntime::ONNXRuntime
     PRIVATE
         unlook_camera_impl
         unlook_core
+        pybind11::embed
+        Python3::Python
+)
+
+# Set Python path for runtime
+target_compile_definitions(unlook_gesture PRIVATE
+    PYTHON_SCRIPTS_PATH="${CMAKE_SOURCE_DIR}/python"
+    MEDIAPIPE_MODEL_PATH="${CMAKE_SOURCE_DIR}/models/gesture_recognizer.task"
 )
 
 # Installation

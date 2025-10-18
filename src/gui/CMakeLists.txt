@@ -23,7 +23,7 @@ set(GUI_SOURCES
     ../core/QtLogHandler.cpp  # Qt-dependent logging handler (GUI only)
     main_window.cpp
     camera_preview_widget.cpp
-    depth_test_widget.cpp
+    # depth_test_widget.cpp  # DISABLED - not needed for gesture recognition
     gesture_widget.cpp
     options_widget.cpp
     as1170_debug_dialog.cpp
@@ -38,7 +38,7 @@ set(GUI_SOURCES
 set(GUI_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/main_window.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/camera_preview_widget.hpp
-    ${CMAKE_SOURCE_DIR}/include/unlook/gui/depth_test_widget.hpp
+    # ${CMAKE_SOURCE_DIR}/include/unlook/gui/depth_test_widget.hpp  # DISABLED
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/gesture_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/options_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/as1170_debug_dialog.hpp
@@ -52,7 +52,7 @@ set(GUI_HEADERS
 set(GUI_UI_FILES
     ui/main_window.ui
     ui/camera_preview_widget.ui
-    ui/depth_test_widget.ui
+    # ui/depth_test_widget.ui  # DISABLED
     ui/gesture_widget.ui
     ui/options_widget.ui
     ui/as1170_debug_dialog.ui

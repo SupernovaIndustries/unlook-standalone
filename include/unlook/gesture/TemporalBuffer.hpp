@@ -63,6 +63,11 @@ struct HandFrame {
  * - Swipe detection analyzes motion over ~0.5-1 second
  * - Buffer fills before gesture analysis begins
  *
+ * Frame Loss Tolerance:
+ * - Allows 1-2 gap frames (hand temporarily lost) without clearing buffer
+ * - Only resets if hand lost for >max_gap_frames consecutive frames
+ * - Essential for fast swipe detection where MediaPipe may lose tracking briefly
+ *
  * Thread-safety: Not thread-safe. External synchronization required.
  *
  * Performance: O(1) push, O(N) query operations.
@@ -73,8 +78,9 @@ public:
      * @brief Constructor with capacity
      *
      * @param capacity Maximum number of frames to store (default: 30)
+     * @param max_gap_frames Maximum consecutive frames without detection before clearing (default: 2)
      */
-    explicit TemporalBuffer(size_t capacity = 30);
+    explicit TemporalBuffer(size_t capacity = 30, size_t max_gap_frames = 2);
 
     /**
      * @brief Destructor
@@ -91,6 +97,8 @@ public:
      * @brief Push new hand frame to buffer
      *
      * If buffer is full, oldest frame is removed (FIFO).
+     * If hand.is_active is false, increments gap counter but keeps buffer.
+     * Only clears buffer if gaps exceed max_gap_frames.
      *
      * @param hand Tracked hand to add
      */
@@ -215,6 +223,20 @@ public:
      * @return true if size() >= min_frames
      */
     bool has_minimum_frames(size_t min_frames) const;
+
+    /**
+     * @brief Get current consecutive gap frames count
+     *
+     * @return Number of consecutive frames without hand detection
+     */
+    size_t get_gap_frames() const;
+
+    /**
+     * @brief Get maximum allowed gap frames
+     *
+     * @return Maximum consecutive gap frames before buffer reset
+     */
+    size_t get_max_gap_frames() const;
 
 private:
     class Impl;

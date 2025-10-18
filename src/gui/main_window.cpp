@@ -1,6 +1,6 @@
 #include "unlook/gui/main_window.hpp"
 #include "unlook/gui/camera_preview_widget.hpp"
-#include "unlook/gui/depth_test_widget.hpp"
+// #include "unlook/gui/depth_test_widget.hpp"  // DISABLED - not needed for gesture
 #include "unlook/gui/gesture_widget.hpp"
 // #include "unlook/gui/face_enrollment_widget.hpp"  // Temporarily disabled
 #include "unlook/gui/options_widget.hpp"
@@ -215,9 +215,9 @@ void UnlookMainWindow::showCameraPreview() {
     navigateToScreen(Screen::CAMERA_PREVIEW);
 }
 
-void UnlookMainWindow::showDepthTest() {
-    navigateToScreen(Screen::DEPTH_TEST);
-}
+// void UnlookMainWindow::showDepthTest() {  // DISABLED
+//     navigateToScreen(Screen::DEPTH_TEST);
+// }
 
 void UnlookMainWindow::showGestureRecognition() {
     navigateToScreen(Screen::GESTURE_RECOGNITION);
@@ -283,7 +283,7 @@ void UnlookMainWindow::updateSystemStatus() {
 void UnlookMainWindow::initializeAdditionalComponents() {
     // Connect UI signals to slots
     connect(ui->camera_preview_button, &QPushButton::clicked, this, &UnlookMainWindow::showCameraPreview);
-    connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showDepthTest);
+    // connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showDepthTest);  // DISABLED
     connect(ui->gesture_button, &QPushButton::clicked, this, &UnlookMainWindow::showGestureRecognition);
     // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
@@ -400,14 +400,14 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             ui->title_label->setText("CAMERA PREVIEW");
             break;
             
-        case Screen::DEPTH_TEST:
-            if (!depth_test_widget_) {
-                depth_test_widget_ = std::make_unique<DepthTestWidget>(camera_system_);
-                ui->screen_stack->addWidget(depth_test_widget_.get());
-            }
-            ui->screen_stack->setCurrentWidget(depth_test_widget_.get());
-            ui->title_label->setText("DEPTH TEST");
-            break;
+        // case Screen::DEPTH_TEST:  // DISABLED
+        //     if (!depth_test_widget_) {
+        //         depth_test_widget_ = std::make_unique<DepthTestWidget>(camera_system_);
+        //         ui->screen_stack->addWidget(depth_test_widget_.get());
+        //     }
+        //     ui->screen_stack->setCurrentWidget(depth_test_widget_.get());
+        //     ui->title_label->setText("DEPTH TEST");
+        //     break;
 
         case Screen::GESTURE_RECOGNITION:
             if (!gesture_widget_) {
@@ -463,7 +463,7 @@ void UnlookMainWindow::updateNavigationButtons() {
     bool camera_ready = camera_system_initialized_ && camera_system_ && camera_system_->isReady();
 
     ui->camera_preview_button->setEnabled(camera_ready);
-    ui->depth_test_button->setEnabled(camera_ready);
+    // ui->depth_test_button->setEnabled(camera_ready);  // DISABLED
     ui->gesture_button->setEnabled(camera_ready);
 
     // Options is always available

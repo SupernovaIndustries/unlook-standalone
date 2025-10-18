@@ -19,9 +19,13 @@ class TemporalBuffer::Impl {
 public:
     std::deque<HandFrame> buffer;
     size_t max_capacity;
+    size_t max_gap_frames;           // Maximum consecutive frames without detection
+    size_t consecutive_gap_frames;   // Current consecutive gap counter
 
-    explicit Impl(size_t capacity)
-        : max_capacity(capacity) {
+    explicit Impl(size_t capacity, size_t max_gaps)
+        : max_capacity(capacity)
+        , max_gap_frames(max_gaps)
+        , consecutive_gap_frames(0) {
         // Note: std::deque doesn't have reserve(), but grows efficiently
     }
 
@@ -46,6 +50,7 @@ public:
 
     void clear() {
         buffer.clear();
+        consecutive_gap_frames = 0;
     }
 
     size_t capacity() const {
@@ -94,16 +99,40 @@ public:
     // ===== Motion Analysis =====
 
     cv::Point2f compute_average_velocity() const {
-        if (buffer.empty()) {
+        if (buffer.size() < 2) {
             return cv::Point2f(0, 0);
         }
 
-        cv::Point2f sum(0, 0);
-        for (const auto& frame : buffer) {
-            sum += frame.velocity;
+        // Calculate velocity from position changes between consecutive frames
+        cv::Point2f total_velocity(0, 0);
+        int valid_count = 0;
+
+        for (size_t i = 1; i < buffer.size(); ++i) {
+            const auto& prev = buffer[i-1];
+            const auto& curr = buffer[i];
+
+            // Calculate time difference in seconds
+            auto time_diff = std::chrono::duration<double>(
+                curr.timestamp - prev.timestamp
+            ).count();
+
+            if (time_diff > 0.001) {  // Avoid division by very small numbers
+                // Calculate velocity in pixels per second
+                cv::Point2f velocity_px_per_sec = (curr.position - prev.position) / static_cast<float>(time_diff);
+
+                // Convert to pixels per frame (assume ~30 FPS average)
+                cv::Point2f velocity_px_per_frame = velocity_px_per_sec / 30.0f;
+
+                total_velocity += velocity_px_per_frame;
+                valid_count++;
+            }
         }
 
-        return sum * (1.0f / static_cast<float>(buffer.size()));
+        if (valid_count == 0) {
+            return cv::Point2f(0, 0);
+        }
+
+        return total_velocity / static_cast<float>(valid_count);
     }
 
     float compute_total_displacement() const {
@@ -183,8 +212,8 @@ public:
 
 // ===== Public API Implementation =====
 
-TemporalBuffer::TemporalBuffer(size_t capacity)
-    : pImpl(std::make_unique<Impl>(capacity)) {
+TemporalBuffer::TemporalBuffer(size_t capacity, size_t max_gap_frames)
+    : pImpl(std::make_unique<Impl>(capacity, max_gap_frames)) {
 }
 
 TemporalBuffer::~TemporalBuffer() = default;
@@ -193,8 +222,22 @@ TemporalBuffer::TemporalBuffer(TemporalBuffer&&) noexcept = default;
 TemporalBuffer& TemporalBuffer::operator=(TemporalBuffer&&) noexcept = default;
 
 void TemporalBuffer::push(const TrackedHand& hand) {
-    HandFrame frame(hand);
-    pImpl->push(frame);
+    // Frame loss tolerance: allow gaps without clearing buffer
+    if (hand.is_active) {
+        // Hand detected - reset gap counter and add frame
+        pImpl->consecutive_gap_frames = 0;
+        HandFrame frame(hand);
+        pImpl->push(frame);
+    } else {
+        // Hand not detected - increment gap counter
+        pImpl->consecutive_gap_frames++;
+
+        // Only clear buffer if gaps exceed threshold
+        if (pImpl->consecutive_gap_frames > pImpl->max_gap_frames) {
+            pImpl->clear();
+        }
+        // Otherwise keep buffer intact (tolerance for brief tracking loss)
+    }
 }
 
 void TemporalBuffer::push(const HandFrame& frame) {
@@ -263,6 +306,14 @@ double TemporalBuffer::compute_duration_ms() const {
 
 bool TemporalBuffer::has_minimum_frames(size_t min_frames) const {
     return pImpl->has_minimum_frames(min_frames);
+}
+
+size_t TemporalBuffer::get_gap_frames() const {
+    return pImpl->consecutive_gap_frames;
+}
+
+size_t TemporalBuffer::get_max_gap_frames() const {
+    return pImpl->max_gap_frames;
 }
 
 } // namespace gesture

@@ -4,11 +4,10 @@
  */
 
 #include <unlook/gesture/GestureRecognitionSystem.hpp>
-#include <unlook/gesture/HandDetector.hpp>
-#include <unlook/gesture/HandLandmarkExtractor.hpp>
-#include <unlook/gesture/HandTracker.hpp>
 #include <unlook/gesture/TemporalBuffer.hpp>
 #include <unlook/gesture/GeometricSwipeDetector.hpp>
+#include <unlook/gesture/MediaPipeWrapper.hpp>
+#include <unlook/gesture/MotionBlurCompensation.hpp>
 #include <unlook/core/Logger.hpp>
 #include <opencv2/imgproc.hpp>
 #include <chrono>
@@ -25,10 +24,13 @@ public:
     GestureConfig config;
     std::string last_error;
 
-    // Core components
-    std::unique_ptr<HandDetector> hand_detector;
-    std::unique_ptr<HandLandmarkExtractor> landmark_extractor;
-    std::unique_ptr<HandTracker> hand_tracker;
+    // MediaPipe backend
+    std::unique_ptr<MediaPipeWrapper> mediapipe_detector;
+
+    // Motion blur compensation preprocessing
+    std::unique_ptr<MotionBlurCompensation> motion_blur_compensator;
+
+    // Temporal processing for swipe detection
     std::unique_ptr<TemporalBuffer> temporal_buffer;
     std::unique_ptr<GeometricSwipeDetector> swipe_detector;
 
@@ -64,99 +66,75 @@ bool GestureRecognitionSystem::initialize(
     }
 
     // Camera system is optional - can be nullptr if using process_frame() directly
-    // if (!camera_system) {
-    //     pImpl->last_error = "Camera system is null";
-    //     return false;
-    // }
-
     pImpl->config = config;
 
-    // Initialize all components
-    pImpl->hand_detector = std::make_unique<HandDetector>();
-    pImpl->landmark_extractor = std::make_unique<HandLandmarkExtractor>();
-    pImpl->hand_tracker = std::make_unique<HandTracker>();
-    // DEBUG: Reduced buffer for faster testing (15 frames = 1 second at 15fps)
-    // PRODUCTION: Use 30 frames for more stable detection
-    pImpl->temporal_buffer = std::make_unique<TemporalBuffer>(15);
-    pImpl->swipe_detector = std::make_unique<GeometricSwipeDetector>();
+    LOG_INFO("GestureRecognitionSystem: Initializing MediaPipe backend");
 
-    // Configure hand detector
-    HandDetectorConfig det_config;
-    // Use model path from config (set by GUI or application)
-    if (!config.palm_detection_model_path.empty()) {
-        det_config.model_path = config.palm_detection_model_path;
-    } else {
-        // Fallback to relative path (may fail if working directory is wrong)
-        det_config.model_path = "third-party/hand-gesture-recognition-using-onnx/model/palm_detection/palm_detection_full_inf_post_192x192.onnx";
-        LOG_WARNING("Using fallback relative path for palm detection model - may fail!");
-    }
-    det_config.score_threshold = config.min_detection_confidence;
-    det_config.max_num_hands = config.max_num_hands;
+    try {
+        std::string model_path = "/home/alessandro/unlook-gesture/models/gesture_recognizer.task";
 
-    LOG_INFO("Initializing hand detector with model: " + det_config.model_path);
+        pImpl->mediapipe_detector = std::make_unique<MediaPipeWrapper>(
+            model_path,
+            1,    // num_hands = 1 (single hand)
+            0.4f, // min_detection_confidence (initial detection)
+            0.3f  // min_tracking_confidence (lower for fast motion tolerance)
+        );
 
-    if (!pImpl->hand_detector->initialize(det_config)) {
-        pImpl->last_error = "Failed to initialize hand detector: " +
-                           pImpl->hand_detector->get_last_error();
+        LOG_INFO("MediaPipe backend initialized successfully");
+
+        // Initialize motion blur compensation (lightweight preprocessing)
+        MotionBlurConfig blur_config;
+        blur_config.bilateral_diameter = 5;   // Fast mode (5x5 kernel)
+        blur_config.sigma_color = 50.0;       // Moderate smoothing
+        blur_config.sigma_space = 50.0;       // Moderate spatial
+        blur_config.enabled = true;           // Enable by default
+        pImpl->motion_blur_compensator = std::make_unique<MotionBlurCompensation>(blur_config);
+
+        LOG_INFO("Motion blur compensation initialized (bilateral filter d=5)");
+
+        // Initialize temporal buffer and swipe detector for swipe gestures
+        // Buffer: 7 frames capacity, 2 gap frames tolerance for fast swipes
+        pImpl->temporal_buffer = std::make_unique<TemporalBuffer>(7, 2);
+        pImpl->swipe_detector = std::make_unique<GeometricSwipeDetector>();
+
+        // Configure swipe detector - BALANCED thresholds
+        SwipeConfig swipe_config;
+        // Directional swipes (LEFT/RIGHT/UP/DOWN) - require clear movement
+        swipe_config.min_velocity = 30.0f;                      // 30 px/frame → very fast movement
+        swipe_config.min_displacement = 100.0f;                 // 100 px → very clear gesture
+        swipe_config.min_displacement_horizontal = 100.0f;      // 100 px horizontal
+        swipe_config.min_displacement_vertical = 100.0f;        // 100 px vertical
+
+        // Depth swipes (FORWARD/BACKWARD) - based on scale change
+        swipe_config.scale_change_threshold = 0.20f;            // 20% scale change (real bounding box now!)
+        swipe_config.min_scale_velocity = 0.015f;               // 1.5% scale change per frame
+
+        swipe_config.direction_threshold = 0.5f;                // 50% axis dominance
+        swipe_config.direction_purity = 0.5f;                   // 50% direction purity
+        swipe_config.min_frames = 5;  // Minimum 5 consecutive frames with hand
+        pImpl->swipe_detector->configure(swipe_config);
+
+        LOG_INFO("Temporal buffer and swipe detector initialized (BALANCED THRESHOLDS)");
+        LOG_INFO("  buffer_capacity=7 frames");
+        LOG_INFO("  max_gap_frames=2 (tolerance for brief tracking loss)");
+        LOG_INFO("  Directional swipes (LEFT/RIGHT/UP/DOWN):");
+        LOG_INFO("    min_velocity=" + std::to_string(swipe_config.min_velocity) + " px/frame");
+        LOG_INFO("    min_displacement=" + std::to_string(swipe_config.min_displacement) + " px");
+        LOG_INFO("  Depth swipes (FORWARD/BACKWARD):");
+        LOG_INFO("    scale_change_threshold=" + std::to_string(swipe_config.scale_change_threshold) + " (20% - real bbox)");
+        LOG_INFO("    min_scale_velocity=" + std::to_string(swipe_config.min_scale_velocity) + " (1.5% per frame)");
+        LOG_INFO("  direction_threshold=" + std::to_string(swipe_config.direction_threshold));
+        LOG_INFO("  min_frames=" + std::to_string(swipe_config.min_frames));
+
+        pImpl->initialized = true;
+        LOG_INFO("GestureRecognitionSystem initialized successfully (MediaPipe only)");
+        return true;
+
+    } catch (const std::exception& e) {
+        pImpl->last_error = "MediaPipe initialization failed: " + std::string(e.what());
         LOG_ERROR(pImpl->last_error);
         return false;
     }
-
-    LOG_INFO("Hand detector initialized successfully");
-
-    // Configure landmark extractor
-    HandLandmarkConfig landmark_config;
-    // Use model path from config (set by GUI or application)
-    if (!config.hand_landmark_model_path.empty()) {
-        landmark_config.model_path = config.hand_landmark_model_path;
-    } else {
-        // Fallback to relative path (may fail if working directory is wrong)
-        landmark_config.model_path = "third-party/hand-gesture-recognition-using-onnx/model/hand_landmark/hand_landmark_sparse_Nx3x224x224.onnx";
-        LOG_WARNING("Using fallback relative path for hand landmark model - may fail!");
-    }
-    landmark_config.confidence_threshold = config.min_tracking_confidence;
-
-    LOG_INFO("Initializing landmark extractor with model: " + landmark_config.model_path);
-
-    if (!pImpl->landmark_extractor->initialize(landmark_config)) {
-        pImpl->last_error = "Failed to initialize landmark extractor: " +
-                           pImpl->landmark_extractor->get_last_error();
-        LOG_ERROR(pImpl->last_error);
-        return false;
-    }
-
-    LOG_INFO("Landmark extractor initialized successfully");
-
-    // Configure hand tracker
-    HandTrackerConfig tracker_config;
-    tracker_config.max_missed_frames = 5;
-    tracker_config.position_noise = 0.1f;
-    tracker_config.velocity_noise = 0.5f;
-    tracker_config.measurement_noise = 1.0f;
-    pImpl->hand_tracker->configure(tracker_config);
-
-    // Configure swipe detector
-    // DEBUG: Lower thresholds for easier initial testing
-    // PRODUCTION: After testing, restore to min_velocity=50.0f, min_displacement=100.0f
-    SwipeConfig swipe_config;
-    swipe_config.min_velocity = 5.0f;                   // DEBUG: 5px/frame (PRODUCTION: 50.0f)
-    swipe_config.min_displacement = 30.0f;              // DEBUG: 30px total (PRODUCTION: 100.0f)
-    swipe_config.min_displacement_horizontal = 30.0f;   // DEBUG: 30px horizontal (PRODUCTION: 80.0f)
-    swipe_config.min_displacement_vertical = 30.0f;     // DEBUG: 30px vertical (PRODUCTION: 80.0f)
-    swipe_config.scale_change_threshold = 0.15f;        // DEBUG: 15% scale change (PRODUCTION: 0.25f)
-    swipe_config.direction_threshold = 0.5f;            // DEBUG: More lenient (PRODUCTION: 0.7f)
-    swipe_config.min_frames = 5;                        // DEBUG: Fewer frames needed (PRODUCTION: 10)
-    pImpl->swipe_detector->configure(swipe_config);
-
-    LOG_INFO("Swipe detector configured with DEBUG thresholds (low for testing)");
-    LOG_INFO("  min_velocity=" + std::to_string(swipe_config.min_velocity) + "px/frame");
-    LOG_INFO("  min_displacement=" + std::to_string(swipe_config.min_displacement) + "px");
-    LOG_INFO("  scale_change_threshold=" + std::to_string(swipe_config.scale_change_threshold));
-    LOG_INFO("  min_frames=" + std::to_string(swipe_config.min_frames));
-
-    LOG_INFO("GestureRecognitionSystem initialized successfully");
-    pImpl->initialized = true;
-    return true;
 }
 
 bool GestureRecognitionSystem::is_initialized() const {
@@ -217,110 +195,143 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
         pImpl->debug_frame = frame.clone();
     }
 
-    // Step 1: Detect hands
-    auto det_start = std::chrono::high_resolution_clock::now();
-    std::vector<HandDetection> detections;
-
     static int process_frame_count = 0;
     process_frame_count++;
 
-    if (!pImpl->hand_detector->detect(frame, detections)) {
-        pImpl->last_error = "Hand detection failed: " +
-                           pImpl->hand_detector->get_last_error();
+    // ============================================================================
+    // MOTION BLUR COMPENSATION (PREPROCESSING)
+    // ============================================================================
+    cv::Mat preprocessed_frame = frame;
+    if (pImpl->motion_blur_compensator && pImpl->motion_blur_compensator->is_enabled()) {
+        preprocessed_frame = pImpl->motion_blur_compensator->process(frame);
+    }
+
+    // ============================================================================
+    // MEDIAPIPE PROCESSING (ONLY BACKEND)
+    // ============================================================================
+    auto det_start = std::chrono::high_resolution_clock::now();
+
+    std::string gesture_name;
+    std::vector<std::vector<float>> landmarks_mp;
+    float confidence_mp;
+
+    if (!pImpl->mediapipe_detector->detect(preprocessed_frame, gesture_name, landmarks_mp, confidence_mp)) {
+        pImpl->last_error = "MediaPipe detection failed: " + pImpl->mediapipe_detector->getLastError();
         LOG_ERROR(pImpl->last_error);
         return false;
     }
+
     auto det_end = std::chrono::high_resolution_clock::now();
     double det_time = std::chrono::duration<double, std::milli>(det_end - det_start).count();
 
-    // Log detection results periodically
+    // Enhanced logging with tracking quality info
     if (process_frame_count <= 5 || process_frame_count % 50 == 0) {
         LOG_INFO("GestureRecognitionSystem: Frame #" + std::to_string(process_frame_count));
-        LOG_INFO("  Hand detection time: " + std::to_string(det_time) + "ms");
-        LOG_INFO("  Detections found: " + std::to_string(detections.size()));
+        LOG_INFO("  MediaPipe detection time: " + std::to_string(det_time) + "ms");
 
-        if (detections.size() > 0) {
-            LOG_INFO("  HAND DETECTED! Processing landmarks...");
+        if (landmarks_mp.empty()) {
+            LOG_INFO("  Hand: NOT DETECTED");
         } else {
-            LOG_DEBUG("  No hands detected in this frame");
+            LOG_INFO("  Hand: DETECTED (landmarks=" + std::to_string(landmarks_mp.size()) +
+                    ", confidence=" + std::to_string(confidence_mp) + ")");
+            LOG_INFO("  Gesture: " + (gesture_name.empty() ? "none" : gesture_name));
         }
+
+        // Buffer status
+        LOG_INFO("  Temporal buffer: " + std::to_string(pImpl->temporal_buffer->size()) + "/" +
+                std::to_string(pImpl->temporal_buffer->capacity()) + " frames" +
+                " (gap_frames=" + std::to_string(pImpl->temporal_buffer->get_gap_frames()) + "/" +
+                std::to_string(pImpl->temporal_buffer->get_max_gap_frames()) + ")");
     }
 
-    // Convert HandDetection to cv::Rect for tracker
-    std::vector<cv::Rect> detection_boxes;
-    for (const auto& det : detections) {
-        detection_boxes.push_back(det.bounding_box);
-    }
+    // Process hand detection (active or inactive)
+    TrackedHand tracked_hand;
+    tracked_hand.track_id = 0;  // Single hand tracking
+    tracked_hand.timestamp = std::chrono::steady_clock::now();
 
-    // Step 2: Extract landmarks for each detection
-    auto landmark_start = std::chrono::high_resolution_clock::now();
-    std::vector<HandLandmarks> landmarks_list;
-    int successful_extractions = 0;
-    int failed_extractions = 0;
+    if (!landmarks_mp.empty()) {
+        // Hand detected - create active TrackedHand
+        HandLandmarks hand_landmarks;
+        hand_landmarks.confidence = confidence_mp;
 
-    for (const auto& bbox : detection_boxes) {
-        HandLandmarks landmarks;
-        if (pImpl->landmark_extractor->extract(frame, bbox, landmarks)) {
-            landmarks_list.push_back(landmarks);
-            successful_extractions++;
-        } else {
-            // Failed landmark extraction - use empty landmarks
-            landmarks_list.push_back(HandLandmarks{});
-            failed_extractions++;
-            LOG_WARNING("Landmark extraction failed for bbox [" + std::to_string(bbox.x) + "," +
-                       std::to_string(bbox.y) + "," + std::to_string(bbox.width) + "," +
-                       std::to_string(bbox.height) + "] - " + pImpl->landmark_extractor->get_last_error());
+        int h = frame.rows;
+        int w = frame.cols;
+
+        // Calculate centroid position and bounding box
+        float sum_x = 0.0f, sum_y = 0.0f;
+        float min_x = 1.0f, max_x = 0.0f;
+        float min_y = 1.0f, max_y = 0.0f;
+        int valid_points = 0;
+
+        for (size_t i = 0; i < landmarks_mp.size() && i < 21; ++i) {
+            hand_landmarks.points[i] = cv::Point3f(
+                landmarks_mp[i][0],  // x [0,1]
+                landmarks_mp[i][1],  // y [0,1]
+                landmarks_mp[i][2]   // z (depth)
+            );
+
+            // Sum for centroid calculation (in pixel coordinates)
+            sum_x += landmarks_mp[i][0] * w;
+            sum_y += landmarks_mp[i][1] * h;
+
+            // Track min/max for bounding box (in normalized coords)
+            min_x = std::min(min_x, landmarks_mp[i][0]);
+            max_x = std::max(max_x, landmarks_mp[i][0]);
+            min_y = std::min(min_y, landmarks_mp[i][1]);
+            max_y = std::max(max_y, landmarks_mp[i][1]);
+
+            valid_points++;
         }
-    }
-    auto landmark_end = std::chrono::high_resolution_clock::now();
-    double landmark_time = std::chrono::duration<double, std::milli>(landmark_end - landmark_start).count();
 
-    LOG_INFO("Landmark extraction: " + std::to_string(successful_extractions) + " successful, " +
-            std::to_string(failed_extractions) + " failed, time=" + std::to_string(landmark_time) + "ms");
+        tracked_hand.position = cv::Point2f(sum_x / valid_points, sum_y / valid_points);
+        tracked_hand.velocity = cv::Point2f(0.0f, 0.0f);  // Will be calculated by temporal buffer
 
-    // Step 3: Update tracker
-    pImpl->hand_tracker->update(detection_boxes, landmarks_list);
-    auto tracks = pImpl->hand_tracker->get_active_tracks();
+        // Calculate actual hand size from bounding box of landmarks (in pixels)
+        float hand_width = (max_x - min_x) * w;
+        float hand_height = (max_y - min_y) * h;
+        tracked_hand.size = cv::Size2f(hand_width, hand_height);
+        tracked_hand.landmarks = hand_landmarks;
+        tracked_hand.confidence = confidence_mp;
+        tracked_hand.frames_since_detection = 0;
+        tracked_hand.is_active = true;
 
-    LOG_INFO("Active tracks after update: " + std::to_string(tracks.size()));
+        // Add active hand to temporal buffer
+        pImpl->temporal_buffer->push(tracked_hand);
 
-    // Step 4: For primary hand, update temporal buffer and detect gestures
-    if (!tracks.empty()) {
-        const auto& primary_hand = tracks[0];  // Use first tracked hand
+        // Check if MediaPipe directly recognized a gesture
+        if (!gesture_name.empty() && confidence_mp >= pImpl->config.min_gesture_confidence) {
+            // Map MediaPipe gesture to our GestureType
+            // For now, just report it as UNKNOWN (MediaPipe gestures are different from swipes)
+            result.type = GestureType::UNKNOWN; // Will be replaced by swipe detection
+            result.confidence = confidence_mp;
+            result.landmarks = hand_landmarks;
 
-        // Push to temporal buffer
-        pImpl->temporal_buffer->push(primary_hand);
+            LOG_INFO("MediaPipe recognized gesture: " + gesture_name + " (not using for now)");
+        }
 
-        size_t buffer_size = pImpl->temporal_buffer->size();
-        size_t buffer_capacity = pImpl->temporal_buffer->capacity();
-        bool buffer_full = pImpl->temporal_buffer->is_full();
-
-        LOG_INFO("Temporal buffer: " + std::to_string(buffer_size) + "/" +
-                std::to_string(buffer_capacity) + " (full=" + std::to_string(buffer_full) + ")");
-
-        // Step 5: Detect gesture from temporal data
-        if (buffer_full) {
-            LOG_INFO("Buffer FULL - attempting gesture detection...");
-
+        // Use swipe detector for swipe gestures (MediaPipe doesn't detect swipes)
+        if (pImpl->temporal_buffer->is_full()) {
             auto gesture_start = std::chrono::high_resolution_clock::now();
-            GestureType gesture = pImpl->swipe_detector->detect(*pImpl->temporal_buffer);
+            GestureType swipe_gesture = pImpl->swipe_detector->detect(*pImpl->temporal_buffer);
             auto gesture_end = std::chrono::high_resolution_clock::now();
             double gesture_time = std::chrono::duration<double, std::milli>(gesture_end - gesture_start).count();
 
-            if (gesture != GestureType::UNKNOWN) {
-                // Populate result
-                result.type = gesture;
+            if (swipe_gesture != GestureType::UNKNOWN) {
+                result.type = swipe_gesture;
                 result.confidence = pImpl->swipe_detector->get_confidence();
-                result.landmarks = primary_hand.landmarks;
-                result.center_position = primary_hand.position;
-                result.bounding_box = primary_hand.get_bounding_box();
+                result.landmarks = hand_landmarks;
 
-                std::ostringstream msg;
-                msg << ">>> GESTURE DETECTED: " << result.get_gesture_name()
-                    << " (confidence: " << result.confidence << ") <<<";
-                LOG_INFO(msg.str());
+                // Detailed swipe detection logging
+                LOG_INFO(">>> SWIPE GESTURE DETECTED <<<");
+                LOG_INFO("  Type: " + result.get_gesture_name());
+                LOG_INFO("  Confidence: " + std::to_string(result.confidence));
+                LOG_INFO("  Buffer frames used: " + std::to_string(pImpl->temporal_buffer->size()));
+                LOG_INFO("  Displacement: " + std::to_string(pImpl->temporal_buffer->compute_total_displacement()) + "px");
+                LOG_INFO("  Duration: " + std::to_string(pImpl->temporal_buffer->compute_duration_ms()) + "ms");
+                cv::Point2f avg_vel = pImpl->temporal_buffer->compute_average_velocity();
+                LOG_INFO("  Avg velocity: (" + std::to_string(avg_vel.x) + ", " + std::to_string(avg_vel.y) + ") px/frame");
 
-                // Trigger callback if set
+                // Trigger callback
                 if (pImpl->callback) {
                     pImpl->callback(result, pImpl->user_data);
                 }
@@ -328,53 +339,52 @@ bool GestureRecognitionSystem::process_frame(const cv::Mat& frame, GestureResult
                 // Clear buffer for next gesture
                 pImpl->temporal_buffer->clear();
                 pImpl->swipe_detector->reset();
-                LOG_INFO("Buffer cleared after gesture detection");
-            } else {
-                LOG_DEBUG("Gesture detection attempted but no valid gesture found (confidence too low or motion too small)");
             }
 
-            // Update classification time stats
             pImpl->avg_classification_time = (pImpl->avg_classification_time * pImpl->frame_count + gesture_time) /
                                             (pImpl->frame_count + 1);
-        } else {
-            LOG_DEBUG("Buffer not full yet, need " + std::to_string(buffer_capacity - buffer_size) + " more frames");
         }
 
         // Debug visualization
         if (pImpl->config.enable_debug_viz && !pImpl->debug_frame.empty()) {
-            // Draw hand bounding box
-            cv::rectangle(pImpl->debug_frame, primary_hand.get_bounding_box(),
-                         cv::Scalar(0, 255, 0), 2);
+            int h = pImpl->debug_frame.rows;
+            int w = pImpl->debug_frame.cols;
 
-            // Draw velocity vector
-            cv::Point2f vel_end = primary_hand.position + primary_hand.velocity * 5.0f;
-            cv::arrowedLine(pImpl->debug_frame, primary_hand.position, vel_end,
-                          cv::Scalar(255, 0, 0), 2);
-
-            // Draw landmarks if available
-            if (primary_hand.landmarks.is_valid()) {
-                for (int i = 0; i < 21; ++i) {
-                    cv::Point2f pt = primary_hand.landmarks.get_pixel_position(i);
-                    if (pt.x >= 0 && pt.y >= 0) {
-                        cv::circle(pImpl->debug_frame, pt, 3, cv::Scalar(0, 0, 255), -1);
-                    }
-                }
+            // Draw landmarks
+            for (size_t i = 0; i < 21; ++i) {
+                int x = static_cast<int>(hand_landmarks.points[i].x * w);
+                int y = static_cast<int>(hand_landmarks.points[i].y * h);
+                cv::circle(pImpl->debug_frame, cv::Point(x, y), 5, cv::Scalar(0, 0, 255), -1);
             }
 
-            // Draw gesture info
-            std::string info = "Buffer: " + std::to_string(pImpl->temporal_buffer->size()) + "/15";
+            // Draw gesture info (inference time instead of FPS)
+            std::string info = "Inference: " + std::to_string(static_cast<int>(det_time)) + "ms";
             cv::putText(pImpl->debug_frame, info, cv::Point(10, 30),
-                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
+                       cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+
+            if (!gesture_name.empty()) {
+                cv::putText(pImpl->debug_frame, "MP: " + gesture_name, cv::Point(10, 60),
+                           cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
+            }
         }
+    } else {
+        // No hand detected - push inactive hand for gap tolerance
+        tracked_hand.position = cv::Point2f(0.0f, 0.0f);
+        tracked_hand.velocity = cv::Point2f(0.0f, 0.0f);
+        tracked_hand.size = cv::Size2f(0.0f, 0.0f);
+        tracked_hand.confidence = 0.0f;
+        tracked_hand.frames_since_detection = 0;
+        tracked_hand.is_active = false;  // Mark as inactive
+
+        // Push inactive hand - TemporalBuffer handles gap tolerance logic
+        pImpl->temporal_buffer->push(tracked_hand);
     }
 
-    // Calculate total processing time
+    // Update performance stats
     auto frame_end = std::chrono::high_resolution_clock::now();
     double total_time = std::chrono::duration<double, std::milli>(frame_end - frame_start).count();
-
     result.processing_time_ms = total_time;
 
-    // Update performance stats
     pImpl->avg_detection_time = (pImpl->avg_detection_time * pImpl->frame_count + det_time) /
                                (pImpl->frame_count + 1);
     pImpl->avg_total_time = (pImpl->avg_total_time * pImpl->frame_count + total_time) /
