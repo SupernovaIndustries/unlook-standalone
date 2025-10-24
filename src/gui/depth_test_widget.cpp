@@ -8,7 +8,16 @@
 #include "ui_depth_test_widget.h"
 #include <QGridLayout>
 #include <QComboBox>
+#include <QSlider>
 #include <QMessageBox>
+
+// Open3D includes for Artec mesh processing
+#ifdef OPEN3D_ENABLED
+#include <open3d/Open3D.h>
+#include <open3d/geometry/PointCloud.h>
+#include <open3d/geometry/TriangleMesh.h>
+#include <open3d/io/TriangleMeshIO.h>
+#endif
 #include <QDateTime>
 #include <QTime>
 #include <QPushButton>
@@ -89,6 +98,11 @@ void DepthTestWidget::connectSignals() {
     // INVESTOR DEMO: Connect LED toggle button
     connect(ui->led_toggle_button, &QPushButton::clicked,
             this, &DepthTestWidget::onLEDToggle);
+
+    // ARTEC MESH PROCESSING: Connect signals (NEW)
+    // Preset buttons will be connected in createArtecMeshPanel()
+    // Export button will be connected in createArtecMeshPanel()
+    // Octree slider will be connected in createArtecMeshPanel()
 
     // Connect ambient subtraction checkbox
     connect(ui->ambient_subtract_checkbox, &QCheckBox::toggled,
@@ -576,6 +590,9 @@ void DepthTestWidget::initializeUI() {
 
     // Note: Point cloud export is now handled via .ui file (save_pointcloud_button, export_format_combo)
     // Legacy programmatic point cloud export panel creation removed to avoid UI conflicts
+
+    // Artec mesh processing panel (NEW - INVESTOR DEMO)
+    controls_layout->addWidget(createArtecMeshPanel());
 
     // Spacer
     controls_layout->addStretch();
@@ -1789,6 +1806,348 @@ void DepthTestWidget::configureMeshGeneration() {
     QMessageBox::information(this, "Mesh Configuration",
                              "Mesh generation configuration dialog will be implemented here.");
 }
+// Temporary file for new Artec mesh panel implementation
+// This will be inserted into depth_test_widget.cpp
+
+QWidget* DepthTestWidget::createArtecMeshPanel() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    QWidget* panel = new QWidget();
+    QLabel* label = new QLabel("Artec mesh processing temporarily disabled");
+    QVBoxLayout* layout = new QVBoxLayout(panel);
+    layout->addWidget(label);
+    return panel;
+#else
+    QWidget* panel = new QWidget();
+    QVBoxLayout* layout = new QVBoxLayout(panel);
+    layout->setSpacing(12);
+
+    // Title
+    QLabel* title = new QLabel("ARTEC MESH PROCESSING");
+    title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SUBTITLE, SupernovaStyle::FontWeight::BOLD));
+    title->setStyleSheet(QString("color: %1; padding: 8px;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
+    title->setAlignment(Qt::AlignCenter);
+    layout->addWidget(title);
+
+    // Quality Preset Buttons
+    QLabel* preset_label = new QLabel("Quality Preset:");
+    preset_label->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL, SupernovaStyle::FontWeight::BOLD));
+    preset_label->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
+    layout->addWidget(preset_label);
+
+    // Preset buttons in horizontal layout
+    QHBoxLayout* preset_layout = new QHBoxLayout();
+    preset_layout->setSpacing(8);
+
+    artec_industrial_button_ = new widgets::TouchButton("INDUSTRIAL", widgets::TouchButton::ButtonType::SUCCESS);
+    artec_industrial_button_->setToolTip("Sharp features, preserve edges\nBest for: mechanical parts, industrial objects");
+    preset_layout->addWidget(artec_industrial_button_);
+
+    artec_organic_button_ = new widgets::TouchButton("ORGANIC", widgets::TouchButton::ButtonType::PRIMARY);
+    artec_organic_button_->setToolTip("Smooth surfaces, balanced settings\nBest for: organic shapes, sculptures");
+    preset_layout->addWidget(artec_organic_button_);
+
+    artec_preview_button_ = new widgets::TouchButton("PREVIEW", widgets::TouchButton::ButtonType::SECONDARY);
+    artec_preview_button_->setToolTip("Fast preview, reduced quality\nBest for: quick testing");
+    preset_layout->addWidget(artec_preview_button_);
+
+    layout->addLayout(preset_layout);
+
+    // Octree Depth Slider
+    QLabel* octree_label_title = new QLabel("Octree Depth (Detail Level):");
+    octree_label_title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL, SupernovaStyle::FontWeight::BOLD));
+    octree_label_title->setStyleSheet(QString("color: %1;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
+    layout->addWidget(octree_label_title);
+
+    QHBoxLayout* slider_layout = new QHBoxLayout();
+
+    artec_octree_slider_ = new QSlider(Qt::Horizontal);
+    artec_octree_slider_->setMinimum(7);
+    artec_octree_slider_->setMaximum(12);
+    artec_octree_slider_->setValue(9);
+    artec_octree_slider_->setTickPosition(QSlider::TicksBelow);
+    artec_octree_slider_->setTickInterval(1);
+    slider_layout->addWidget(artec_octree_slider_, 3);
+
+    artec_octree_label_ = new QLabel("9");
+    artec_octree_label_->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL, SupernovaStyle::FontWeight::BOLD));
+    artec_octree_label_->setStyleSheet(QString("color: %1; min-width: 30px;").arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY)));
+    artec_octree_label_->setAlignment(Qt::AlignCenter);
+    slider_layout->addWidget(artec_octree_label_, 1);
+
+    layout->addLayout(slider_layout);
+
+    // Info text
+    QLabel* info_text = new QLabel("Lower = Faster (less detail)\nHigher = Slower (more detail)");
+    info_text->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL));
+    info_text->setStyleSheet(QString("color: %1; font-style: italic;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_SECONDARY)));
+    layout->addWidget(info_text);
+
+    // Statistics Panel
+    QLabel* stats_label_title = new QLabel("Mesh Statistics:");
+    stats_label_title->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL, SupernovaStyle::FontWeight::BOLD));
+    stats_label_title->setStyleSheet(QString("color: %1; margin-top: 8px;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
+    layout->addWidget(stats_label_title);
+
+    artec_stats_label_ = new QLabel("No mesh generated yet");
+    artec_stats_label_->setFont(SupernovaStyle::getFont(SupernovaStyle::FontSize::SMALL));
+    artec_stats_label_->setStyleSheet(QString("color: %1; background: rgba(0,0,0,0.3); padding: 12px; border-radius: 4px;").arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_SECONDARY)));
+    artec_stats_label_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    artec_stats_label_->setWordWrap(true);
+    artec_stats_label_->setMinimumHeight(120);
+    layout->addWidget(artec_stats_label_);
+
+    // Export Button (Large and prominent)
+    artec_export_button_ = new widgets::TouchButton("GENERATE & EXPORT MESH", widgets::TouchButton::ButtonType::PRIMARY);
+    artec_export_button_->setToolTip("Generate Artec-grade watertight mesh\nProcessing time: ~15 seconds");
+    artec_export_button_->setEnabled(false);
+    layout->addWidget(artec_export_button_);
+
+    // Status Display
+    artec_status_ = new widgets::StatusDisplay("Artec Processing");
+    artec_status_->setCompactMode(true);
+    artec_status_->setStatus("Ready - capture depth first", widgets::StatusDisplay::StatusType::INFO);
+    layout->addWidget(artec_status_);
+
+    // Connect signals (NEW)
+    connect(artec_industrial_button_, &widgets::TouchButton::clicked,
+            this, [this]() { applyArtecPreset(0); });
+    connect(artec_organic_button_, &widgets::TouchButton::clicked,
+            this, [this]() { applyArtecPreset(1); });
+    connect(artec_preview_button_, &widgets::TouchButton::clicked,
+            this, [this]() { applyArtecPreset(2); });
+    connect(artec_export_button_, &widgets::TouchButton::clicked,
+            this, &DepthTestWidget::exportArtecMesh);
+    connect(artec_octree_slider_, &QSlider::valueChanged,
+            this, &DepthTestWidget::updateArtecOctreeDepth);
+
+    // Apply default preset (INDUSTRIAL)
+    applyArtecPreset(0);
+
+    layout->addStretch();
+
+    return panel;
+#endif
+}
+
+void DepthTestWidget::applyArtecPreset(int presetIndex) {
+    artec_quality_preset_ = presetIndex;
+
+    // Update button states
+    artec_industrial_button_->setStyleSheet("");
+    artec_organic_button_->setStyleSheet("");
+    artec_preview_button_->setStyleSheet("");
+
+    QString active_style = QString("background-color: %1; border: 2px solid %2;")
+        .arg(SupernovaStyle::colorToString(SupernovaStyle::ELECTRIC_PRIMARY))
+        .arg(SupernovaStyle::colorToString(SupernovaStyle::PLASMA_ACCENT));
+
+    QString preset_name;
+    int recommended_depth = 9;
+
+    switch(presetIndex) {
+        case 0: // INDUSTRIAL
+            artec_industrial_button_->setStyleSheet(active_style);
+            preset_name = "INDUSTRIAL (Sharp Features)";
+            recommended_depth = 10;
+            break;
+        case 1: // ORGANIC
+            artec_organic_button_->setStyleSheet(active_style);
+            preset_name = "ORGANIC (Smooth Surfaces)";
+            recommended_depth = 9;
+            break;
+        case 2: // PREVIEW
+            artec_preview_button_->setStyleSheet(active_style);
+            preset_name = "PREVIEW (Fast Mode)";
+            recommended_depth = 7;
+            break;
+    }
+
+    // Update octree depth to recommended value
+    artec_octree_slider_->setValue(recommended_depth);
+    artec_octree_depth_ = recommended_depth;
+    artec_octree_label_->setText(QString::number(recommended_depth));
+
+    artec_status_->setStatus(QString("Preset: %1 (Depth: %2)").arg(preset_name).arg(recommended_depth),
+                            widgets::StatusDisplay::StatusType::INFO);
+
+    qDebug() << "[DepthWidget] Artec preset applied:" << preset_name << "depth:" << recommended_depth;
+}
+
+void DepthTestWidget::updateArtecOctreeDepth(int depth) {
+    artec_octree_depth_ = depth;
+    artec_octree_label_->setText(QString::number(depth));
+
+    QString detail_level;
+    if (depth <= 7) detail_level = "Low (fast)";
+    else if (depth <= 9) detail_level = "Medium (balanced)";
+    else detail_level = "High (slow, detailed)";
+
+    artec_status_->setStatus(QString("Octree depth: %1 - %2").arg(depth).arg(detail_level),
+                            widgets::StatusDisplay::StatusType::INFO);
+
+    qDebug() << "[DepthWidget] Artec octree depth updated:" << depth;
+}
+
+void DepthTestWidget::exportArtecMesh() {
+#ifdef DISABLE_POINTCLOUD_FUNCTIONALITY
+    QMessageBox::information(this, "Feature Disabled",
+        "Artec mesh processing is temporarily disabled during system build optimization.");
+    return;
+#endif
+
+    qDebug() << "[DepthWidget] ===== ARTEC MESH EXPORT START =====";
+
+    if (!current_result_.success || current_result_.depth_map.empty()) {
+        QMessageBox::warning(this, "Export Error", "No valid depth map available. Capture a stereo frame first.");
+        return;
+    }
+
+    if (!pointcloud_processor_) {
+        QMessageBox::warning(this, "Export Error", "Point cloud processor not initialized.");
+        return;
+    }
+
+    artec_status_->setStatus("Processing Artec pipeline...", widgets::StatusDisplay::StatusType::PROCESSING);
+    artec_status_->startPulsing();
+    artec_export_button_->setEnabled(false);
+
+    try {
+        // Step 1: Generate point cloud from depth map
+        qDebug() << "[DepthWidget] Step 1: Generating point cloud...";
+        stereo::PointCloud pointCloud;
+        cv::Mat colorImage; // TODO: Get actual color image
+
+        if (!pointcloud_processor_->generatePointCloud(
+                current_result_.depth_map,
+                colorImage,
+                pointCloud,
+                pointcloud_filter_config_)) {
+
+            QString error = QString::fromStdString(pointcloud_processor_->getLastError());
+            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
+            artec_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            artec_status_->stopPulsing();
+            artec_export_button_->setEnabled(true);
+            return;
+        }
+
+        qDebug() << "[DepthWidget] Point cloud generated:" << pointCloud.points.size() << "points";
+
+        // Step 2: Convert to Open3D format
+        qDebug() << "[DepthWidget] Step 2: Converting to Open3D format...";
+        auto open3d_cloud = std::make_shared<open3d::geometry::PointCloud>();
+
+        for (const auto& pt : pointCloud.points) {
+            open3d_cloud->points_.push_back(Eigen::Vector3d(pt.x, pt.y, pt.z));
+
+            // Add color from Point3D (r, g, b members)
+            open3d_cloud->colors_.push_back(Eigen::Vector3d(
+                pt.r / 255.0,  // R
+                pt.g / 255.0,  // G
+                pt.b / 255.0   // B
+            ));
+        }
+
+        qDebug() << "[DepthWidget] Open3D cloud created with" << open3d_cloud->points_.size() << "points";
+
+        // Step 3: Run Artec-grade pipeline
+        qDebug() << "[DepthWidget] Step 3: Running Artec-grade pipeline (Poisson + Cleaning + Simplification)...";
+        artec_status_->setStatus("Generating watertight mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
+
+        auto start_time = std::chrono::high_resolution_clock::now();
+
+        auto mesh = pointcloud_processor_->processCompletePipeline(*open3d_cloud);
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+        if (!mesh || mesh->IsEmpty()) {
+            QMessageBox::critical(this, "Mesh Generation Failed",
+                                "Artec pipeline produced empty mesh. Try different settings or recapture.");
+            artec_status_->setStatus("Mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            artec_status_->stopPulsing();
+            artec_export_button_->setEnabled(true);
+            return;
+        }
+
+        qDebug() << "[DepthWidget] Artec mesh generated:" << mesh->vertices_.size() << "vertices,"
+                 << mesh->triangles_.size() << "triangles in" << duration.count() << "ms";
+
+        // Step 4: Assess mesh quality
+        bool is_watertight = mesh->IsWatertight();
+        bool is_manifold = mesh->IsEdgeManifold();
+
+        qDebug() << "[DepthWidget] Mesh quality: Watertight=" << is_watertight << "Manifold=" << is_manifold;
+
+        // Update statistics display
+        QString stats = QString(
+            "✓ Processing complete!\n\n"
+            "Vertices: %1\n"
+            "Triangles: %2\n"
+            "Watertight: %3\n"
+            "Manifold: %4\n"
+            "Processing time: %5 ms\n"
+            "Quality: %6"
+        ).arg(mesh->vertices_.size())
+         .arg(mesh->triangles_.size())
+         .arg(is_watertight ? "✓ Yes" : "✗ No")
+         .arg(is_manifold ? "✓ Yes" : "✗ No")
+         .arg(duration.count())
+         .arg(is_watertight && is_manifold ? "Artec-grade ✓" : "Good");
+
+        artec_stats_label_->setText(stats);
+        artec_stats_label_->setStyleSheet(QString("color: %1; background: rgba(0,255,100,0.1); padding: 12px; border-radius: 4px; border: 1px solid rgba(0,255,100,0.3);")
+                                         .arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
+
+        // Step 5: Export mesh
+        QString filename = QString("unlook_artec_mesh_%1.ply")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
+        QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
+
+        qDebug() << "[DepthWidget] Step 4: Exporting to" << filepath;
+
+        // Create export directory if needed
+        QDir().mkpath(QDir::homePath() + "/unlook_exports/");
+
+        if (open3d::io::WriteTriangleMesh(filepath.toStdString(), *mesh)) {
+            artec_status_->setStatus(QString("Exported: %1").arg(filename),
+                                    widgets::StatusDisplay::StatusType::SUCCESS);
+
+            QString message = QString(
+                "Artec-grade mesh exported successfully!\n\n"
+                "File: %1\n"
+                "Vertices: %2\n"
+                "Triangles: %3\n"
+                "Watertight: %4\n"
+                "Manifold: %5\n"
+                "Processing time: %6 ms\n\n"
+                "Quality: %7"
+            ).arg(filename)
+             .arg(mesh->vertices_.size())
+             .arg(mesh->triangles_.size())
+             .arg(is_watertight ? "Yes ✓" : "No ✗")
+             .arg(is_manifold ? "Yes ✓" : "No ✗")
+             .arg(duration.count())
+             .arg(is_watertight && is_manifold ? "Artec-grade professional quality ✓" : "Good quality");
+
+            QMessageBox::information(this, "Export Successful", message);
+        } else {
+            QMessageBox::critical(this, "Export Failed", "Failed to write mesh file to disk.");
+            artec_status_->setStatus("Export failed", widgets::StatusDisplay::StatusType::ERROR);
+        }
+
+    } catch (const std::exception& e) {
+        QMessageBox::critical(this, "Export Failed",
+                            QString("Exception during Artec mesh processing:\n%1").arg(e.what()));
+        artec_status_->setStatus("Processing failed with exception", widgets::StatusDisplay::StatusType::ERROR);
+        qDebug() << "[DepthWidget] Exception:" << e.what();
+    }
+
+    artec_status_->stopPulsing();
+    artec_export_button_->setEnabled(true);
+
+    qDebug() << "[DepthWidget] ===== ARTEC MESH EXPORT END =====";
+}
 
 // Update the onDepthResultReceived method to enable export buttons
 void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
@@ -1864,6 +2223,14 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                 }
             } else {
                 qDebug() << "[DepthWidget] export_mesh_button_ is NULL - skipping";
+            }
+
+            // Enable Artec mesh export button (NEW)
+            if (artec_export_button_) {
+                qDebug() << "[DepthWidget] Enabling artec_export_button_...";
+                artec_export_button_->setEnabled(true);
+                artec_status_->setStatus("Ready to generate Artec mesh", widgets::StatusDisplay::StatusType::SUCCESS);
+                qDebug() << "[DepthWidget] artec_export_button_ enabled successfully";
             }
 
             qDebug() << "[DepthWidget] All UI updates completed successfully";

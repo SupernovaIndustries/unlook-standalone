@@ -117,6 +117,21 @@ private slots:
     void exportMesh();
 
     /**
+     * @brief Export mesh using Artec-grade pipeline (NEW)
+     */
+    void exportArtecMesh();
+
+    /**
+     * @brief Apply Artec quality preset (INDUSTRIAL/ORGANIC/PREVIEW)
+     */
+    void applyArtecPreset(int presetIndex);
+
+    /**
+     * @brief Update Artec octree depth from slider
+     */
+    void updateArtecOctreeDepth(int depth);
+
+    /**
      * @brief Configure point cloud export options
      */
     void configurePointCloudExport();
@@ -257,6 +272,11 @@ private:
      */
     QWidget* createPointCloudExportPanel();
 
+    /**
+     * @brief Create Artec-grade mesh processing panel (NEW)
+     */
+    QWidget* createArtecMeshPanel();
+
     // System integration
     std::shared_ptr<camera::CameraSystem> camera_system_;
     std::unique_ptr<api::DepthProcessor> depth_processor_;
@@ -305,6 +325,20 @@ private:
     widgets::TouchButton* configure_export_button_;
     QComboBox* export_format_combo_;
     widgets::StatusDisplay* export_status_;
+
+    // Artec mesh processing UI components (NEW)
+    widgets::TouchButton* artec_industrial_button_;
+    widgets::TouchButton* artec_organic_button_;
+    widgets::TouchButton* artec_preview_button_;
+    widgets::TouchButton* artec_export_button_;
+    QSlider* artec_octree_slider_;
+    QLabel* artec_octree_label_;
+    QLabel* artec_stats_label_;
+    widgets::StatusDisplay* artec_status_;
+
+    // Artec processing state
+    int artec_octree_depth_{9};  // Default octree depth
+    int artec_quality_preset_{0};  // 0=INDUSTRIAL, 1=ORGANIC, 2=PREVIEW
 
     // Constants
     static const int DEPTH_DISPLAY_WIDTH = 500;
