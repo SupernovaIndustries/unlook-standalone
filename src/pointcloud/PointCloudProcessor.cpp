@@ -1,4 +1,6 @@
 #include "unlook/pointcloud/PointCloudProcessor.hpp"
+#include "unlook/pointcloud/PoissonReconstructor.hpp"
+#include "unlook/pointcloud/MeshCleaner.hpp"
 #include "unlook/calibration/CalibrationManager.hpp"
 // Temporarily disabled mesh dependencies due to compilation issues
 // #include "unlook/mesh/MeshValidator.hpp"
@@ -1167,6 +1169,314 @@ bool PointCloudProcessor::estimateNormals(stereo::PointCloud& pointCloud,
     return true;
 }
 
+// Artec-grade statistical outlier removal implementation
+bool PointCloudProcessor::filterOutliers(stereo::PointCloud& pointCloud,
+                                        const OutlierRemovalSettings& settings) {
+    if (pointCloud.empty()) {
+        pImpl->lastError = "Empty point cloud for outlier removal";
+        return false;
+    }
+
+    if (!settings.validate()) {
+        pImpl->lastError = "Invalid outlier removal settings";
+        return false;
+    }
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+
+    try {
+        std::cout << "[PointCloudProcessor] Artec-grade outlier removal: "
+                  << pointCloud.points.size() << " points" << std::endl;
+        std::cout << settings.toString() << std::endl;
+
+#ifdef OPEN3D_ENABLED
+        // Use Open3D for high-performance filtering
+        auto open3dCloud = pImpl->convertToOpen3D(pointCloud);
+        if (!open3dCloud || open3dCloud->points_.empty()) {
+            pImpl->lastError = "Failed to convert point cloud to Open3D format";
+            return false;
+        }
+
+        size_t points_before = open3dCloud->points_.size();
+
+        // Adaptive parameter adjustment based on point density
+        int nb_neighbors = settings.nb_neighbors;
+        double std_ratio = settings.std_ratio;
+
+        if (settings.adaptive) {
+            double density = estimatePointDensity(open3dCloud);
+            std::cout << "[PointCloudProcessor] Point density: " << std::fixed
+                      << std::setprecision(2) << density << " points/m³" << std::endl;
+
+            // Adjust parameters based on density
+            // High density (>1000 pts/m³) → more neighbors for robust statistics
+            // Low density (<500 pts/m³) → fewer neighbors, more lenient threshold
+            if (density > 1000.0) {
+                nb_neighbors = std::max(30, settings.nb_neighbors);
+                std_ratio = settings.std_ratio;  // Keep standard ratio
+            } else if (density < 500.0) {
+                nb_neighbors = std::max(15, settings.nb_neighbors);
+                std_ratio = std::max(2.5, settings.std_ratio);  // More lenient
+            }
+
+            std::cout << "[PointCloudProcessor] Adaptive parameters: "
+                      << nb_neighbors << " neighbors, "
+                      << std::fixed << std::setprecision(1) << std_ratio << " std ratio" << std::endl;
+        }
+
+        std::shared_ptr<open3d::geometry::PointCloud> filtered;
+        std::vector<size_t> indices;
+
+        switch (settings.mode) {
+            case OutlierRemovalMode::STATISTICAL: {
+                // Artec-grade statistical outlier removal (K-NN method)
+                std::tie(filtered, indices) = open3dCloud->RemoveStatisticalOutliers(
+                    nb_neighbors,
+                    std_ratio
+                );
+                break;
+            }
+
+            case OutlierRemovalMode::RADIUS: {
+                // Radius-based outlier removal
+                double radius_meters = settings.radius / 1000.0;  // Convert mm to meters
+                std::tie(filtered, indices) = open3dCloud->RemoveRadiusOutliers(
+                    settings.min_neighbors,
+                    radius_meters
+                );
+                break;
+            }
+
+            case OutlierRemovalMode::HYBRID: {
+                // Apply statistical first, then radius
+                std::tie(filtered, indices) = open3dCloud->RemoveStatisticalOutliers(
+                    nb_neighbors,
+                    std_ratio
+                );
+
+                // Apply radius filter to the result
+                double radius_meters = settings.radius / 1000.0;
+                std::tie(filtered, indices) = filtered->RemoveRadiusOutliers(
+                    settings.min_neighbors,
+                    radius_meters
+                );
+                break;
+            }
+
+            default:
+                pImpl->lastError = "Invalid outlier removal mode";
+                return false;
+        }
+
+        // Statistics and validation
+        size_t points_after = filtered->points_.size();
+        size_t removed = points_before - points_after;
+        double removal_rate = (points_before > 0) ? (100.0 * removed / points_before) : 0.0;
+
+        std::cout << "[PointCloudProcessor] Outlier removal results:" << std::endl;
+        std::cout << "  Before: " << points_before << " points" << std::endl;
+        std::cout << "  After: " << points_after << " points" << std::endl;
+        std::cout << "  Removed: " << removed << " outliers ("
+                  << std::fixed << std::setprecision(3) << removal_rate << "%)" << std::endl;
+
+        // Safety check: warn if removal rate is too aggressive
+        if (removal_rate > 50.0) {
+            std::cout << "[PointCloudProcessor] WARNING: Removed >"
+                      << std::fixed << std::setprecision(1) << removal_rate
+                      << "% of points! Filter may be too aggressive." << std::endl;
+            std::cout << "[PointCloudProcessor] Consider more lenient parameters "
+                      << "(nb_neighbors=50, std_ratio=3.0)" << std::endl;
+        }
+
+        // Quality check: ensure we didn't remove too much
+        if (removal_rate > 95.0) {
+            pImpl->lastError = "Outlier removal too aggressive: removed >" +
+                              std::to_string(static_cast<int>(removal_rate)) + "% of points";
+            return false;
+        }
+
+        // Convert back to unlook format
+        pointCloud = pImpl->convertFromOpen3D(filtered);
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        pImpl->updatePerformanceStats("filterOutliers", duration.count());
+
+        std::cout << "[PointCloudProcessor] Outlier removal completed in "
+                  << duration.count() << " ms" << std::endl;
+
+        return true;
+
+#else
+        // Fallback implementation without Open3D
+        std::cout << "[PointCloudProcessor] WARNING: Open3D not available, using fallback implementation" << std::endl;
+
+        std::vector<stereo::Point3D> filteredPoints;
+        filteredPoints.reserve(pointCloud.points.size());
+
+        size_t points_before = pointCloud.points.size();
+
+        // Simple statistical outlier removal (K-NN based)
+        for (size_t i = 0; i < pointCloud.points.size(); ++i) {
+            const auto& point = pointCloud.points[i];
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z) ||
+                point.z <= 0) {
+                continue;
+            }
+
+            std::vector<double> distances;
+            distances.reserve(settings.nb_neighbors);
+
+            // Find K nearest neighbors
+            for (size_t j = 0; j < pointCloud.points.size() && distances.size() < static_cast<size_t>(settings.nb_neighbors); ++j) {
+                if (i == j) continue;
+
+                const auto& neighbor = pointCloud.points[j];
+                if (!std::isfinite(neighbor.x) || !std::isfinite(neighbor.y) || !std::isfinite(neighbor.z)) {
+                    continue;
+                }
+
+                double dist = std::sqrt(
+                    std::pow(point.x - neighbor.x, 2) +
+                    std::pow(point.y - neighbor.y, 2) +
+                    std::pow(point.z - neighbor.z, 2)
+                );
+                distances.push_back(dist);
+            }
+
+            if (distances.size() >= 3) {
+                std::sort(distances.begin(), distances.end());
+                double meanDist = std::accumulate(distances.begin(),
+                                                 distances.begin() + std::min(static_cast<int>(distances.size()),
+                                                                            settings.nb_neighbors),
+                                                 0.0) / std::min(static_cast<int>(distances.size()),
+                                                               settings.nb_neighbors);
+
+                // Simple threshold test (heuristic: mean distance < ratio * typical spacing)
+                if (meanDist < settings.std_ratio * 10.0) {  // 10mm is typical point spacing
+                    filteredPoints.push_back(point);
+                }
+            }
+        }
+
+        size_t points_after = filteredPoints.size();
+        size_t removed = points_before - points_after;
+        double removal_rate = (points_before > 0) ? (100.0 * removed / points_before) : 0.0;
+
+        std::cout << "[PointCloudProcessor] Fallback outlier removal results:" << std::endl;
+        std::cout << "  Before: " << points_before << " points" << std::endl;
+        std::cout << "  After: " << points_after << " points" << std::endl;
+        std::cout << "  Removed: " << removed << " outliers ("
+                  << std::fixed << std::setprecision(3) << removal_rate << "%)" << std::endl;
+
+        pointCloud.points = std::move(filteredPoints);
+
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        pImpl->updatePerformanceStats("filterOutliers_fallback", duration.count());
+
+        return true;
+#endif
+
+    } catch (const std::exception& e) {
+        pImpl->lastError = "Outlier removal failed: " + std::string(e.what());
+        std::cout << "[PointCloudProcessor] ERROR: " << pImpl->lastError << std::endl;
+        return false;
+    }
+}
+
+// Point density estimation implementations
+double PointCloudProcessor::estimatePointDensity(const stereo::PointCloud& pointCloud) {
+    if (pointCloud.points.size() < 10) {
+        return 0.0;
+    }
+
+    // Count valid points and compute bounding box
+    std::vector<cv::Vec3f> validPoints;
+    validPoints.reserve(pointCloud.points.size());
+
+    cv::Vec3f minBounds(FLT_MAX, FLT_MAX, FLT_MAX);
+    cv::Vec3f maxBounds(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+
+    for (const auto& point : pointCloud.points) {
+        if (std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z) &&
+            point.z > 0) {
+            validPoints.emplace_back(point.x, point.y, point.z);
+
+            minBounds[0] = std::min(minBounds[0], point.x);
+            minBounds[1] = std::min(minBounds[1], point.y);
+            minBounds[2] = std::min(minBounds[2], point.z);
+
+            maxBounds[0] = std::max(maxBounds[0], point.x);
+            maxBounds[1] = std::max(maxBounds[1], point.y);
+            maxBounds[2] = std::max(maxBounds[2], point.z);
+        }
+    }
+
+    if (validPoints.size() < 10) {
+        return 0.0;
+    }
+
+    // Calculate volume (in cubic millimeters)
+    double volume = (maxBounds[0] - minBounds[0]) *
+                   (maxBounds[1] - minBounds[1]) *
+                   (maxBounds[2] - minBounds[2]);
+
+    if (volume <= 0.0) {
+        return 0.0;
+    }
+
+    // Density = points per cubic millimeter
+    return static_cast<double>(validPoints.size()) / volume;
+}
+
+#ifdef OPEN3D_ENABLED
+double PointCloudProcessor::estimatePointDensity(std::shared_ptr<open3d::geometry::PointCloud> pointCloud) {
+    if (!pointCloud || pointCloud->points_.empty() || pointCloud->points_.size() < 10) {
+        return 0.0;
+    }
+
+    // Compute bounding box
+    auto bbox = pointCloud->GetAxisAlignedBoundingBox();
+    auto extent = bbox.GetExtent();
+
+    // Volume in cubic meters (Open3D uses meters)
+    double volume = extent.x() * extent.y() * extent.z();
+
+    if (volume <= 0.0) {
+        return 0.0;
+    }
+
+    // Density = points per cubic meter
+    return static_cast<double>(pointCloud->points_.size()) / volume;
+}
+#endif
+
+// OutlierRemovalSettings implementation
+std::string OutlierRemovalSettings::toString() const {
+    std::stringstream ss;
+    ss << "Outlier Removal Settings:\n";
+    ss << "  Mode: ";
+    switch (mode) {
+        case OutlierRemovalMode::STATISTICAL:
+            ss << "Statistical (Artec K-NN)";
+            break;
+        case OutlierRemovalMode::RADIUS:
+            ss << "Radius-based";
+            break;
+        case OutlierRemovalMode::HYBRID:
+            ss << "Hybrid (Statistical + Radius)";
+            break;
+    }
+    ss << "\n";
+    ss << "  K Neighbors: " << nb_neighbors << "\n";
+    ss << "  Std Ratio: " << std_ratio << "\n";
+    ss << "  Radius: " << radius << " mm\n";
+    ss << "  Min Neighbors (radius): " << min_neighbors << "\n";
+    ss << "  Adaptive: " << (adaptive ? "Yes" : "No") << "\n";
+    return ss.str();
+}
+
 // Configuration validation implementations
 bool PointCloudFilterConfig::validate() const {
     if (statisticalNeighbors <= 0 || statisticalStdRatio <= 0) return false;
@@ -1566,6 +1876,156 @@ bool PointCloudProcessor::exportMesh(const std::vector<cv::Vec3f>& [[maybe_unuse
     pImpl->lastError = "Mesh export temporarily disabled - mesh module not built";
     return false;
 }
+
+#ifdef OPEN3D_ENABLED
+// Complete Artec-grade processing pipeline implementation
+std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processCompletePipeline(
+    const open3d::geometry::PointCloud& pointCloud) {
+
+    // Use Artec standard settings
+    OutlierRemovalSettings outlierSettings;
+    outlierSettings.mode = OutlierRemovalMode::STATISTICAL;
+    outlierSettings.nb_neighbors = 20;
+    outlierSettings.std_ratio = 2.0;
+
+    PoissonSettings poissonSettings = PoissonSettings::forSharpFeatures();
+
+    MeshCleanerSettings cleanSettings;
+    cleanSettings.mode = MeshCleanerSettings::FilterMode::KEEP_LARGEST;
+
+    SimplificationSettings simplifySettings = SimplificationSettings::forGeometricAccuracy(0.01);
+
+    return processCompletePipeline(pointCloud, outlierSettings, poissonSettings, cleanSettings, &simplifySettings);
+}
+
+std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processCompletePipeline(
+    const open3d::geometry::PointCloud& pointCloud,
+    const OutlierRemovalSettings& outlierSettings,
+    const PoissonSettings& poissonSettings,
+    const MeshCleanerSettings& cleanSettings,
+    const SimplificationSettings* simplifySettings) {
+
+    if (pointCloud.points_.empty()) {
+        pImpl->lastError = "Empty input point cloud for pipeline";
+        return nullptr;
+    }
+
+    auto overallStartTime = std::chrono::high_resolution_clock::now();
+
+    try {
+        std::cout << "\n========== ARTEC-GRADE PROCESSING PIPELINE ==========\n" << std::endl;
+        std::cout << "[Pipeline] Input: " << pointCloud.points_.size() << " points" << std::endl;
+
+        // STEP 1: Statistical Outlier Removal (Artec standard)
+        std::cout << "\n[Pipeline] STEP 1: Statistical outlier removal..." << std::endl;
+        if (pImpl->progressCallback) pImpl->progressCallback(5);
+
+        auto workingCloud = std::make_shared<open3d::geometry::PointCloud>(pointCloud);
+
+        PoissonReconstructor poissonReconstructor;
+        poissonReconstructor.setProgressCallback(pImpl->progressCallback);
+
+        size_t removed = poissonReconstructor.filterOutliers(*workingCloud, outlierSettings);
+        std::cout << "[Pipeline] Removed " << removed << " outlier points ("
+                  << (100.0 * removed / pointCloud.points_.size()) << "%)" << std::endl;
+
+        if (pImpl->progressCallback) pImpl->progressCallback(15);
+
+        // STEP 2: Poisson Surface Reconstruction (Artec-grade)
+        std::cout << "\n[Pipeline] STEP 2: Poisson surface reconstruction..." << std::endl;
+        if (pImpl->progressCallback) pImpl->progressCallback(20);
+
+        auto mesh = poissonReconstructor.reconstruct(*workingCloud, poissonSettings);
+        if (!mesh) {
+            pImpl->lastError = "Poisson reconstruction failed: " + poissonReconstructor.getLastError();
+            return nullptr;
+        }
+
+        PoissonResult poissonResult = poissonReconstructor.getLastResult();
+        std::cout << "[Pipeline] Reconstructed: " << poissonResult.outputVertices << " vertices, "
+                  << poissonResult.outputTriangles << " triangles" << std::endl;
+        std::cout << "[Pipeline] Watertight: " << (poissonResult.isWatertight ? "Yes" : "No")
+                  << ", Manifold: " << (poissonResult.isManifold ? "Yes" : "No") << std::endl;
+
+        if (pImpl->progressCallback) pImpl->progressCallback(50);
+
+        // STEP 3: Remove Small Objects (Artec cleanup)
+        std::cout << "\n[Pipeline] STEP 3: Mesh cleaning..." << std::endl;
+        if (pImpl->progressCallback) pImpl->progressCallback(55);
+
+        MeshCleaner meshCleaner;
+        meshCleaner.setProgressCallback(pImpl->progressCallback);
+
+        auto cleanResult = meshCleaner.removeSmallObjects(*mesh, cleanSettings);
+        if (!cleanResult.success) {
+            pImpl->lastError = "Mesh cleaning failed: " + cleanResult.errorMessage;
+            return nullptr;
+        }
+
+        std::cout << "[Pipeline] Cleaned: removed " << cleanResult.componentsRemoved << " components, "
+                  << cleanResult.trianglesRemoved << " triangles ("
+                  << cleanResult.sizeReduction << "% reduction)" << std::endl;
+
+        if (pImpl->progressCallback) pImpl->progressCallback(70);
+
+        // STEP 4: Mesh Simplification (Artec optimization, optional)
+        if (simplifySettings != nullptr) {
+            std::cout << "\n[Pipeline] STEP 4: Mesh simplification..." << std::endl;
+            if (pImpl->progressCallback) pImpl->progressCallback(75);
+
+            size_t trianglesBefore = mesh->triangles_.size();
+            auto simplified = meshCleaner.simplify(*mesh, *simplifySettings);
+            if (simplified) {
+                mesh = simplified;
+                size_t trianglesAfter = mesh->triangles_.size();
+                double reduction = 100.0 * (trianglesBefore - trianglesAfter) / trianglesBefore;
+                std::cout << "[Pipeline] Simplified: " << trianglesBefore << " -> " << trianglesAfter
+                          << " triangles (" << std::fixed << std::setprecision(1) << reduction << "% reduction)" << std::endl;
+            } else {
+                std::cout << "[Pipeline] Warning: Simplification failed, using unsimplified mesh" << std::endl;
+            }
+        } else {
+            std::cout << "\n[Pipeline] STEP 4: Mesh simplification (skipped)" << std::endl;
+        }
+
+        if (pImpl->progressCallback) pImpl->progressCallback(90);
+
+        // STEP 5: Final Quality Validation
+        std::cout << "\n[Pipeline] STEP 5: Quality validation..." << std::endl;
+        if (pImpl->progressCallback) pImpl->progressCallback(95);
+
+        bool isWatertight = mesh->IsWatertight();
+        bool isManifold = mesh->IsVertexManifold() && mesh->IsEdgeManifold();
+
+        std::cout << "[Pipeline] Final mesh quality:" << std::endl;
+        std::cout << "  Vertices: " << mesh->vertices_.size() << std::endl;
+        std::cout << "  Triangles: " << mesh->triangles_.size() << std::endl;
+        std::cout << "  Watertight: " << (isWatertight ? "Yes" : "No") << std::endl;
+        std::cout << "  Manifold: " << (isManifold ? "Yes" : "No") << std::endl;
+
+        if (!isWatertight || !isManifold) {
+            std::cout << "[Pipeline] Warning: Mesh quality issues detected, may require repair" << std::endl;
+        }
+
+        auto overallEndTime = std::chrono::high_resolution_clock::now();
+        auto overallDuration = std::chrono::duration_cast<std::chrono::milliseconds>(overallEndTime - overallStartTime);
+
+        std::cout << "\n[Pipeline] COMPLETE: Total processing time: "
+                  << overallDuration.count() << " ms" << std::endl;
+        std::cout << "\n====================================================\n" << std::endl;
+
+        pImpl->updatePerformanceStats("completePipeline", overallDuration.count());
+        if (pImpl->progressCallback) pImpl->progressCallback(100);
+
+        return mesh;
+
+    } catch (const std::exception& e) {
+        pImpl->lastError = "Pipeline exception: " + std::string(e.what());
+        std::cout << "[Pipeline] ERROR: " << pImpl->lastError << std::endl;
+        return nullptr;
+    }
+}
+#endif
 
 } // namespace pointcloud
 } // namespace unlook

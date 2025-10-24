@@ -981,8 +981,9 @@ std::map<std::string, std::string> getMaterialProperties(const std::string& mate
 bool validateFilePath(const std::string& filePath, const std::string& extension) {
     if (filePath.empty()) return false;
 
-    // Check extension
-    if (!filePath.ends_with(extension)) {
+    // Check extension (C++17 compatible)
+    if (filePath.length() < extension.length() ||
+        filePath.compare(filePath.length() - extension.length(), extension.length(), extension) != 0) {
         return false;
     }
 

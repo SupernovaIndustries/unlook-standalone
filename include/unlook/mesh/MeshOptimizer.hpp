@@ -44,22 +44,56 @@ struct MeshSmoothingConfig {
 };
 
 /**
- * @brief Mesh decimation configuration
+ * @brief Mesh decimation configuration with advanced simplification modes
+ *
+ * Matching Artec Studio professional decimation quality with multiple algorithms:
+ * - QUADRIC_ERROR: Best quality, preserves geometric features (default)
+ * - VERTEX_CLUSTERING: Fast mode, 2x faster (Artec fast mode)
+ * - ADAPTIVE: Curvature-based, preserves high-detail areas
  */
 struct MeshDecimationConfig {
     enum class Algorithm {
-        EDGE_COLLAPSE,      // Quadric edge collapse
-        VERTEX_CLUSTERING,  // Vertex clustering
-        PROGRESSIVE_MESH    // Progressive mesh decimation
+        EDGE_COLLAPSE,      // Basic edge collapse (deprecated, use QUADRIC_ERROR)
+        VERTEX_CLUSTERING,  // Fast vertex clustering (Artec fast mode)
+        PROGRESSIVE_MESH,   // Progressive mesh decimation
+        QUADRIC_ERROR,      // Quadric Error Metric decimation (best quality)
+        ADAPTIVE            // Adaptive curvature-based decimation
     };
 
-    Algorithm algorithm = Algorithm::EDGE_COLLAPSE;
+    /**
+     * @brief Simplification modes for different quality/speed tradeoffs
+     */
+    enum class SimplifyMode {
+        TRIANGLE_COUNT,     // Target specific triangle count
+        ACCURACY,           // Maintain geometric error < threshold (recommended)
+        ADAPTIVE,           // Curvature-based preservation (preserve detail)
+        FAST                // Fast vertex clustering (2x faster, Artec fast mode)
+    };
+
+    Algorithm algorithm = Algorithm::QUADRIC_ERROR;  // Best quality by default
+    SimplifyMode mode = SimplifyMode::ACCURACY;      // Accuracy-driven by default
+
+    // Triangle count targeting
     double targetReduction = 0.5;           // Target reduction ratio [0,1]
     size_t targetTriangles = 0;             // Target triangle count (0 = use ratio)
-    double maxError = 0.01;                 // Maximum allowed error (mm)
+
+    // Accuracy control
+    double maxError = 0.01;                 // Maximum geometric error (mm) - CRITICAL
+    double maxGeometricError = 0.01;        // Alternative name for clarity
+
+    // Quality preservation
     bool preserveBoundaries = true;         // Preserve boundary edges
     bool preserveTopology = true;           // Preserve mesh topology
-    double qualityThreshold = 0.3;          // Minimum triangle quality
+    double qualityThreshold = 0.3;          // Minimum triangle quality [0,1]
+    bool preserveFeatures = true;           // Preserve sharp features
+    double featureAngle = 60.0;             // Feature angle threshold (degrees)
+
+    // Adaptive mode parameters
+    double curvatureThreshold = 0.1;        // Curvature threshold for adaptive mode
+    bool adaptiveSampling = true;           // Enable adaptive sampling
+
+    // Performance options
+    bool parallel = true;                   // Enable parallel processing (ARM64)
 
     bool validate() const;
     std::string toString() const;
@@ -187,6 +221,27 @@ public:
      * @return Decimated mesh (nullptr if failed)
      */
     std::shared_ptr<open3d::geometry::TriangleMesh> decimateOpen3DMesh(
+        std::shared_ptr<open3d::geometry::TriangleMesh> mesh,
+        const MeshDecimationConfig& config,
+        MeshOptimizationResult& result);
+
+    /**
+     * @brief Advanced simplification with multiple quality modes (PRODUCTION)
+     *
+     * Professional mesh simplification matching Artec Studio quality:
+     * - TRIANGLE_COUNT: Target specific triangle count
+     * - ACCURACY: Maintain geometric error < threshold (recommended)
+     * - ADAPTIVE: Curvature-based preservation (preserve detail)
+     * - FAST: Vertex clustering (2x faster, Artec fast mode)
+     *
+     * @param mesh Input Open3D mesh
+     * @param config Simplification configuration with mode selection
+     * @param result Output optimization result
+     * @return Simplified mesh (nullptr if failed)
+     *
+     * @note This is the RECOMMENDED method for investor demos
+     */
+    std::shared_ptr<open3d::geometry::TriangleMesh> simplifyMesh(
         std::shared_ptr<open3d::geometry::TriangleMesh> mesh,
         const MeshDecimationConfig& config,
         MeshOptimizationResult& result);

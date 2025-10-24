@@ -3,10 +3,14 @@
 # Point cloud source files
 set(POINTCLOUD_SOURCES
     PointCloudProcessor.cpp
+    PoissonReconstructor.cpp
+    MeshCleaner.cpp
 )
 
 set(POINTCLOUD_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/pointcloud/PointCloudProcessor.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/pointcloud/PoissonReconstructor.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/pointcloud/MeshCleaner.hpp
 )
 
 # Create point cloud library

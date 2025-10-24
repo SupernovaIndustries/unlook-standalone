@@ -5,11 +5,11 @@ add_subdirectory(core)
 add_subdirectory(camera)
 add_subdirectory(calibration)
 add_subdirectory(stereo)
-# Temporarily disable pointcloud module due to mesh dependencies
+# Mesh module - Production-ready Poisson reconstruction
+add_subdirectory(mesh)
+# Pointcloud module depends on mesh
 add_subdirectory(pointcloud)
 add_subdirectory(hardware)
-# Temporarily disable mesh module due to compilation issues
-# add_subdirectory(mesh)
 add_subdirectory(validation)
 
 # Core library sources (no Qt dependencies)
@@ -98,8 +98,8 @@ target_link_libraries(unlook
         unlook_stereo       # Link stereo library publicly so GUI can access it
         unlook_calibration  # Link calibration library publicly so GUI can access it
         unlook_hardware     # Link hardware library publicly so GUI can access VCSEL functionality
-        # unlook_pointcloud # Temporarily disabled due to mesh dependencies
-        # unlook_mesh       # Temporarily disabled due to compilation issues
+        unlook_mesh         # Link mesh library for Poisson reconstruction
+        unlook_pointcloud   # Link pointcloud library for 3D processing
         unlook_validation   # Link validation library publicly so GUI can access it
     PRIVATE
         ${FILESYSTEM_LIB}

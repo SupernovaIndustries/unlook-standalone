@@ -262,10 +262,13 @@ private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
 
-    // Helper methods
+public:
+    // Helper methods (made public for MeshOptimizer access)
     double computeTriangleArea(const cv::Vec3f& v0, const cv::Vec3f& v1, const cv::Vec3f& v2);
     double computeTriangleAspectRatio(const cv::Vec3f& v0, const cv::Vec3f& v1, const cv::Vec3f& v2);
     double computeTriangleQuality(const cv::Vec3f& v0, const cv::Vec3f& v1, const cv::Vec3f& v2);
+
+private:
     bool areTrianglesIntersecting(const cv::Vec3f& a0, const cv::Vec3f& a1, const cv::Vec3f& a2,
                                  const cv::Vec3f& b0, const cv::Vec3f& b1, const cv::Vec3f& b2);
     double pointToTriangleDistance(const cv::Vec3f& point,

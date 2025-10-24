@@ -327,6 +327,30 @@ target_include_directories(test_hardware_sync_new PRIVATE
     ${LIBCAMERA_INCLUDE_DIRS}
 )
 
+# Statistical outlier removal test program
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_statistical_outlier_removal.cpp")
+    add_executable(test_statistical_outlier_removal
+        test_statistical_outlier_removal.cpp
+    )
+
+    target_link_libraries(test_statistical_outlier_removal
+        unlook
+        unlook_pointcloud
+        unlook_stereo
+        ${OpenCV_LIBS}
+    )
+
+    target_include_directories(test_statistical_outlier_removal PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${OpenCV_INCLUDE_DIRS}
+    )
+
+    # Optional: Install to examples component
+    install(TARGETS test_statistical_outlier_removal
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        COMPONENT examples)
+endif()
+
 # ==========================================================
 # PACKAGING CONFIGURATION (CPack)
 # ==========================================================

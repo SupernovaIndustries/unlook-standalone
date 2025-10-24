@@ -4,13 +4,17 @@
 set(MESH_SOURCES
     MeshValidator.cpp
     MeshOptimizer.cpp
+    MeshCleaner.cpp
     IndustrialMeshExporter.cpp
+    PoissonReconstructor.cpp
 )
 
 set(MESH_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/mesh/MeshValidator.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/mesh/MeshOptimizer.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/mesh/MeshCleaner.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/mesh/IndustrialMeshExporter.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/mesh/PoissonReconstructor.hpp
 )
 
 # Create mesh library

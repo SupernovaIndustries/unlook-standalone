@@ -40,6 +40,33 @@ namespace unlook {
 namespace pointcloud {
 
 /**
+ * @brief Outlier removal mode for point cloud filtering
+ */
+enum class OutlierRemovalMode {
+    STATISTICAL,     // Artec-grade K-NN statistical outlier removal (nb_neighbors=20, std_ratio=2.0)
+    RADIUS,          // Radius-based outlier removal
+    HYBRID           // Combined statistical and radius filtering
+};
+
+/**
+ * @brief Outlier removal settings for Artec-grade filtering
+ */
+struct OutlierRemovalSettings {
+    OutlierRemovalMode mode = OutlierRemovalMode::STATISTICAL;
+    int nb_neighbors = 20;          // K nearest neighbors (Artec SDK default)
+    double std_ratio = 2.0;         // Standard deviation multiplier (Artec SDK default)
+    double radius = 0.01;           // Radius for radius mode (10mm)
+    int min_neighbors = 10;         // Minimum neighbors for radius mode
+    bool adaptive = true;           // Adapt parameters based on point density
+
+    bool validate() const {
+        return nb_neighbors > 0 && std_ratio > 0.0 && radius > 0.0 && min_neighbors > 0;
+    }
+
+    std::string toString() const;
+};
+
+/**
  * @brief Point cloud filtering configuration
  */
 struct PointCloudFilterConfig {
@@ -227,6 +254,15 @@ public:
      */
     bool applyAdvancedFiltering(stereo::PointCloud& pointCloud,
                                const PointCloudFilterConfig& filterConfig);
+
+    /**
+     * @brief Filter outliers using Artec-grade statistical methods
+     * @param pointCloud Point cloud to filter (modified in-place)
+     * @param settings Outlier removal settings (Artec SDK compatible)
+     * @return true if filtering successful
+     */
+    bool filterOutliers(stereo::PointCloud& pointCloud,
+                       const OutlierRemovalSettings& settings = OutlierRemovalSettings());
 
 #ifdef OPEN3D_ENABLED
     /**
@@ -450,6 +486,40 @@ public:
      */
     void enableARM64Optimizations(bool enable = true);
 
+#ifdef OPEN3D_ENABLED
+    /**
+     * @brief Process complete Artec-grade pipeline from point cloud to optimized mesh
+     *
+     * This implements the complete industrial-grade reconstruction pipeline:
+     * 1. Statistical outlier removal (Artec standard: 20 neighbors, 2.0 std ratio)
+     * 2. Poisson surface reconstruction (Artec quality: depth 9, sharp features)
+     * 3. Remove small objects (Artec cleanup: keep largest component)
+     * 4. Mesh simplification (Artec optimization: accuracy-based, <10 micron error)
+     * 5. Quality validation (watertight, manifold checks)
+     *
+     * @param pointCloud Input point cloud with normals
+     * @return Optimized triangle mesh ready for export (nullptr if failed)
+     */
+    std::shared_ptr<open3d::geometry::TriangleMesh> processCompletePipeline(
+        const open3d::geometry::PointCloud& pointCloud);
+
+    /**
+     * @brief Process complete pipeline with custom settings
+     * @param pointCloud Input point cloud
+     * @param outlierSettings Outlier removal settings
+     * @param poissonSettings Poisson reconstruction settings
+     * @param cleanSettings Mesh cleaning settings
+     * @param simplifySettings Optional mesh simplification (nullptr to skip)
+     * @return Optimized triangle mesh (nullptr if failed)
+     */
+    std::shared_ptr<open3d::geometry::TriangleMesh> processCompletePipeline(
+        const open3d::geometry::PointCloud& pointCloud,
+        const struct OutlierRemovalSettings& outlierSettings,
+        const struct PoissonSettings& poissonSettings,
+        const struct MeshCleanerSettings& cleanSettings,
+        const struct SimplificationSettings* simplifySettings = nullptr);
+#endif
+
 private:
     class Impl;
     std::unique_ptr<Impl> pImpl;
@@ -480,6 +550,12 @@ private:
     void computeNearestNeighborStatistics(const std::vector<cv::Vec3f>& points,
                                          double& meanDistance,
                                          double& stdDistance);
+
+    double estimatePointDensity(const stereo::PointCloud& pointCloud);
+
+#ifdef OPEN3D_ENABLED
+    double estimatePointDensity(std::shared_ptr<open3d::geometry::PointCloud> pointCloud);
+#endif
 
     // Disable copy construction and assignment
     PointCloudProcessor(const PointCloudProcessor&) = delete;

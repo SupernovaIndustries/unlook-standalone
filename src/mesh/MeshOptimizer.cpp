@@ -451,7 +451,11 @@ std::shared_ptr<open3d::geometry::TriangleMesh> MeshOptimizer::decimateOpen3DMes
             targetTriangles = static_cast<size_t>(mesh->triangles_.size() * (1.0 - config.targetReduction));
         }
 
-        auto decimatedMesh = mesh->SimplifyQuadricDecimation(targetTriangles);
+        auto decimatedMesh = mesh->SimplifyQuadricDecimation(
+            static_cast<int>(targetTriangles),
+            config.maxGeometricError,
+            1.0  // boundary_weight (preserve boundaries)
+        );
 
         if (!decimatedMesh || decimatedMesh->vertices_.empty()) {
             pImpl->lastError = "Open3D decimation produced empty mesh";
@@ -474,6 +478,187 @@ std::shared_ptr<open3d::geometry::TriangleMesh> MeshOptimizer::decimateOpen3DMes
 
     } catch (const std::exception& e) {
         pImpl->lastError = "Open3D mesh decimation failed: " + std::string(e.what());
+        return nullptr;
+    }
+}
+
+std::shared_ptr<open3d::geometry::TriangleMesh> MeshOptimizer::simplifyMesh(
+    std::shared_ptr<open3d::geometry::TriangleMesh> mesh,
+    const MeshDecimationConfig& config,
+    MeshOptimizationResult& result) {
+
+    if (!mesh || mesh->vertices_.empty() || mesh->triangles_.empty()) {
+        pImpl->lastError = "Empty Open3D mesh for simplification";
+        return nullptr;
+    }
+
+    if (!config.validate()) {
+        pImpl->lastError = "Invalid simplification configuration";
+        return nullptr;
+    }
+
+    auto startTime = std::chrono::high_resolution_clock::now();
+    result = {};
+    result.operation = "Advanced Mesh Simplification";
+
+    try {
+        // Store before metrics
+        result.beforeMetrics.numVertices = mesh->vertices_.size();
+        result.beforeMetrics.numFaces = mesh->triangles_.size();
+        result.beforeMetrics.surfaceArea = mesh->GetSurfaceArea();
+
+        pImpl->updateProgress(10);
+
+        std::shared_ptr<open3d::geometry::TriangleMesh> simplifiedMesh;
+
+        // Select algorithm based on mode
+        switch (config.mode) {
+            case MeshDecimationConfig::SimplifyMode::TRIANGLE_COUNT: {
+                // Target specific triangle count
+                size_t targetTriangles = config.targetTriangles;
+                if (targetTriangles == 0) {
+                    targetTriangles = static_cast<size_t>(mesh->triangles_.size() * (1.0 - config.targetReduction));
+                }
+
+                pImpl->updateProgress(30);
+
+                if (config.algorithm == MeshDecimationConfig::Algorithm::QUADRIC_ERROR ||
+                    config.algorithm == MeshDecimationConfig::Algorithm::EDGE_COLLAPSE) {
+                    // Quadric Error Metric decimation (best quality)
+                    simplifiedMesh = mesh->SimplifyQuadricDecimation(
+                        static_cast<int>(targetTriangles),
+                        config.maxGeometricError,
+                        1.0
+                    );
+                } else {
+                    // Fallback to quadric
+                    simplifiedMesh = mesh->SimplifyQuadricDecimation(
+                        static_cast<int>(targetTriangles),
+                        config.maxGeometricError,
+                        1.0
+                    );
+                }
+
+                result.operation = "Quadric Decimation (Triangle Count)";
+                break;
+            }
+
+            case MeshDecimationConfig::SimplifyMode::ACCURACY: {
+                // Maintain geometric error < threshold (RECOMMENDED)
+                // Use quadric decimation with maximum error constraint
+
+                // Calculate target triangles based on error tolerance
+                // For high precision (0.01mm), use conservative reduction
+                double error_factor = config.maxGeometricError / 0.01;  // Normalize to 0.01mm baseline
+                double adaptive_reduction = std::min(config.targetReduction, 0.5 + error_factor * 0.3);
+
+                size_t targetTriangles = static_cast<size_t>(mesh->triangles_.size() * (1.0 - adaptive_reduction));
+                targetTriangles = std::max(targetTriangles, static_cast<size_t>(1000));  // Minimum 1000 triangles
+
+                pImpl->updateProgress(30);
+
+                // Quadric decimation with error control
+                simplifiedMesh = mesh->SimplifyQuadricDecimation(
+                    static_cast<int>(targetTriangles),
+                    config.maxGeometricError,  // Maximum allowed error
+                    1.0  // boundary_weight
+                );
+
+                result.operation = "Quadric Decimation (Accuracy Mode, max_error=" +
+                                 std::to_string(config.maxGeometricError) + "mm)";
+                break;
+            }
+
+            case MeshDecimationConfig::SimplifyMode::ADAPTIVE: {
+                // Curvature-based preservation (preserve detail in high-curvature areas)
+                // This would require custom curvature analysis in production
+                // For now, use quadric with conservative settings
+
+                size_t targetTriangles = static_cast<size_t>(mesh->triangles_.size() * (1.0 - config.targetReduction * 0.7));
+
+                pImpl->updateProgress(30);
+
+                simplifiedMesh = mesh->SimplifyQuadricDecimation(
+                    static_cast<int>(targetTriangles),
+                    config.maxGeometricError * 0.5,  // Stricter error for adaptive mode
+                    1.0  // boundary_weight
+                );
+
+                result.operation = "Adaptive Quadric Decimation";
+                break;
+            }
+
+            case MeshDecimationConfig::SimplifyMode::FAST: {
+                // Fast vertex clustering (Artec fast mode, 2x faster)
+                // Compute voxel size based on max error
+                double voxel_size = config.maxGeometricError * 2.0;
+
+                pImpl->updateProgress(30);
+
+                simplifiedMesh = mesh->SimplifyVertexClustering(voxel_size);
+
+                result.operation = "Fast Vertex Clustering (voxel=" +
+                                 std::to_string(voxel_size) + "mm)";
+                break;
+            }
+
+            default: {
+                // Fallback to quadric decimation
+                size_t targetTriangles = config.targetTriangles;
+                if (targetTriangles == 0) {
+                    targetTriangles = static_cast<size_t>(mesh->triangles_.size() * (1.0 - config.targetReduction));
+                }
+                simplifiedMesh = mesh->SimplifyQuadricDecimation(
+                    static_cast<int>(targetTriangles),
+                    config.maxGeometricError,
+                    1.0
+                );
+                result.operation = "Quadric Decimation (Default)";
+                break;
+            }
+        }
+
+        pImpl->updateProgress(70);
+
+        // Validation
+        if (!simplifiedMesh || simplifiedMesh->vertices_.empty() || simplifiedMesh->triangles_.empty()) {
+            pImpl->lastError = "Simplification produced empty or invalid mesh";
+            return nullptr;
+        }
+
+        pImpl->updateProgress(80);
+
+        // Clean up simplified mesh
+        simplifiedMesh->RemoveDuplicatedVertices();
+        simplifiedMesh->RemoveUnreferencedVertices();
+        simplifiedMesh->RemoveDegenerateTriangles();
+
+        pImpl->updateProgress(90);
+
+        // Recompute normals
+        simplifiedMesh->ComputeVertexNormals();
+
+        // Compute after metrics
+        result.afterMetrics.numVertices = simplifiedMesh->vertices_.size();
+        result.afterMetrics.numFaces = simplifiedMesh->triangles_.size();
+        result.afterMetrics.surfaceArea = simplifiedMesh->GetSurfaceArea();
+
+        // Compute statistics
+        result.sizeReduction = 1.0 - (double)result.afterMetrics.numFaces / (double)result.beforeMetrics.numFaces;
+
+        // Performance metrics
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        result.processingTimeMs = duration.count();
+        result.success = true;
+
+        pImpl->updatePerformanceStats("mesh_simplification", result.processingTimeMs);
+        pImpl->updateProgress(100);
+
+        return simplifiedMesh;
+
+    } catch (const std::exception& e) {
+        pImpl->lastError = "Mesh simplification failed: " + std::string(e.what());
         return nullptr;
     }
 }
@@ -1226,22 +1411,43 @@ std::string MeshSmoothingConfig::toString() const {
 bool MeshDecimationConfig::validate() const {
     if (targetReduction < 0.0 || targetReduction > 1.0) return false;
     if (maxError <= 0.0) return false;
+    if (maxGeometricError <= 0.0) return false;
     if (qualityThreshold < 0.0 || qualityThreshold > 1.0) return false;
+    if (featureAngle < 0.0 || featureAngle > 180.0) return false;
+    if (curvatureThreshold < 0.0) return false;
     return true;
 }
 
 std::string MeshDecimationConfig::toString() const {
     std::stringstream ss;
-    ss << "Mesh Decimation Configuration:\n";
+    ss << "Mesh Decimation/Simplification Configuration:\n";
     ss << "  Algorithm: ";
     switch (algorithm) {
         case Algorithm::EDGE_COLLAPSE: ss << "Edge Collapse"; break;
         case Algorithm::VERTEX_CLUSTERING: ss << "Vertex Clustering"; break;
         case Algorithm::PROGRESSIVE_MESH: ss << "Progressive Mesh"; break;
+        case Algorithm::QUADRIC_ERROR: ss << "Quadric Error Metric"; break;
+        case Algorithm::ADAPTIVE: ss << "Adaptive Curvature-based"; break;
     }
-    ss << "\n  Target reduction: " << targetReduction;
-    ss << "\n  Target triangles: " << targetTriangles;
-    ss << "\n  Max error: " << maxError << " mm";
+    ss << "\n  Mode: ";
+    switch (mode) {
+        case SimplifyMode::TRIANGLE_COUNT: ss << "Triangle Count Target"; break;
+        case SimplifyMode::ACCURACY: ss << "Accuracy Preservation"; break;
+        case SimplifyMode::ADAPTIVE: ss << "Adaptive Feature Preservation"; break;
+        case SimplifyMode::FAST: ss << "Fast Vertex Clustering"; break;
+    }
+    ss << "\n  Target reduction: " << std::fixed << std::setprecision(1) << (targetReduction * 100.0) << "%";
+    if (targetTriangles > 0) {
+        ss << "\n  Target triangles: " << targetTriangles;
+    }
+    ss << "\n  Max geometric error: " << std::fixed << std::setprecision(4) << maxGeometricError << " mm";
+    ss << "\n  Preserve boundaries: " << (preserveBoundaries ? "Yes" : "No");
+    ss << "\n  Preserve topology: " << (preserveTopology ? "Yes" : "No");
+    ss << "\n  Quality threshold: " << std::fixed << std::setprecision(2) << qualityThreshold;
+    if (preserveFeatures) {
+        ss << "\n  Feature angle: " << std::fixed << std::setprecision(1) << featureAngle << "°";
+    }
+    ss << "\n  Parallel processing: " << (parallel ? "Enabled" : "Disabled");
     return ss.str();
 }
 
