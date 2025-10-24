@@ -120,6 +120,67 @@ void DepthTestWidget::connectSignals() {
                 }
             });
 
+    // Connect Ambient Light Mode checkbox
+    connect(ui->ambient_light_mode_checkbox, &QCheckBox::toggled,
+            this, [this](bool checked) {
+                if (!depth_processor_) {
+                    qWarning() << "[DepthWidget] Cannot switch SGBM mode: depth_processor_ is null";
+                    return;
+                }
+
+                auto* sgbmMatcher = dynamic_cast<unlook::stereo::SGBMStereoMatcher*>(
+                    depth_processor_->getStereoMatcher()
+                );
+
+                if (!sgbmMatcher) {
+                    qWarning() << "[DepthWidget] Cannot switch SGBM mode: not using SGBMStereoMatcher";
+                    return;
+                }
+
+                auto params = sgbmMatcher->getParameters();
+
+                if (checked) {
+                    // AMBIENT LIGHT MODE - Optimize for natural scene texture
+                    qDebug() << "[DepthWidget] AMBIENT LIGHT MODE ENABLED";
+                    addStatusMessage("SGBM: Ambient Light Mode (blockSize=7, strict matching)");
+
+                    params.blockSize = 7;           // Larger block for natural texture
+                    params.P1 = 392;                // 8 * 1 * 7 * 7
+                    params.P2 = 1568;               // 32 * 1 * 7 * 7
+                    params.uniquenessRatio = 10;    // Strict matching
+                    params.textureThreshold = 10;   // Require minimum texture
+                    params.preFilterCap = 31;       // More preprocessing
+                    params.speckleWindowSize = 100; // Aggressive filtering
+                    params.speckleRange = 32;       // Strict speckle range
+                } else {
+                    // VCSEL MODE - Optimize for structured light dots
+                    qDebug() << "[DepthWidget] VCSEL MODE ENABLED";
+                    addStatusMessage("SGBM: VCSEL Mode (blockSize=3, dot matching)");
+
+                    params.blockSize = 3;           // Minimum for dot matching
+                    params.P1 = 72;                 // 8 * 1 * 3 * 3
+                    params.P2 = 288;                // 32 * 1 * 3 * 3
+                    params.uniquenessRatio = 22;    // Balanced for dots
+                    params.textureThreshold = 3;    // Low for VCSEL dots
+                    params.preFilterCap = 15;       // Minimal preprocessing
+                    params.speckleWindowSize = 15;  // Preserve dot detail
+                    params.speckleRange = 128;      // Wide range for dots
+                }
+
+                // Apply updated parameters
+                if (sgbmMatcher->setParameters(params)) {
+                    qDebug() << "[DepthWidget] SGBM parameters updated successfully";
+                    addStatusMessage(QString("SGBM parameters: blockSize=%1, P1=%2, P2=%3, uniqueness=%4")
+                                    .arg(params.blockSize)
+                                    .arg(params.P1)
+                                    .arg(params.P2)
+                                    .arg(params.uniquenessRatio));
+                } else {
+                    qWarning() << "[DepthWidget] Failed to update SGBM parameters";
+                    addStatusMessage("ERROR: Failed to update SGBM parameters");
+                }
+            });
+
     // TODO: Add these widgets to .ui file and uncomment:
     // connect(ui->export_button, &QPushButton::clicked, this, &DepthTestWidget::exportDepthMap);
     // connect(ui->preset_fast_button, &QPushButton::clicked, [this](){ applyPresetConfiguration(StereoAlgorithmConfig::FAST); });
@@ -2099,15 +2160,11 @@ void DepthTestWidget::exportArtecMesh() {
         artec_stats_label_->setStyleSheet(QString("color: %1; background: rgba(0,255,100,0.1); padding: 12px; border-radius: 4px; border: 1px solid rgba(0,255,100,0.3);")
                                          .arg(SupernovaStyle::colorToString(SupernovaStyle::TEXT_PRIMARY)));
 
-        // Step 5: Export mesh
-        QString filename = QString("unlook_artec_mesh_%1.ply")
-            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss"));
-        QString filepath = QDir::homePath() + "/unlook_exports/" + filename;
+        // Step 5: Export mesh to debug directory (same as images)
+        QString filename = QString("30_artec_mesh.ply");
+        QString filepath = QString::fromStdString(current_debug_directory_) + "/" + filename;
 
-        qDebug() << "[DepthWidget] Step 4: Exporting to" << filepath;
-
-        // Create export directory if needed
-        QDir().mkpath(QDir::homePath() + "/unlook_exports/");
+        qDebug() << "[DepthWidget] Step 5: Exporting Artec mesh to debug directory:" << filepath;
 
         if (open3d::io::WriteTriangleMesh(filepath.toStdString(), *mesh)) {
             artec_status_->setStatus(QString("Exported: %1").arg(filename),
@@ -2115,14 +2172,14 @@ void DepthTestWidget::exportArtecMesh() {
 
             QString message = QString(
                 "Artec-grade mesh exported successfully!\n\n"
-                "File: %1\n"
+                "Location: %1\n\n"
                 "Vertices: %2\n"
                 "Triangles: %3\n"
                 "Watertight: %4\n"
                 "Manifold: %5\n"
                 "Processing time: %6 ms\n\n"
                 "Quality: %7"
-            ).arg(filename)
+            ).arg(filepath)
              .arg(mesh->vertices_.size())
              .arg(mesh->triangles_.size())
              .arg(is_watertight ? "Yes ✓" : "No ✗")
