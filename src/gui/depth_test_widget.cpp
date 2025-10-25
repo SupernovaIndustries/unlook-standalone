@@ -1400,6 +1400,19 @@ void DepthTestWidget::initializePointCloudProcessor() {
 }
 
 void DepthTestWidget::initializeVCSELProjector() {
+    // ============================================================
+    // CRITICAL: Force reset AS1170 on EVERY Unlook startup
+    // This clears any fault state from previous sessions or power-on anomalies
+    // ============================================================
+    qDebug() << "[DepthWidget] === UNLOOK STARTUP: Forcing AS1170 hardware reset ===";
+    auto as1170 = hardware::AS1170Controller::getInstance();
+    if (as1170) {
+        as1170->forceResetHardware();
+        qDebug() << "[DepthWidget] AS1170 force reset complete - ready for clean initialization";
+    } else {
+        qWarning() << "[DepthWidget] Failed to get AS1170 instance for startup reset";
+    }
+
     vcsel_projector_ = std::make_shared<hardware::VCSELProjector>();
 
     // Configure VCSEL for depth capture mode
