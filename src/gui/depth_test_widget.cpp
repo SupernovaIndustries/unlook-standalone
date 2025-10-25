@@ -321,7 +321,7 @@ void DepthTestWidget::captureStereoFrame() {
     // Only do temporal matching if LEDs are enabled
     // ambient_subtract_enabled_ NOW CONTROLS CAPTURE MODE:
     // - CHECKED: 3-frame averaging mode (VCSEL1 + VCSEL2 + Ambient)
-    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 446mA)
+    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 280mA)
     if (led_enabled_ && as1170) {
         if (ambient_subtract_enabled_) {
             // 3-FRAME MODE: VCSEL1 + VCSEL2 + Ambient for averaging
@@ -329,9 +329,9 @@ void DepthTestWidget::captureStereoFrame() {
 
             // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
             qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
-            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
+            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (280mA)");
             QApplication::processEvents();  // Update GUI
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
             frame1 = camera_system_->captureSingle();
@@ -341,10 +341,10 @@ void DepthTestWidget::captureStereoFrame() {
             // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
             capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
             qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
-            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
+            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (280mA)");
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);  // Reduced for better reliability
             std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
             frame2 = camera_system_->captureSingle();
             addStatusMessage("Frame 2 captured");
@@ -365,13 +365,13 @@ void DepthTestWidget::captureStereoFrame() {
             qDebug() << "[DepthWidget] 3-frame capture complete";
             addStatusMessage("3-frame capture complete");
         } else {
-            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 446mA
-            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 446mA";
-            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 446mA");
+            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 280mA
+            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 280mA";
+            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 280mA");
             QApplication::processEvents();  // Update GUI
 
             // Activate VCSEL1 only
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
             std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
 
