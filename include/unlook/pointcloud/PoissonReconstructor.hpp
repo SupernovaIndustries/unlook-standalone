@@ -23,7 +23,7 @@ namespace pointcloud {
  *
  * Implements industry-standard Poisson reconstruction for creating
  * watertight, manifold meshes from oriented point clouds.
- * Based on Artec Studio's reconstruction pipeline.
+ * Based on Unlook Studio's reconstruction pipeline.
  */
 struct PoissonSettings {
     enum class QualityMode {
@@ -78,7 +78,7 @@ struct PoissonResult {
 /**
  * @brief High-precision Poisson surface reconstructor
  *
- * Professional Poisson reconstruction implementation matching Artec Studio quality.
+ * Professional Poisson reconstruction implementation matching Unlook Studio quality.
  * Produces watertight, manifold meshes suitable for industrial applications.
  *
  * Key features:

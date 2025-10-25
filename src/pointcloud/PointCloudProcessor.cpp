@@ -1169,7 +1169,7 @@ bool PointCloudProcessor::estimateNormals(stereo::PointCloud& pointCloud,
     return true;
 }
 
-// Artec-grade statistical outlier removal implementation
+// Industrial-grade statistical outlier removal implementation
 bool PointCloudProcessor::filterOutliers(stereo::PointCloud& pointCloud,
                                         const OutlierRemovalSettings& settings) {
     if (pointCloud.empty()) {
@@ -1185,7 +1185,7 @@ bool PointCloudProcessor::filterOutliers(stereo::PointCloud& pointCloud,
     auto startTime = std::chrono::high_resolution_clock::now();
 
     try {
-        std::cout << "[PointCloudProcessor] Artec-grade outlier removal: "
+        std::cout << "[PointCloudProcessor] Industrial-grade outlier removal: "
                   << pointCloud.points.size() << " points" << std::endl;
         std::cout << settings.toString() << std::endl;
 
@@ -1229,7 +1229,7 @@ bool PointCloudProcessor::filterOutliers(stereo::PointCloud& pointCloud,
 
         switch (settings.mode) {
             case OutlierRemovalMode::STATISTICAL: {
-                // Artec-grade statistical outlier removal (K-NN method)
+                // Industrial-grade statistical outlier removal (K-NN method)
                 std::tie(filtered, indices) = open3dCloud->RemoveStatisticalOutliers(
                     nb_neighbors,
                     std_ratio
@@ -1459,7 +1459,7 @@ std::string OutlierRemovalSettings::toString() const {
     ss << "  Mode: ";
     switch (mode) {
         case OutlierRemovalMode::STATISTICAL:
-            ss << "Statistical (Artec K-NN)";
+            ss << "Statistical (Unlook K-NN)";
             break;
         case OutlierRemovalMode::RADIUS:
             ss << "Radius-based";
@@ -1878,11 +1878,11 @@ bool PointCloudProcessor::exportMesh(const std::vector<cv::Vec3f>& [[maybe_unuse
 }
 
 #ifdef OPEN3D_ENABLED
-// Complete Artec-grade processing pipeline implementation
+// Complete Industrial-grade processing pipeline implementation
 std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processCompletePipeline(
     const open3d::geometry::PointCloud& pointCloud) {
 
-    // Use Artec standard settings
+    // Use Unlook standard settings
     OutlierRemovalSettings outlierSettings;
     outlierSettings.mode = OutlierRemovalMode::STATISTICAL;
     outlierSettings.nb_neighbors = 20;
@@ -1913,10 +1913,10 @@ std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processComp
     auto overallStartTime = std::chrono::high_resolution_clock::now();
 
     try {
-        std::cout << "\n========== ARTEC-GRADE PROCESSING PIPELINE ==========\n" << std::endl;
+        std::cout << "\n========== INDUSTRIAL-GRADE PROCESSING PIPELINE ==========\n" << std::endl;
         std::cout << "[Pipeline] Input: " << pointCloud.points_.size() << " points" << std::endl;
 
-        // STEP 1: Statistical Outlier Removal (Artec standard)
+        // STEP 1: Statistical Outlier Removal (Unlook standard)
         std::cout << "\n[Pipeline] STEP 1: Statistical outlier removal..." << std::endl;
         if (pImpl->progressCallback) pImpl->progressCallback(5);
 
@@ -1931,7 +1931,7 @@ std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processComp
 
         if (pImpl->progressCallback) pImpl->progressCallback(15);
 
-        // STEP 2: Poisson Surface Reconstruction (Artec-grade)
+        // STEP 2: Poisson Surface Reconstruction (Industrial-grade)
         std::cout << "\n[Pipeline] STEP 2: Poisson surface reconstruction..." << std::endl;
         if (pImpl->progressCallback) pImpl->progressCallback(20);
 
@@ -1949,7 +1949,7 @@ std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processComp
 
         if (pImpl->progressCallback) pImpl->progressCallback(50);
 
-        // STEP 3: Remove Small Objects (Artec cleanup)
+        // STEP 3: Remove Small Objects (Unlook cleanup)
         std::cout << "\n[Pipeline] STEP 3: Mesh cleaning..." << std::endl;
         if (pImpl->progressCallback) pImpl->progressCallback(55);
 
@@ -1968,7 +1968,7 @@ std::shared_ptr<open3d::geometry::TriangleMesh> PointCloudProcessor::processComp
 
         if (pImpl->progressCallback) pImpl->progressCallback(70);
 
-        // STEP 4: Mesh Simplification (Artec optimization, optional)
+        // STEP 4: Mesh Simplification (Unlook optimization, optional)
         if (simplifySettings != nullptr) {
             std::cout << "\n[Pipeline] STEP 4: Mesh simplification..." << std::endl;
             if (pImpl->progressCallback) pImpl->progressCallback(75);

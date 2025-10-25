@@ -117,19 +117,19 @@ private slots:
     void exportMesh();
 
     /**
-     * @brief Export mesh using Artec-grade pipeline (NEW)
+     * @brief Export mesh using Industrial-grade pipeline (NEW)
      */
-    void exportArtecMesh();
+    void exportUnlookMesh();
 
     /**
-     * @brief Apply Artec quality preset (INDUSTRIAL/ORGANIC/PREVIEW)
+     * @brief Apply Unlook quality preset (INDUSTRIAL/ORGANIC/PREVIEW)
      */
-    void applyArtecPreset(int presetIndex);
+    void applyUnlookPreset(int presetIndex);
 
     /**
-     * @brief Update Artec octree depth from slider
+     * @brief Update Unlook octree depth from slider
      */
-    void updateArtecOctreeDepth(int depth);
+    void updateUnlookOctreeDepth(int depth);
 
     /**
      * @brief Configure point cloud export options
@@ -273,9 +273,9 @@ private:
     QWidget* createPointCloudExportPanel();
 
     /**
-     * @brief Create Artec-grade mesh processing panel (NEW)
+     * @brief Create Industrial-grade mesh processing panel (NEW)
      */
-    QWidget* createArtecMeshPanel();
+    QWidget* createUnlookMeshPanel();
 
     // System integration
     std::shared_ptr<camera::CameraSystem> camera_system_;
@@ -326,19 +326,19 @@ private:
     QComboBox* export_format_combo_;
     widgets::StatusDisplay* export_status_;
 
-    // Artec mesh processing UI components (NEW)
-    widgets::TouchButton* artec_industrial_button_;
-    widgets::TouchButton* artec_organic_button_;
-    widgets::TouchButton* artec_preview_button_;
-    widgets::TouchButton* artec_export_button_;
-    QSlider* artec_octree_slider_;
-    QLabel* artec_octree_label_;
-    QLabel* artec_stats_label_;
-    widgets::StatusDisplay* artec_status_;
+    // Industrial mesh processing UI components (NEW)
+    widgets::TouchButton* industrial_industrial_button_;
+    widgets::TouchButton* industrial_organic_button_;
+    widgets::TouchButton* industrial_preview_button_;
+    widgets::TouchButton* industrial_export_button_;
+    QSlider* industrial_octree_slider_;
+    QLabel* industrial_octree_label_;
+    QLabel* industrial_stats_label_;
+    widgets::StatusDisplay* industrial_status_;
 
-    // Artec processing state
-    int artec_octree_depth_{9};  // Default octree depth
-    int artec_quality_preset_{0};  // 0=INDUSTRIAL, 1=ORGANIC, 2=PREVIEW
+    // Unlook processing state
+    int industrial_octree_depth_{9};  // Default octree depth
+    int industrial_quality_preset_{0};  // 0=INDUSTRIAL, 1=ORGANIC, 2=PREVIEW
 
     // Constants
     static const int DEPTH_DISPLAY_WIDTH = 500;

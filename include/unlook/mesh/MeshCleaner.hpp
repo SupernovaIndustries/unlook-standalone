@@ -22,7 +22,7 @@ namespace unlook {
 namespace mesh {
 
 /**
- * @brief Mesh cleaning configuration matching Artec Studio algorithms
+ * @brief Mesh cleaning configuration matching Unlook Studio algorithms
  *
  * Implements industrial-grade mesh cleaning for removing small artifacts,
  * isolated components, and noise from 3D scans. Critical for investor demos
@@ -30,11 +30,11 @@ namespace mesh {
  */
 struct MeshCleaningConfig {
     /**
-     * @brief Filtering modes matching Artec Studio behavior
+     * @brief Filtering modes matching Unlook Studio behavior
      */
     enum class FilterMode {
-        KEEP_LARGEST,         // Keep only the largest connected component (Artec: LeaveBiggestObject)
-        FILTER_BY_THRESHOLD   // Remove components below size threshold (Artec: FilterByThreshold)
+        KEEP_LARGEST,         // Keep only the largest connected component (Unlook: LeaveBiggestObject)
+        FILTER_BY_THRESHOLD   // Remove components below size threshold (Unlook: FilterByThreshold)
     };
 
     FilterMode mode = FilterMode::KEEP_LARGEST;
@@ -124,7 +124,7 @@ struct MeshCleaningResult {
 /**
  * @brief Advanced mesh cleaning for industrial 3D scanning applications
  *
- * Provides professional-grade mesh cleaning matching Artec Studio quality:
+ * Provides professional-grade mesh cleaning matching Unlook Studio quality:
  * - Small object filtering (isolated fragments removal)
  * - Connected component analysis
  * - Duplicate vertex removal
@@ -142,7 +142,7 @@ public:
      * @brief Remove small isolated objects from mesh
      *
      * Analyzes connected components and removes small artifacts based on
-     * configuration. Matching Artec Studio's Small Objects Filter.
+     * configuration. Matching Unlook Studio's Small Objects Filter.
      *
      * @param vertices Input mesh vertices (modified in-place)
      * @param faces Input mesh faces (modified in-place)

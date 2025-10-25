@@ -589,7 +589,7 @@ std::shared_ptr<open3d::geometry::TriangleMesh> MeshOptimizer::simplifyMesh(
             }
 
             case MeshDecimationConfig::SimplifyMode::FAST: {
-                // Fast vertex clustering (Artec fast mode, 2x faster)
+                // Fast vertex clustering (Unlook fast mode, 2x faster)
                 // Compute voxel size based on max error
                 double voxel_size = config.maxGeometricError * 2.0;
 

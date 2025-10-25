@@ -46,15 +46,15 @@ struct MeshSmoothingConfig {
 /**
  * @brief Mesh decimation configuration with advanced simplification modes
  *
- * Matching Artec Studio professional decimation quality with multiple algorithms:
+ * Matching Unlook Studio professional decimation quality with multiple algorithms:
  * - QUADRIC_ERROR: Best quality, preserves geometric features (default)
- * - VERTEX_CLUSTERING: Fast mode, 2x faster (Artec fast mode)
+ * - VERTEX_CLUSTERING: Fast mode, 2x faster (Unlook fast mode)
  * - ADAPTIVE: Curvature-based, preserves high-detail areas
  */
 struct MeshDecimationConfig {
     enum class Algorithm {
         EDGE_COLLAPSE,      // Basic edge collapse (deprecated, use QUADRIC_ERROR)
-        VERTEX_CLUSTERING,  // Fast vertex clustering (Artec fast mode)
+        VERTEX_CLUSTERING,  // Fast vertex clustering (Unlook fast mode)
         PROGRESSIVE_MESH,   // Progressive mesh decimation
         QUADRIC_ERROR,      // Quadric Error Metric decimation (best quality)
         ADAPTIVE            // Adaptive curvature-based decimation
@@ -67,7 +67,7 @@ struct MeshDecimationConfig {
         TRIANGLE_COUNT,     // Target specific triangle count
         ACCURACY,           // Maintain geometric error < threshold (recommended)
         ADAPTIVE,           // Curvature-based preservation (preserve detail)
-        FAST                // Fast vertex clustering (2x faster, Artec fast mode)
+        FAST                // Fast vertex clustering (2x faster, Unlook fast mode)
     };
 
     Algorithm algorithm = Algorithm::QUADRIC_ERROR;  // Best quality by default
@@ -228,11 +228,11 @@ public:
     /**
      * @brief Advanced simplification with multiple quality modes (PRODUCTION)
      *
-     * Professional mesh simplification matching Artec Studio quality:
+     * Professional mesh simplification matching Unlook Studio quality:
      * - TRIANGLE_COUNT: Target specific triangle count
      * - ACCURACY: Maintain geometric error < threshold (recommended)
      * - ADAPTIVE: Curvature-based preservation (preserve detail)
-     * - FAST: Vertex clustering (2x faster, Artec fast mode)
+     * - FAST: Vertex clustering (2x faster, Unlook fast mode)
      *
      * @param mesh Input Open3D mesh
      * @param config Simplification configuration with mode selection

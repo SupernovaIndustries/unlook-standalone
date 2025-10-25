@@ -190,7 +190,7 @@ struct ReconstructionStats {
  * @brief High-precision Poisson surface reconstruction for industrial applications
  *
  * Production-ready implementation of Poisson surface reconstruction optimized
- * for the Unlook 3D scanner. Achieves Artec-grade mesh quality with:
+ * for the Unlook 3D scanner. Achieves Industrial-grade mesh quality with:
  * - Watertight mesh generation guaranteed
  * - Sub-0.01mm surface accuracy
  * - Thread-safe concurrent operation

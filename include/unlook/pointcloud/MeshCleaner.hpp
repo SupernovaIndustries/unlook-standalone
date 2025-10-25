@@ -25,7 +25,7 @@ namespace pointcloud {
  */
 struct MeshCleanerSettings {
     enum class FilterMode {
-        KEEP_LARGEST,       // Keep only largest connected component (Artec standard)
+        KEEP_LARGEST,       // Keep only largest connected component (Unlook standard)
         SIZE_THRESHOLD,     // Remove components smaller than threshold
         MANUAL_SELECT       // Manual component selection
     };
@@ -92,7 +92,7 @@ struct MeshCleaningResult {
 /**
  * @brief Professional mesh cleaning and optimization
  *
- * Artec-grade mesh cleanup tools for removing scan artifacts, simplifying meshes,
+ * Industrial-grade mesh cleanup tools for removing scan artifacts, simplifying meshes,
  * and ensuring production-ready quality for industrial applications.
  *
  * Key features:
