@@ -510,6 +510,10 @@ bool FaceEnrollmentWidget::initializeVCSEL() {
 
         // Use singleton instance to prevent I2C conflicts
         as1170_controller_ = hardware::AS1170Controller::getInstance();
+        // CRITICAL: Force reset hardware BEFORE initialization
+        qDebug() << "[FaceEnrollment] Forcing AS1170 hardware reset to clear stuck state";
+        as1170_controller_->forceResetHardware();
+
         if (!as1170_controller_->initialize(as1170_config)) {
             qCritical() << "[FaceEnrollmentWidget] AS1170 controller initialization failed";
             return false;

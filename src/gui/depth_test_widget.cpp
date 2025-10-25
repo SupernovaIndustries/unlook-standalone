@@ -245,6 +245,11 @@ void DepthTestWidget::captureStereoFrame() {
             if (!as1170->isInitialized()) {
                 qDebug() << "[DepthWidget] Initializing AS1170 controller";
                 addStatusMessage("Initializing AS1170 controller...");
+
+                // CRITICAL: Force reset hardware BEFORE initialization
+                qDebug() << "[DepthWidget] Forcing AS1170 hardware reset to clear stuck state";
+                as1170->forceResetHardware();
+
                 as1170->initialize();
             }
             // LEDs will be activated in sequence during temporal capture below

@@ -703,6 +703,10 @@ bool AS1170DebugDialog::initializeAS1170Controller() {
                  << "Address 0x" << QString::number(config.i2c_address, 16)
                  << "GPIO" << config.strobe_gpio << "Current" << config.target_current_ma << "mA";
 
+        // CRITICAL: Force reset hardware BEFORE initialization
+        qDebug() << "[AS1170Debug] Forcing AS1170 hardware reset to clear stuck state";
+        as1170_controller_->forceResetHardware();
+
         if (as1170_controller_->initialize(config)) {
             hardware_initialized_.store(true);
             qDebug() << "[AS1170Debug] AS1170 Controller initialized successfully - hardware_initialized_ = true";

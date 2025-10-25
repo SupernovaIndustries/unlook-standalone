@@ -140,6 +140,76 @@ void AS1170Controller::shutdown() {
     core::Logger::getInstance().info("AS1170 Controller shutdown complete");
 }
 
+bool AS1170Controller::forceResetHardware() {
+    core::Logger::getInstance().info("=== AS1170 FORCE RESET - Clearing stuck state ===");
+
+    // Open I2C bus directly without detection
+    std::string i2c_device = "/dev/i2c-1";
+    int temp_i2c_fd = open(i2c_device.c_str(), O_RDWR);
+
+    if (temp_i2c_fd < 0) {
+        core::Logger::getInstance().error("Force reset: Failed to open I2C device");
+        return false;
+    }
+
+    // Set I2C slave address to 0x30 (AS1170 address)
+    if (ioctl(temp_i2c_fd, I2C_SLAVE, 0x30) < 0) {
+        core::Logger::getInstance().error("Force reset: Failed to set I2C slave address");
+        close(temp_i2c_fd);
+        return false;
+    }
+
+    core::Logger::getInstance().info("Force reset: I2C bus opened, forcing register reset...");
+
+    // Force write all critical registers to 0, ignoring errors
+    // This will clear any stuck state even if chip doesn't ACK properly
+
+    struct RegisterReset {
+        uint8_t reg;
+        uint8_t value;
+        const char* name;
+    };
+
+    RegisterReset resets[] = {
+        {0x06, 0x00, "CONTROL"},           // Disable all outputs
+        {0x01, 0x00, "LED1_CURRENT"},      // Zero LED1 current
+        {0x02, 0x00, "LED2_CURRENT"},      // Zero LED2 current
+        {0x05, 0x80, "FLASH_TIMER"},       // Reset flash timer
+        {0x07, 0x00, "STROBE_SIGNALLING"}, // Disable strobe
+    };
+
+    int success_count = 0;
+    for (const auto& reset : resets) {
+        int result = i2c_smbus_write_byte_data(temp_i2c_fd, reset.reg, reset.value);
+        if (result >= 0) {
+            success_count++;
+            core::Logger::getInstance().info(std::string("Force reset: ") + reset.name + " = 0x" +
+                std::to_string(reset.value) + " ✓");
+        } else {
+            // Don't fail - chip might not ACK if stuck, but register might still reset
+            core::Logger::getInstance().warning(std::string("Force reset: ") + reset.name +
+                " write attempt (chip may be stuck, continuing anyway)");
+        }
+
+        // Small delay between writes to give chip time to process
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    close(temp_i2c_fd);
+
+    core::Logger::getInstance().info("Force reset: Register reset sequence completed (" +
+        std::to_string(success_count) + "/" + std::to_string(sizeof(resets)/sizeof(resets[0])) +
+        " registers acknowledged)");
+
+    // Give chip time to settle after reset
+    core::Logger::getInstance().info("Force reset: Waiting 200ms for chip to settle...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    core::Logger::getInstance().info("=== AS1170 FORCE RESET COMPLETE - Ready for initialization ===");
+
+    return true;
+}
+
 bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t current_ma) {
     std::lock_guard<std::mutex> lock(mutex_);
 

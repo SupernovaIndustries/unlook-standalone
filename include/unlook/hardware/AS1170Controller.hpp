@@ -129,6 +129,15 @@ public:
     void shutdown();
 
     /**
+     * Force reset AS1170 to power-on defaults
+     * CRITICAL: Call this BEFORE initialize() if chip is in unknown/stuck state
+     * This method bypasses normal I2C detection and forces register reset
+     * Use case: Chip stuck from previous session, heating up, not responding
+     * @return true if reset sequence completed (even if chip didn't respond)
+     */
+    bool forceResetHardware();
+
+    /**
      * Enable/disable LED channels with specified current
      * @param channel LED channel to control
      * @param enable Enable or disable the channel

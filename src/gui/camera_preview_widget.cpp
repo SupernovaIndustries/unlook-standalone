@@ -276,6 +276,12 @@ void CameraPreviewWidget::onLEDTestOn() {
     // Initialize if not already done
     if (!as1170->isInitialized()) {
         qDebug() << "[CameraPreview] Initializing AS1170 controller";
+
+        // CRITICAL: Force reset hardware BEFORE initialization
+        // This clears any stuck state from previous sessions (chip heating up, not responding)
+        qDebug() << "[CameraPreview] Forcing AS1170 hardware reset to clear stuck state";
+        as1170->forceResetHardware();
+
         if (!as1170->initialize()) {
             qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
             return;
@@ -356,6 +362,12 @@ void CameraPreviewWidget::onLED1CurrentChanged(int current_ma) {
     // Initialize if not already done
     if (!as1170->isInitialized()) {
         qDebug() << "[CameraPreview] Initializing AS1170 controller";
+
+        // CRITICAL: Force reset hardware BEFORE initialization
+        // This clears any stuck state from previous sessions (chip heating up, not responding)
+        qDebug() << "[CameraPreview] Forcing AS1170 hardware reset to clear stuck state";
+        as1170->forceResetHardware();
+
         if (!as1170->initialize()) {
             qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
             return;
