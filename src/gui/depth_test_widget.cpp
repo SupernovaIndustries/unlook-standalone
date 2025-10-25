@@ -321,7 +321,7 @@ void DepthTestWidget::captureStereoFrame() {
     // Only do temporal matching if LEDs are enabled
     // ambient_subtract_enabled_ NOW CONTROLS CAPTURE MODE:
     // - CHECKED: 3-frame averaging mode (VCSEL1 + VCSEL2 + Ambient)
-    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 280mA)
+    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 446mA)
     if (led_enabled_ && as1170) {
         if (ambient_subtract_enabled_) {
             // 3-FRAME MODE: VCSEL1 + VCSEL2 + Ambient for averaging
@@ -329,10 +329,11 @@ void DepthTestWidget::captureStereoFrame() {
 
             // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
             qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
-            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (280mA)");
+            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
             QApplication::processEvents();  // Update GUI
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
             frame1 = camera_system_->captureSingle();
             addStatusMessage("Frame 1 captured");
             QApplication::processEvents();  // Update GUI
@@ -340,11 +341,11 @@ void DepthTestWidget::captureStereoFrame() {
             // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
             capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
             qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
-            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (280mA)");
+            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);  // Reduced for better reliability
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
             frame2 = camera_system_->captureSingle();
             addStatusMessage("Frame 2 captured");
             QApplication::processEvents();  // Update GUI
@@ -364,14 +365,15 @@ void DepthTestWidget::captureStereoFrame() {
             qDebug() << "[DepthWidget] 3-frame capture complete";
             addStatusMessage("3-frame capture complete");
         } else {
-            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 280mA
-            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 280mA";
-            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 280mA");
+            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 446mA
+            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 446mA";
+            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 446mA");
             QApplication::processEvents();  // Update GUI
 
             // Activate VCSEL1 only
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
 
             // Capture single frame
             frame1 = camera_system_->captureSingle();
@@ -1398,19 +1400,6 @@ void DepthTestWidget::initializePointCloudProcessor() {
 }
 
 void DepthTestWidget::initializeVCSELProjector() {
-    // ============================================================
-    // CRITICAL: Force reset AS1170 on EVERY Unlook startup
-    // This clears any fault state from previous sessions or power-on anomalies
-    // ============================================================
-    qDebug() << "[DepthWidget] === UNLOOK STARTUP: Forcing AS1170 hardware reset ===";
-    auto as1170 = hardware::AS1170Controller::getInstance();
-    if (as1170) {
-        as1170->forceResetHardware();
-        qDebug() << "[DepthWidget] AS1170 force reset complete - ready for clean initialization";
-    } else {
-        qWarning() << "[DepthWidget] Failed to get AS1170 instance for startup reset";
-    }
-
     vcsel_projector_ = std::make_shared<hardware::VCSELProjector>();
 
     // Configure VCSEL for depth capture mode
@@ -2281,10 +2270,7 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                 industrial_status_->setStatus("Ready to generate Industrial mesh", widgets::StatusDisplay::StatusType::SUCCESS);
                 qDebug() << "[DepthWidget] industrial_export_button_ enabled successfully";
 
-                // AUTOMATIC MESH GENERATION DISABLED: Too heavy for 951K points on Raspberry Pi
-                // User can generate mesh manually by clicking the Industrial Export button
-                // This prevents crashes during testing phase
-                /*
+                // AUTOMATIC MESH GENERATION: Generate Industrial mesh immediately after successful depth capture
                 qDebug() << "[DepthWidget] AUTO-GENERATING Industrial mesh for testing...";
                 industrial_status_->setStatus("Auto-generating Industrial mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
                 QTimer::singleShot(100, this, [this]() {
@@ -2296,7 +2282,6 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                         industrial_status_->setStatus("Auto mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
                     }
                 });
-                */
             }
 
             qDebug() << "[DepthWidget] All UI updates completed successfully";

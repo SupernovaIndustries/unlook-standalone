@@ -205,15 +205,6 @@ bool AS1170Controller::forceResetHardware() {
     core::Logger::getInstance().info("Force reset: Waiting 200ms for chip to settle...");
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    // CRITICAL: Reset initialized flag so next activation reinitializes the controller
-    // After force reset, the chip is physically reset but C++ flag is still true
-    // This causes setLEDState() to skip initialize() → I2C errors!
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        initialized_ = false;
-        core::Logger::getInstance().info("Force reset: Cleared initialized flag - controller will reinitialize on next use");
-    }
-
     core::Logger::getInstance().info("=== AS1170 FORCE RESET COMPLETE - Ready for initialization ===");
 
     return true;
