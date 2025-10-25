@@ -358,16 +358,16 @@ void CameraPreviewWidget::onLED1CurrentChanged(int current_ma) {
         return;
     }
 
-    // ALWAYS force reset before LED activation (not just first time!)
-    // This clears any fault state from previous LED usage
-    if (current_ma > 0) {  // Only reset when activating, not when disabling
-        qDebug() << "[CameraPreview] Forcing AS1170 hardware reset before LED activation";
-        as1170->forceResetHardware();
-    }
-
     // Initialize if not already done
+    // NOTE: Force reset is done in onLEDTestOn()/onLEDTestOff(), not here
+    // This prevents double-reset when slider value changes trigger this function
     if (!as1170->isInitialized()) {
-        qDebug() << "[CameraPreview] Initializing AS1170 controller after reset";
+        qDebug() << "[CameraPreview] Initializing AS1170 controller";
+
+        // Force reset only on first initialization
+        qDebug() << "[CameraPreview] Forcing AS1170 hardware reset on first init";
+        as1170->forceResetHardware();
+
         if (!as1170->initialize()) {
             qWarning() << "[CameraPreview] Failed to initialize AS1170 controller";
             return;
