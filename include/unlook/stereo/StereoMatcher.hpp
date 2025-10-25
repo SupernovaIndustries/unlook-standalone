@@ -16,6 +16,7 @@ enum class StereoAlgorithm {
     SGBM,           // Semi-Global Block Matching (OpenCV)
     BM,             // Block Matching (OpenCV)
     SGBM_3WAY,      // SGBM with 3-way optimization
+    CENSUS,         // Census Transform + SGBM (optimized for VCSEL dots)
     BOOFCV_SGBM,    // BoofCV Semi-Global Matching
     BOOFCV_BM,      // BoofCV Block Matching
     CUSTOM          // Custom implementation
@@ -58,7 +59,21 @@ struct StereoMatchingParams {
     
     // Quality parameters
     float confidenceThreshold = 0.95f;  // Minimum confidence for valid disparity
-    
+
+    // Census Transform parameters
+    bool useCensusTransform = false;     // Use Census instead of SAD matching cost
+    int censusWindowSize = 5;            // Census window size (5x5 or 7x7)
+    bool enhanceVCSELDots = true;        // Apply LoG+CLAHE preprocessing for VCSEL dots
+
+    // VCSEL dot enhancement parameters
+    double claheClipLimit = 2.0;         // CLAHE contrast limit (higher = more contrast)
+    int claheGridSize = 8;               // CLAHE tile size (smaller = more local adaptation)
+    double logSigma = 1.0;               // Gaussian sigma for LoG (blob detection)
+    int logKernelSize = 3;               // Laplacian kernel size (3, 5, or 7)
+    bool useBilateralFilter = false;     // Apply bilateral filter for noise reduction
+    double bilateralSigmaColor = 50.0;   // Bilateral filter color sigma
+    double bilateralSigmaSpace = 50.0;   // Bilateral filter spatial sigma
+
     /**
      * @brief Validate parameters
      * @return true if parameters are valid

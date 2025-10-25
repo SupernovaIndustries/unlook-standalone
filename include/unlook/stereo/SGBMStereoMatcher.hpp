@@ -118,6 +118,17 @@ private:
      * @brief Fill holes in disparity map
      */
     void fillDisparityHoles(cv::Mat& disparity) const;
+
+    /**
+     * @brief Apply VCSEL dot enhancement preprocessing
+     * @param input Input grayscale image
+     * @param output Enhanced output image
+     *
+     * Applies Laplacian of Gaussian (LoG) for dot detection,
+     * CLAHE for local contrast enhancement, and optional bilateral filtering.
+     * Optimized for BELAGO1.1 15K VCSEL dot pattern (1-2 pixel dots).
+     */
+    void applyVCSELDotEnhancement(const cv::Mat& input, cv::Mat& output) const;
 };
 
 } // namespace stereo

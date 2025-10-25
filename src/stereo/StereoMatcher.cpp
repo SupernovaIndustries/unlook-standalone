@@ -1,5 +1,6 @@
 #include "unlook/stereo/StereoMatcher.hpp"
 #include "unlook/stereo/SGBMStereoMatcher.hpp"
+#include "unlook/stereo/CensusStereoMatcher.hpp"
 #include "unlook/stereo/ProgressiveStereoMatcher.hpp"
 #ifdef HAVE_BOOFCV
 #include "unlook/stereo/BoofCVStereoMatcher.hpp"
@@ -176,6 +177,10 @@ std::unique_ptr<StereoMatcher> StereoMatcher::create(StereoAlgorithm algorithm) 
         case StereoAlgorithm::BM:
             return std::make_unique<SGBMStereoMatcher>(); // TODO: Create BMStereoMatcher
 
+        // Census Transform matcher (optimized for VCSEL dots)
+        case StereoAlgorithm::CENSUS:
+            return std::make_unique<CensusStereoMatcher>();
+
         // Custom progressive matcher
         case StereoAlgorithm::CUSTOM:
             return std::make_unique<ProgressiveStereoMatcher>();
@@ -218,7 +223,8 @@ std::vector<StereoAlgorithm> StereoMatcher::getAvailableAlgorithms() {
     std::vector<StereoAlgorithm> algorithms = {
         StereoAlgorithm::SGBM,
         StereoAlgorithm::BM,
-        StereoAlgorithm::CUSTOM  // Progressive matcher
+        StereoAlgorithm::CENSUS,  // Census Transform (VCSEL-optimized)
+        StereoAlgorithm::CUSTOM   // Progressive matcher
     };
     
     // Add BoofCV algorithms if available

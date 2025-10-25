@@ -3,6 +3,7 @@ set(STEREO_SOURCES
     DepthProcessor.cpp
     StereoMatcher.cpp
     SGBMStereoMatcher.cpp
+    CensusStereoMatcher.cpp
     ProgressiveStereoMatcher.cpp
     DisparityFilter.cpp
     ParameterManager.cpp

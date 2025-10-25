@@ -92,20 +92,29 @@ bool SGBMStereoMatcher::computeDisparity(const cv::Mat& leftRectified,
     
     try {
         cv::Mat leftGray, rightGray;
-        
+
         // Convert to grayscale if needed
         if (leftRectified.channels() == 3) {
             cv::cvtColor(leftRectified, leftGray, cv::COLOR_BGR2GRAY);
         } else {
-            leftGray = leftRectified;
+            leftGray = leftRectified.clone();
         }
-        
+
         if (rightRectified.channels() == 3) {
             cv::cvtColor(rightRectified, rightGray, cv::COLOR_BGR2GRAY);
         } else {
-            rightGray = rightRectified;
+            rightGray = rightRectified.clone();
         }
-        
+
+        // Apply VCSEL dot enhancement preprocessing if enabled
+        if (params_.enhanceVCSELDots) {
+            cv::Mat enhancedLeft, enhancedRight;
+            applyVCSELDotEnhancement(leftGray, enhancedLeft);
+            applyVCSELDotEnhancement(rightGray, enhancedRight);
+            leftGray = enhancedLeft;
+            rightGray = enhancedRight;
+        }
+
         // Compute disparity
         cv::Mat rawDisparity;
         sgbm_->compute(leftGray, rightGray, rawDisparity);
@@ -544,6 +553,77 @@ void SGBMStereoMatcher::fillDisparityHoles(cv::Mat& disparity) const {
         disparity.convertTo(disp8u, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
         cv::inpaint(disp8u, mask, disp8u, 3, cv::INPAINT_NS);
         disp8u.convertTo(disparity, CV_32F, (maxVal - minVal) / 255.0, minVal);
+    }
+}
+
+void SGBMStereoMatcher::applyVCSELDotEnhancement(const cv::Mat& input, cv::Mat& output) const {
+    /**
+     * VCSEL Dot Enhancement for BELAGO1.1 15K Dot Pattern
+     *
+     * Based on research:
+     * - "A Comparison and Evaluation of Stereo Matching on Active Stereo Images" (PMC)
+     *   https://pmc.ncbi.nlm.nih.gov/articles/PMC9100404/
+     *
+     * Enhancement Pipeline:
+     * 1. Laplacian of Gaussian (LoG): Detects blob-like features (VCSEL dots are Gaussian blobs)
+     * 2. CLAHE: Increases local contrast in dark areas where dots appear
+     * 3. Bilateral Filter (optional): Edge-preserving noise reduction
+     *
+     * Goal: Improve point retention from 5.65% to 60-80% by making isolated VCSEL dots
+     *       more visible to stereo matching algorithms.
+     */
+
+    if (input.empty()) {
+        output = input.clone();
+        return;
+    }
+
+    // STEP 1: Laplacian of Gaussian (LoG) for blob detection
+    // Enhances VCSEL dots (1-2 pixel Gaussian blobs) while suppressing flat areas
+    cv::Mat blurred, laplacian;
+    cv::GaussianBlur(input, blurred, cv::Size(params_.logKernelSize, params_.logKernelSize),
+                     params_.logSigma);
+    cv::Laplacian(blurred, laplacian, CV_16S, params_.logKernelSize);
+
+    // Convert to absolute values (detect both bright and dark blobs)
+    cv::Mat absLaplacian;
+    cv::convertScaleAbs(laplacian, absLaplacian);
+
+    // Blend LoG result with original image to preserve texture information
+    // 70% LoG (dot enhancement) + 30% original (texture preservation)
+    cv::Mat enhanced;
+    cv::addWeighted(absLaplacian, 0.7, input, 0.3, 0, enhanced);
+
+    // STEP 2: CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    // Increases local contrast in dark areas where VCSEL dots appear
+    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(params_.claheClipLimit,
+                                                cv::Size(params_.claheGridSize, params_.claheGridSize));
+    clahe->apply(enhanced, enhanced);
+
+    // STEP 3: Bilateral Filter (optional, for noise reduction)
+    // Edge-preserving smoothing: removes noise but preserves dot structure
+    if (params_.useBilateralFilter) {
+        cv::Mat filtered;
+        cv::bilateralFilter(enhanced, filtered, 5,
+                           params_.bilateralSigmaColor,
+                           params_.bilateralSigmaSpace);
+        output = filtered;
+    } else {
+        output = enhanced;
+    }
+
+    // Log enhancement application (only once per stereo pair)
+    static bool logged = false;
+    if (!logged && params_.enhanceVCSELDots) {
+        std::cout << "[SGBM] VCSEL dot enhancement applied: LoG(sigma=" << params_.logSigma
+                  << ", kernel=" << params_.logKernelSize << ") + CLAHE(clip=" << params_.claheClipLimit
+                  << ", grid=" << params_.claheGridSize << ")";
+        if (params_.useBilateralFilter) {
+            std::cout << " + Bilateral(color=" << params_.bilateralSigmaColor
+                      << ", space=" << params_.bilateralSigmaSpace << ")";
+        }
+        std::cout << std::endl;
+        logged = true;
     }
 }
 
