@@ -2067,6 +2067,12 @@ void DepthTestWidget::exportArtecMesh() {
     try {
         // Step 1: Generate point cloud from depth map
         qDebug() << "[DepthWidget] Step 1: Generating point cloud...";
+        qDebug() << "[DepthWidget] Depth map info:"
+                 << "width=" << current_result_.depth_map.cols
+                 << "height=" << current_result_.depth_map.rows
+                 << "type=" << current_result_.depth_map.type()
+                 << "empty=" << current_result_.depth_map.empty();
+
         stereo::PointCloud pointCloud;
         cv::Mat colorImage; // TODO: Get actual color image
 
@@ -2077,14 +2083,16 @@ void DepthTestWidget::exportArtecMesh() {
                 pointcloud_filter_config_)) {
 
             QString error = QString::fromStdString(pointcloud_processor_->getLastError());
-            QMessageBox::critical(this, "Point Cloud Generation Failed", error);
-            artec_status_->setStatus("Point cloud generation failed", widgets::StatusDisplay::StatusType::ERROR);
+            qDebug() << "[DepthWidget] ❌ POINT CLOUD GENERATION FAILED:" << error;
+            qDebug() << "[DepthWidget] This is why mesh export was aborted!";
+
+            artec_status_->setStatus("Point cloud generation failed: " + error, widgets::StatusDisplay::StatusType::ERROR);
             artec_status_->stopPulsing();
             artec_export_button_->setEnabled(true);
             return;
         }
 
-        qDebug() << "[DepthWidget] Point cloud generated:" << pointCloud.points.size() << "points";
+        qDebug() << "[DepthWidget] ✅ Point cloud generated:" << pointCloud.points.size() << "points";
 
         // Step 2: Convert to Open3D format
         qDebug() << "[DepthWidget] Step 2: Converting to Open3D format...";
@@ -2157,8 +2165,11 @@ void DepthTestWidget::exportArtecMesh() {
         QString filepath = QString::fromStdString(current_debug_directory_) + "/" + filename;
 
         qDebug() << "[DepthWidget] Step 5: Exporting Artec mesh to debug directory:" << filepath;
+        qDebug() << "[DepthWidget] Mesh stats: vertices=" << mesh->vertices_.size()
+                 << "triangles=" << mesh->triangles_.size();
 
         if (open3d::io::WriteTriangleMesh(filepath.toStdString(), *mesh)) {
+            qDebug() << "[DepthWidget] ✅ MESH EXPORTED SUCCESSFULLY to:" << filepath;
             artec_status_->setStatus(QString("Exported: %1").arg(filename),
                                     widgets::StatusDisplay::StatusType::SUCCESS);
 
@@ -2179,17 +2190,16 @@ void DepthTestWidget::exportArtecMesh() {
              .arg(duration.count())
              .arg(is_watertight && is_manifold ? "Artec-grade professional quality ✓" : "Good quality");
 
-            QMessageBox::information(this, "Export Successful", message);
+            qDebug() << "[DepthWidget] Mesh export completed successfully!";
+            // Don't show QMessageBox during auto-generation to avoid blocking
         } else {
-            QMessageBox::critical(this, "Export Failed", "Failed to write mesh file to disk.");
+            qDebug() << "[DepthWidget] ❌ MESH FILE WRITE FAILED to:" << filepath;
             artec_status_->setStatus("Export failed", widgets::StatusDisplay::StatusType::ERROR);
         }
 
     } catch (const std::exception& e) {
-        QMessageBox::critical(this, "Export Failed",
-                            QString("Exception during Artec mesh processing:\n%1").arg(e.what()));
+        qDebug() << "[DepthWidget] ❌ EXCEPTION during Artec mesh processing:" << e.what();
         artec_status_->setStatus("Processing failed with exception", widgets::StatusDisplay::StatusType::ERROR);
-        qDebug() << "[DepthWidget] Exception:" << e.what();
     }
 
     artec_status_->stopPulsing();
