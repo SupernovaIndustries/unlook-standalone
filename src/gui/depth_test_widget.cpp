@@ -2270,7 +2270,10 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                 industrial_status_->setStatus("Ready to generate Industrial mesh", widgets::StatusDisplay::StatusType::SUCCESS);
                 qDebug() << "[DepthWidget] industrial_export_button_ enabled successfully";
 
-                // AUTOMATIC MESH GENERATION: Generate Industrial mesh immediately after successful depth capture
+                // AUTOMATIC MESH GENERATION DISABLED: Too heavy for 951K points on Raspberry Pi
+                // User can generate mesh manually by clicking the Industrial Export button
+                // This prevents crashes during testing phase
+                /*
                 qDebug() << "[DepthWidget] AUTO-GENERATING Industrial mesh for testing...";
                 industrial_status_->setStatus("Auto-generating Industrial mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
                 QTimer::singleShot(100, this, [this]() {
@@ -2282,6 +2285,7 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                         industrial_status_->setStatus("Auto mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
                     }
                 });
+                */
             }
 
             qDebug() << "[DepthWidget] All UI updates completed successfully";
