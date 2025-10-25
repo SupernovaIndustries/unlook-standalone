@@ -12,9 +12,10 @@ namespace unlook {
 namespace stereo {
 
 SGBMStereoMatcher::SGBMStereoMatcher() {
-    // ULTRA-HIGH QUALITY VCSEL PARAMETERS - ABSOLUTE MAXIMUM PRECISION
-    // Target: BELAGO1.1 VCSEL with 15K dots, 70.017mm baseline
-    // Optimized for 0.005mm target precision with industrial scanning
+    // VCSEL DOT PATTERN OPTIMIZED PARAMETERS - BELAGO1.1 15K DOTS
+    // Target: Small VCSEL dots (1-2 pixels each), sparse distribution
+    // Optimized for maximum point retention while preserving 0.005mm precision
+    // Based on analysis: dots are SMALL and need larger blocks to capture context
 
     // MAXIMUM disparity range for comprehensive depth coverage
     params_.minDisparity = 0;         // Start from 0 to capture far objects
@@ -22,34 +23,37 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
                                       // Increased from 384 for even better close-range coverage
                                       // Supports 25cm-100m depth range at 70mm baseline
 
-    // VCSEL-SPECIFIC: Minimum block for individual dot matching
-    params_.blockSize = 3;            // ABSOLUTE MINIMUM for SGBM (cannot go lower!)
-                                      // Critical for matching individual VCSEL dots
+    // VCSEL DOT-OPTIMIZED: Larger block to capture complete dots + context
+    params_.blockSize = 5;            // OPTIMIZED: 5x5 captures small dots completely
+                                      // Larger than 3x3 to provide context around each dot
+                                      // More robust to noise and partial dot captures
 
-    // P1/P2 ULTRA-HIGH smoothness parameters for industrial surfaces
+    // P1/P2 recalculated for blockSize=5 (VCSEL dot smoothness)
     // Formula: P1 = 8*cn*blockSize^2, P2 = 32*cn*blockSize^2 (cn=channels=1)
-    params_.P1 = 72;                  // OPTIMIZED: 8 * 1 * 3 * 3 for dot patterns
-    params_.P2 = 288;                 // OPTIMIZED: 32 * 1 * 3 * 3 for smooth surfaces
-                                      // P2/P1 ratio = 4 optimal for structured light
+    params_.P1 = 200;                 // 8 * 1 * 5 * 5 = 200 (smoothness for dots)
+    params_.P2 = 800;                 // 32 * 1 * 5 * 5 = 800 (penalty for disparity jumps)
+                                      // P2/P1 ratio = 4 optimal for structured light dots
 
-    // BALANCED uniqueness for thin objects (fingers, edges)
-    params_.uniquenessRatio = 22;     // REDUCED: Accept more matches in low-texture areas
-                                      // Better for thin structures like fingers (was 30)
-    params_.textureThreshold = 3;     // ULTRA-LOW: Captures even faintest VCSEL dots
-    params_.preFilterCap = 15;        // REDUCED: Less preprocessing to preserve dot structure
+    // MORE TOLERANT uniqueness for sparse dot patterns
+    params_.uniquenessRatio = 15;     // REDUCED from 22: Accept more dot matches
+                                      // Critical for low-texture areas with sparse dots
+                                      // Improves retention from 4.2% to target 60%+
+    params_.textureThreshold = 5;     // LOW: Accept dots even in low-texture areas
+    params_.preFilterCap = 10;        // MINIMAL: Less preprocessing preserves dot structure
 
-    // MINIMAL speckle filtering to preserve all valid depth data
-    params_.speckleWindowSize = 15;   // MINIMAL: Preserve maximum detail (was 25)
-    params_.speckleRange = 128;       // INCREASED: Higher tolerance for natural depth variation
+    // BALANCED speckle filtering: Remove noise but preserve dot clusters
+    params_.speckleWindowSize = 50;   // INCREASED from 15: Better noise removal between dots
+    params_.speckleRange = 128;       // WIDE: High tolerance for depth variation in dot clusters
 
-    // WLS filter OPTIMIZED for thin objects preservation
+    // WLS filter OPTIMIZED for dot pattern preservation
     params_.useWLSFilter = true;
-    params_.wlsLambda = 5500.0;       // REDUCED: Less aggressive smoothing for thin structures (was 6000)
+    params_.wlsLambda = 5500.0;       // REDUCED: Less aggressive smoothing preserves dots
     params_.wlsSigma = 1.0;           // TIGHT: Strictest edge preservation
 
-    // STRICTEST left-right consistency check
+    // REALISTIC left-right consistency for small dots
     params_.leftRightCheck = true;
-    params_.disp12MaxDiff = 1;        // STRICTEST: Single pixel tolerance for max precision
+    params_.disp12MaxDiff = 2;        // INCREASED from 1: More realistic for sub-pixel dot matching
+                                      // Still strict but accounts for dot positioning variance
 
     // Create SGBM matcher with optimized parameters
     sgbm_ = cv::StereoSGBM::create(
