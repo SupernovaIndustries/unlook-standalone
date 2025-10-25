@@ -25,7 +25,7 @@ namespace hardware {
  * Hardware Configuration (FINAL):
  * - I2C Bus: 1 (confirmed working, final configuration)
  * - I2C Address: 0x30 (final production address)
- * - GPIO Strobe: 19 (final strobe control pin for CM5)
+ * - GPIO Strobe: 4 (strobe control pin for CM5)
  * - Target Current: 250mA (industrial safety limit vs 450mA OSRAM example)
  * - VCSEL: OSRAM BELAGO 15k points projector
  *
@@ -72,7 +72,7 @@ public:
         AS1170Config() :
             i2c_bus(1),                           // I2C bus number (FINAL CONFIG: bus 1)
             i2c_address(0x30),                    // I2C address (FINAL CONFIG: 0x30)
-            strobe_gpio(19),                      // GPIO pin for strobe control (FINAL CONFIG: GPIO 19)
+            strobe_gpio(4),                       // GPIO pin for strobe control
             target_current_ma(446),               // AS1170 hardware maximum: 446mA (127 * 3.515625)
             flash_mode(FlashMode::FLASH_MODE),
             strobe_type(StrobeType::LEVEL_SENSITIVE),

@@ -196,8 +196,39 @@ bool SGBMStereoMatcher::computeDisparity(const cv::Mat& leftRectified,
         // PRECISION-CRITICAL: Convert to float preserving sub-pixel accuracy
         // OpenCV SGBM returns CV_16S with 4 fractional bits (16x sub-pixel precision)
         if (disparity.type() == CV_16S) {
+            // CRITICAL FIX: Filter invalid disparities BEFORE conversion to float
+            // OpenCV SGBM uses d=-1 or d=32767 (0x7FFF) to mark failed matches
+            // These invalid values would generate absurd Z coordinates if not filtered
+            cv::Mat valid_mask = (disparity > 0) & (disparity < 32000);
+            disparity.setTo(0, ~valid_mask);
+
+            int invalid_count = cv::countNonZero(~valid_mask);
+            if (invalid_count > 0) {
+                logToAll(std::string("[SGBM] Filtered ") + std::to_string(invalid_count) +
+                         " invalid disparities (d<=0 or d>=32000)");
+            }
+
             // Preserve all 16x sub-pixel precision for 0.005mm target
             disparity.convertTo(disparity, CV_32F, 1.0 / 16.0);
+
+            // PHYSICAL RANGE VALIDATION: Filter disparities that yield implausible depths
+            // For 70mm baseline, 1772.98px focal length:
+            // d_min = (f×B)/z_max = (1772.98×70.017)/6200 ≈ 20.0 px (max depth 6.2m)
+            // d_max = (f×B)/z_min = (1772.98×70.017)/155 ≈ 800.7 px (min depth 155mm)
+            // Adjusted range based on actual scene measurements (Z: 155mm - 6200mm)
+            float d_min = 20.0f;   // Z_max ≈ 6200mm (max plausible distance)
+            float d_max = 800.0f;  // Z_min ≈ 155mm (min plausible distance)
+
+            cv::Mat physical_valid = (disparity > d_min) & (disparity < d_max);
+            disparity.setTo(0, ~physical_valid);
+
+            int filtered_physical = cv::countNonZero(~physical_valid);
+            if (filtered_physical > 0) {
+                logToAll(std::string("[SGBM] Physical range filter: d ∈ [") +
+                         std::to_string(d_min) + ", " + std::to_string(d_max) + "] px");
+                logToAll(std::string("  Filtered ") + std::to_string(filtered_physical) +
+                         " physically implausible disparities");
+            }
 
             // Apply sub-pixel refinement for additional precision if needed
             if (highPrecisionMode_ && params_.blockSize <= 7) {

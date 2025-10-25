@@ -63,7 +63,7 @@ bool LEDSyncManager::initialize(std::shared_ptr<AS1170Controller> as1170_control
     }
 
     core::Logger::getInstance().info("LEDSyncManager initialized successfully");
-    core::Logger::getInstance().info("Using AS1170Controller with FINAL hardware config: I2C Bus 1, Address 0x30, GPIO 19");
+    core::Logger::getInstance().info("Using AS1170Controller with FINAL hardware config: I2C Bus 1, Address 0x30, GPIO 573 (physical GPIO4)");
     // TODO: Fix formatted logging -     core::Logger::getInstance().info("Sync mode: {}, Pattern: {}, Pre-delay: {}μs, Strobe: {}μs",
 //                       static_cast<int>(config_.mode),
 //                       static_cast<int>(config_.pattern),

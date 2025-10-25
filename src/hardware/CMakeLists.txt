@@ -221,7 +221,7 @@ target_compile_definitions(unlook_hardware PRIVATE
     # Final AS1170 hardware configuration values:
     UNLOOK_AS1170_I2C_BUS=1          # I2C Bus 1 (confirmed working)
     UNLOOK_AS1170_I2C_ADDRESS=0x30   # I2C Address 0x30 (final production)
-    UNLOOK_AS1170_STROBE_GPIO=19     # GPIO 19 (final strobe control pin)
+    UNLOOK_AS1170_STROBE_GPIO=4      # GPIO 4 (strobe control pin)
 )
 
 # Safety and debugging features

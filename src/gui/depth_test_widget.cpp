@@ -128,57 +128,44 @@ void DepthTestWidget::connectSignals() {
                     return;
                 }
 
-                auto* sgbmMatcher = dynamic_cast<unlook::stereo::SGBMStereoMatcher*>(
-                    depth_processor_->getStereoMatcher()
-                );
-
-                if (!sgbmMatcher) {
-                    qWarning() << "[DepthWidget] Cannot switch SGBM mode: not using SGBMStereoMatcher";
-                    return;
-                }
-
-                auto params = sgbmMatcher->getParameters();
+                // Get current stereo configuration
+                auto config = depth_processor_->getStereoConfig();
 
                 if (checked) {
                     // AMBIENT LIGHT MODE - Optimize for natural scene texture
                     qDebug() << "[DepthWidget] AMBIENT LIGHT MODE ENABLED";
                     addStatusMessage("SGBM: Ambient Light Mode (blockSize=7, strict matching)");
 
-                    params.blockSize = 7;           // Larger block for natural texture
-                    params.P1 = 392;                // 8 * 1 * 7 * 7
-                    params.P2 = 1568;               // 32 * 1 * 7 * 7
-                    params.uniquenessRatio = 10;    // Strict matching
-                    params.textureThreshold = 10;   // Require minimum texture
-                    params.preFilterCap = 31;       // More preprocessing
-                    params.speckleWindowSize = 100; // Aggressive filtering
-                    params.speckleRange = 32;       // Strict speckle range
+                    config.block_size = 7;           // Larger block for natural texture
+                    config.p1 = 392;                 // 8 * 1 * 7 * 7
+                    config.p2 = 1568;                // 32 * 1 * 7 * 7
+                    config.uniqueness_ratio = 10;    // Strict matching
+                    config.pre_filter_cap = 31;      // More preprocessing
+                    config.speckle_window_size = 100;// Aggressive filtering
+                    config.speckle_range = 32;       // Strict speckle range
                 } else {
                     // VCSEL MODE - Optimize for structured light dots
                     qDebug() << "[DepthWidget] VCSEL MODE ENABLED";
                     addStatusMessage("SGBM: VCSEL Mode (blockSize=3, dot matching)");
 
-                    params.blockSize = 3;           // Minimum for dot matching
-                    params.P1 = 72;                 // 8 * 1 * 3 * 3
-                    params.P2 = 288;                // 32 * 1 * 3 * 3
-                    params.uniquenessRatio = 22;    // Balanced for dots
-                    params.textureThreshold = 3;    // Low for VCSEL dots
-                    params.preFilterCap = 15;       // Minimal preprocessing
-                    params.speckleWindowSize = 15;  // Preserve dot detail
-                    params.speckleRange = 128;      // Wide range for dots
+                    config.block_size = 3;           // Minimum for dot matching
+                    config.p1 = 72;                  // 8 * 1 * 3 * 3
+                    config.p2 = 288;                 // 32 * 1 * 3 * 3
+                    config.uniqueness_ratio = 22;    // Balanced for dots
+                    config.pre_filter_cap = 15;      // Minimal preprocessing
+                    config.speckle_window_size = 15; // Preserve dot detail
+                    config.speckle_range = 128;      // Wide range for dots
                 }
 
-                // Apply updated parameters
-                if (sgbmMatcher->setParameters(params)) {
-                    qDebug() << "[DepthWidget] SGBM parameters updated successfully";
-                    addStatusMessage(QString("SGBM parameters: blockSize=%1, P1=%2, P2=%3, uniqueness=%4")
-                                    .arg(params.blockSize)
-                                    .arg(params.P1)
-                                    .arg(params.P2)
-                                    .arg(params.uniquenessRatio));
-                } else {
-                    qWarning() << "[DepthWidget] Failed to update SGBM parameters";
-                    addStatusMessage("ERROR: Failed to update SGBM parameters");
-                }
+                // Apply updated configuration
+                depth_processor_->configureStereo(config);
+
+                qDebug() << "[DepthWidget] SGBM parameters updated successfully";
+                addStatusMessage(QString("SGBM: blockSize=%1, P1=%2, P2=%3, uniqueness=%4")
+                                .arg(config.block_size)
+                                .arg(config.p1)
+                                .arg(config.p2)
+                                .arg(config.uniqueness_ratio));
             });
 
     // TODO: Add these widgets to .ui file and uncomment:

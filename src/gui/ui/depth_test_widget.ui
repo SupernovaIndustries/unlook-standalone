@@ -563,6 +563,68 @@ QCheckBox::indicator:checked:hover {
             </widget>
            </item>
            <item>
+            <widget class="QCheckBox" name="ambient_light_mode_checkbox">
+             <property name="minimumSize">
+              <size>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>800</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <family>Inter</family>
+               <pointsize>9</pointsize>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Supernova-tech Checkbox */
+QCheckBox {
+    color: #FFFFFF;
+    font-family: &quot;Inter&quot;, sans-serif;
+    font-weight: 700;
+    spacing: 8px;
+    min-height: 48px;
+}
+
+QCheckBox::indicator {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #008B7A;
+    border-radius: 4px;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #00E5CC;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:checked {
+    background: #00E5CC;
+    border: 2px solid #00B8A3;
+}
+
+QCheckBox::indicator:checked:hover {
+    background: #00FFE6;
+    border: 2px solid #00E5CC;
+}</string>
+             </property>
+             <property name="text">
+              <string>Ambient Light Mode (NO VCSEL)</string>
+             </property>
+             <property name="checked">
+              <bool>false</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QLabel" name="status_label">
              <property name="text">
               <string>Processing Status:</string>

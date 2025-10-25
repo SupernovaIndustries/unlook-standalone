@@ -693,7 +693,7 @@ bool AS1170DebugDialog::initializeAS1170Controller() {
         hardware::AS1170Controller::AS1170Config config;
         config.i2c_bus = 1;
         config.i2c_address = 0x30;
-        config.strobe_gpio = 588; // GPIO 19 logical = GPIO 588 physical on CM5 (569+19)
+        config.strobe_gpio = 573; // GPIO 573 (physical GPIO4) logical = GPIO 573 physical on CM5 (569+4)
         config.target_current_ma = MAX_SAFE_CURRENT_MA;
         config.flash_mode = hardware::AS1170Controller::FlashMode::FLASH_MODE;
         config.enable_thermal_protection = true;

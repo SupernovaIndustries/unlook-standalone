@@ -282,24 +282,32 @@ void CameraPreviewWidget::onLEDTestOn() {
         }
     }
 
-    // Activate LED1 only at 150mA (LED2 control removed from UI)
+    // Activate BOTH LED1 and LED2 at 150mA
     bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
+    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
 
     if (led1_success) {
         qDebug() << "[CameraPreview] LED1 activated successfully at 150mA";
+    } else {
+        qWarning() << "[CameraPreview] LED1 activation failed";
+    }
 
+    if (led2_success) {
+        qDebug() << "[CameraPreview] LED2 activated successfully at 150mA";
+    } else {
+        qWarning() << "[CameraPreview] LED2 activation failed";
+    }
+
+    if (led1_success || led2_success) {
         // Sync slider to reflect LED state (150mA)
         ui->led1_current_slider->setValue(150);
         ui->led1_current_value->setText("150 mA");
-
-        qDebug() << "[CameraPreview] LED1 slider synchronized to 150mA";
-    } else {
-        qWarning() << "[CameraPreview] LED1 activation failed";
+        qDebug() << "[CameraPreview] LED slider synchronized to 150mA";
     }
 }
 
 void CameraPreviewWidget::onLEDTestOff() {
-    qDebug() << "[CameraPreview] LED Test OFF - deactivating LED1";
+    qDebug() << "[CameraPreview] LED Test OFF - deactivating both LEDs";
 
     // Get AS1170 controller instance
     auto as1170 = hardware::AS1170Controller::getInstance();
@@ -308,19 +316,27 @@ void CameraPreviewWidget::onLEDTestOff() {
         return;
     }
 
-    // Deactivate LED1 (LED2 control removed from UI)
+    // Deactivate BOTH LED1 and LED2
     bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
 
     if (led1_success) {
         qDebug() << "[CameraPreview] LED1 deactivated successfully";
+    } else {
+        qWarning() << "[CameraPreview] LED1 deactivation failed";
+    }
 
+    if (led2_success) {
+        qDebug() << "[CameraPreview] LED2 deactivated successfully";
+    } else {
+        qWarning() << "[CameraPreview] LED2 deactivation failed";
+    }
+
+    if (led1_success || led2_success) {
         // Sync slider to reflect LED state (0mA = OFF)
         ui->led1_current_slider->setValue(0);
         ui->led1_current_value->setText("0 mA");
-
-        qDebug() << "[CameraPreview] LED1 slider synchronized to 0mA";
-    } else {
-        qWarning() << "[CameraPreview] LED1 deactivation failed";
+        qDebug() << "[CameraPreview] LED slider synchronized to 0mA";
     }
 }
 

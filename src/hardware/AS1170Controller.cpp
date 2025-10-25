@@ -165,97 +165,139 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
         current_ma = thermal_status_.throttled_current_ma;
     }
 
+    // CRITICAL FIX: Reset AS1170 state when disabling LEDs
+    // This prevents the chip from entering a fault state after first use
+    if (!enable) {
+        core::Logger::getInstance().info("Disabling LEDs - resetting AS1170 control register to clear state");
+
+        // Step 1: Set LED currents to 0 first
+        writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, 0);
+        writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, 0);
+
+        // Step 2: Read and log FAULT register to detect any issues
+        uint8_t fault_status;
+        if (readRegister(AS1170Register::FAULT, fault_status)) {
+            if (fault_status != 0) {
+                std::stringstream fault_hex;
+                fault_hex << "0x" << std::hex << (int)fault_status;
+                core::Logger::getInstance().warning("AS1170 FAULT register: " + fault_hex.str());
+            }
+        }
+
+        // Step 3: Reset control register to 0 to clear internal state machine
+        if (!writeRegisterWithRetry(AS1170Register::CONTROL, 0x00)) {
+            core::Logger::getInstance().error("Failed to reset control register");
+            return false;
+        }
+
+        // Verify control register was reset
+        uint8_t control_verify;
+        if (readRegister(AS1170Register::CONTROL, control_verify)) {
+            std::stringstream ctrl_hex;
+            ctrl_hex << "0x" << std::hex << (int)control_verify;
+            core::Logger::getInstance().info("Control register reset verified: " + ctrl_hex.str());
+        }
+
+        {
+            std::lock_guard<std::mutex> status_lock(status_mutex_);
+            status_.led1_current_ma = 0;
+            status_.led2_current_ma = 0;
+            status_.current_mode = FlashMode::DISABLED;
+        }
+
+        core::Logger::getInstance().info("AS1170 state reset complete - ready for next activation");
+        return true;
+    }
+
+    // CRITICAL FIX: Reconfigure AS1170 when enabling LEDs
+    // This ensures the chip is in correct FLASH MODE state for operation
+    core::Logger::getInstance().info("Enabling LEDs - reconfiguring AS1170 to FLASH MODE");
+
+    // Step 1: Reset control register first to ensure clean state
+    writeRegisterWithRetry(AS1170Register::CONTROL, 0x00);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Step 2: Reconfigure FLASH MODE (0x1B)
+    if (!writeRegisterWithRetry(AS1170Register::CONTROL, 0x1B)) {
+        core::Logger::getInstance().error("Failed to reconfigure control register to FLASH MODE");
+        return false;
+    }
+
+    // Verify control register configuration
+    uint8_t control_check;
+    if (readRegister(AS1170Register::CONTROL, control_check)) {
+        std::stringstream ctrl_hex;
+        ctrl_hex << "0x" << std::hex << (int)control_check;
+        if (control_check != 0x1B) {
+            core::Logger::getInstance().error("Control register verification failed - got " + ctrl_hex.str() + ", expected 0x1b");
+            return false;
+        }
+        core::Logger::getInstance().info("FLASH MODE reconfigured successfully: " + ctrl_hex.str());
+    }
+
+    // Step 3: Reset flash timer to ensure timeout is ready
+    writeRegisterWithRetry(AS1170Register::FLASH_TIMER, 0x80);
+
     bool success = true;
 
+    // Step 4: Now set LED currents
     if (channel == LEDChannel::LED1 || channel == LEDChannel::BOTH) {
-        uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
+        uint8_t current_reg = currentToRegisterValue(current_ma);
 
         std::stringstream hex_ss;
-        hex_ss << std::hex << (int)current_reg;
-        // LED1 Debug logging disabled to reduce spam
+        hex_ss << "0x" << std::hex << (int)current_reg;
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED1 current register");
             success = false;
         } else {
-            // LED1 register write success (logging disabled)
-
-            // READBACK VERIFICATION - verify the register was actually written
+            // Verify register was written
             uint8_t readback_value;
             if (readRegister(AS1170Register::CURRENT_SET_LED1, readback_value)) {
-                std::stringstream readback_hex, expected_hex;
-                readback_hex << std::hex << (int)readback_value;
-                expected_hex << std::hex << (int)current_reg;
-                // LED1 readback logging disabled
+                std::stringstream readback_hex;
+                readback_hex << "0x" << std::hex << (int)readback_value;
                 if (readback_value != current_reg) {
-                    core::Logger::getInstance().error("LED1 register readback MISMATCH!");
+                    core::Logger::getInstance().error("LED1 register readback MISMATCH! Expected " +
+                        hex_ss.str() + ", got " + readback_hex.str());
+                    success = false;
+                } else {
+                    core::Logger::getInstance().info("LED1 current set successfully: " + hex_ss.str() +
+                        " (" + std::to_string(current_ma) + "mA)");
                 }
-            } else {
-                core::Logger::getInstance().error("Failed to read back LED1 register");
-            }
-
-            // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
-            if (enable && current_reg > 0) {
-                // LED1 TORCH MODE activated - verify control register
-                uint8_t control_check;
-                if (readRegister(AS1170Register::CONTROL, control_check)) {
-                    std::stringstream ctrl_hex;
-                    ctrl_hex << "0x" << std::hex << (int)control_check;
-                    core::Logger::getInstance().info("LED1 activation: Control register = " + ctrl_hex.str() +
-                        ", Current register = 0x" + hex_ss.str() + " (" + std::to_string(current_ma) + "mA)");
-                }
-            } else if (!enable) {
-                core::Logger::getInstance().info("LED1 TORCH MODE deactivated");
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
-            status_.led1_current_ma = enable ? current_ma : 0;
+            status_.led1_current_ma = current_ma;
         }
     }
 
     if (channel == LEDChannel::LED2 || channel == LEDChannel::BOTH) {
-        uint8_t current_reg = enable ? currentToRegisterValue(current_ma) : 0;
+        uint8_t current_reg = currentToRegisterValue(current_ma);
 
         std::stringstream hex_ss2;
-        hex_ss2 << std::hex << (int)current_reg;
-        // LED2 Debug logging disabled to reduce spam
+        hex_ss2 << "0x" << std::hex << (int)current_reg;
 
         if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, current_reg)) {
             core::Logger::getInstance().error("Failed to set LED2 current register");
             success = false;
         } else {
-            // LED2 register write success (logging disabled)
-
-            // READBACK VERIFICATION - verify the register was actually written
+            // Verify register was written
             uint8_t readback_value;
             if (readRegister(AS1170Register::CURRENT_SET_LED2, readback_value)) {
-                std::stringstream readback_hex2, expected_hex2;
-                readback_hex2 << std::hex << (int)readback_value;
-                expected_hex2 << std::hex << (int)current_reg;
-                // LED2 readback logging disabled
+                std::stringstream readback_hex2;
+                readback_hex2 << "0x" << std::hex << (int)readback_value;
                 if (readback_value != current_reg) {
-                    core::Logger::getInstance().error("LED2 register readback MISMATCH!");
+                    core::Logger::getInstance().error("LED2 register readback MISMATCH! Expected " +
+                        hex_ss2.str() + ", got " + readback_hex2.str());
+                    success = false;
+                } else {
+                    core::Logger::getInstance().info("LED2 current set successfully: " + hex_ss2.str() +
+                        " (" + std::to_string(current_ma) + "mA)");
                 }
-            } else {
-                core::Logger::getInstance().error("Failed to read back LED2 register");
-            }
-
-            // TORCH MODE: LED remains continuously on when enabled (no strobe needed)
-            if (enable && current_reg > 0) {
-                // LED2 TORCH MODE activated - verify control register
-                uint8_t control_check;
-                if (readRegister(AS1170Register::CONTROL, control_check)) {
-                    std::stringstream ctrl_hex;
-                    ctrl_hex << "0x" << std::hex << (int)control_check;
-                    core::Logger::getInstance().info("LED2 activation: Control register = " + ctrl_hex.str() +
-                        ", Current register = 0x" + hex_ss2.str() + " (" + std::to_string(current_ma) + "mA)");
-                }
-            } else if (!enable) {
-                core::Logger::getInstance().info("LED2 TORCH MODE deactivated");
             }
 
             std::lock_guard<std::mutex> status_lock(status_mutex_);
-            status_.led2_current_ma = enable ? current_ma : 0;
+            status_.led2_current_ma = current_ma;
         }
     }
 
@@ -641,9 +683,9 @@ bool AS1170Controller::detectI2CAddress() {
 bool AS1170Controller::configureAS1170Registers() {
     core::Logger::getInstance().info("Configuring AS1170 registers for FLASH MODE per OSRAM/ams specification");
 
-    // Following exact OSRAM initialization sequence with 250mA adaptation
+    // Following exact OSRAM initialization sequence with GPIO 573
 
-    // 1. Configure strobe signalling (Reg.0x07): not needed for TORCH MODE but set for compatibility
+    // 1. Configure strobe signalling (Reg.0x07)
     if (!writeRegisterWithRetry(AS1170Register::STROBE_SIGNALLING, 0xC0)) {
         core::Logger::getInstance().error("Failed to configure strobe signalling");
         return false;
@@ -655,21 +697,21 @@ bool AS1170Controller::configureAS1170Registers() {
         return false;
     }
 
-    // 3. Set LED1 current (Reg.0x01): Adapt from 450mA to 250mA
+    // 3. Set LED1 current (Reg.0x01)
     uint8_t led1_current_reg = currentToRegisterValue(config_.target_current_ma);
     if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, led1_current_reg)) {
         core::Logger::getInstance().error("Failed to set LED1 current");
         return false;
     }
 
-    // 4. Set LED2 current (Reg.0x02): Adapt from 450mA to 250mA
+    // 4. Set LED2 current (Reg.0x02)
     uint8_t led2_current_reg = currentToRegisterValue(config_.target_current_ma);
     if (!writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, led2_current_reg)) {
         core::Logger::getInstance().error("Failed to set LED2 current");
         return false;
     }
 
-    // 5. Configure control register (Reg.0x06): Set TORCH MODE for continuous LED operation
+    // 5. Configure control register (Reg.0x06) for FLASH MODE with GPIO 573
     core::Logger::getInstance().info("Reading current AS1170 control register state");
 
     uint8_t current_control;
@@ -684,13 +726,11 @@ bool AS1170Controller::configureAS1170Registers() {
 
     // Configure for FLASH mode per OSRAM/ams specification
     // FLASH MODE: 0x1B = 00011011 per exact OSRAM initialization sequence
-    // From OSRAM: "mode setting = 11 / flash mode, out_on = 1, auto_strobe = 1"
-    // This is the OFFICIAL value from ams OSRAM technical support
-    uint8_t target_control = 0x1B;  // FLASH mode per OSRAM specification
+    uint8_t target_control = 0x1B;
 
     std::stringstream target_hex;
     target_hex << "0x" << std::hex << (int)target_control;
-    core::Logger::getInstance().info("Target control register value: " + target_hex.str());
+    core::Logger::getInstance().info("Target control register value: " + target_hex.str() + " (FLASH MODE with GPIO 573)");
 
     // Try writing the control register
     bool control_written = false;
@@ -698,10 +738,8 @@ bool AS1170Controller::configureAS1170Registers() {
         core::Logger::getInstance().info("Control register write attempt " + std::to_string(attempt + 1));
 
         if (writeRegisterWithRetry(AS1170Register::CONTROL, target_control)) {
-            // Wait for register to settle
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-            // Verify the write
             uint8_t control_readback;
             if (readRegister(AS1170Register::CONTROL, control_readback)) {
                 std::stringstream readback_hex;
@@ -709,12 +747,11 @@ bool AS1170Controller::configureAS1170Registers() {
                 core::Logger::getInstance().info("Control register readback: " + readback_hex.str() +
                     " (target: " + target_hex.str() + ")");
 
-                // Check if control register matches target (0x1B for FLASH mode)
-                if (control_readback == target_control) {  // Exact match required
+                if (control_readback == target_control) {
                     control_written = true;
-                    core::Logger::getInstance().info("Control register configured successfully for FLASH MODE (OSRAM spec)");
+                    core::Logger::getInstance().info("Control register configured successfully for FLASH MODE");
                 } else {
-                    core::Logger::getInstance().warning("Control register critical bits not set correctly, retrying...");
+                    core::Logger::getInstance().warning("Control register not matching, retrying...");
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
             } else {
