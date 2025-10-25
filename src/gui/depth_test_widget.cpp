@@ -332,8 +332,7 @@ void DepthTestWidget::captureStereoFrame() {
             addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (280mA)");
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(2000));  // DEMO: 2 seconds for complete LED stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
             frame1 = camera_system_->captureSingle();
             addStatusMessage("Frame 1 captured");
             QApplication::processEvents();  // Update GUI
@@ -345,7 +344,7 @@ void DepthTestWidget::captureStereoFrame() {
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);  // Reduced for better reliability
-            std::this_thread::sleep_for(std::chrono::milliseconds(2000));  // DEMO: 2 seconds for complete LED stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
             frame2 = camera_system_->captureSingle();
             addStatusMessage("Frame 2 captured");
             QApplication::processEvents();  // Update GUI
@@ -372,8 +371,7 @@ void DepthTestWidget::captureStereoFrame() {
 
             // Activate VCSEL1 only
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(2000));  // DEMO: 2 seconds for complete LED stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // LED stabilization delay
 
             // Capture single frame
             frame1 = camera_system_->captureSingle();
