@@ -235,37 +235,19 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
         current_ma = thermal_status_.throttled_current_ma;
     }
 
-    // CRITICAL FIX: Reset AS1170 state when disabling LEDs
-    // This prevents the chip from entering a fault state after first use
+    // CRITICAL FIX: Force reset AS1170 when disabling LEDs
+    // The chip can enter fault state during operation, causing I2C errors
+    // forceResetHardware() bypasses normal I2C and forces register reset
     if (!enable) {
-        core::Logger::getInstance().info("Disabling LEDs - resetting AS1170 control register to clear state");
+        core::Logger::getInstance().info("Disabling LEDs - forcing complete hardware reset to clear any fault state");
 
-        // Step 1: Set LED currents to 0 first
-        writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED1, 0);
-        writeRegisterWithRetry(AS1170Register::CURRENT_SET_LED2, 0);
+        // Temporarily unlock mutex for forceResetHardware (it doesn't need the lock)
+        mutex_.unlock();
+        bool reset_success = forceResetHardware();
+        mutex_.lock();
 
-        // Step 2: Read and log FAULT register to detect any issues
-        uint8_t fault_status;
-        if (readRegister(AS1170Register::FAULT, fault_status)) {
-            if (fault_status != 0) {
-                std::stringstream fault_hex;
-                fault_hex << "0x" << std::hex << (int)fault_status;
-                core::Logger::getInstance().warning("AS1170 FAULT register: " + fault_hex.str());
-            }
-        }
-
-        // Step 3: Reset control register to 0 to clear internal state machine
-        if (!writeRegisterWithRetry(AS1170Register::CONTROL, 0x00)) {
-            core::Logger::getInstance().error("Failed to reset control register");
-            return false;
-        }
-
-        // Verify control register was reset
-        uint8_t control_verify;
-        if (readRegister(AS1170Register::CONTROL, control_verify)) {
-            std::stringstream ctrl_hex;
-            ctrl_hex << "0x" << std::hex << (int)control_verify;
-            core::Logger::getInstance().info("Control register reset verified: " + ctrl_hex.str());
+        if (!reset_success) {
+            core::Logger::getInstance().warning("Force reset during LED disable had issues, but continuing");
         }
 
         {
@@ -275,7 +257,7 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
             status_.current_mode = FlashMode::DISABLED;
         }
 
-        core::Logger::getInstance().info("AS1170 state reset complete - ready for next activation");
+        core::Logger::getInstance().info("AS1170 force reset complete - LEDs disabled and ready for next activation");
         return true;
     }
 

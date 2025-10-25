@@ -2280,6 +2280,19 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                 artec_export_button_->setEnabled(true);
                 artec_status_->setStatus("Ready to generate Artec mesh", widgets::StatusDisplay::StatusType::SUCCESS);
                 qDebug() << "[DepthWidget] artec_export_button_ enabled successfully";
+
+                // AUTOMATIC MESH GENERATION: Generate Artec mesh immediately after successful depth capture
+                qDebug() << "[DepthWidget] AUTO-GENERATING Artec mesh for testing...";
+                artec_status_->setStatus("Auto-generating Artec mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
+                QTimer::singleShot(100, this, [this]() {
+                    try {
+                        exportArtecMesh();
+                        qDebug() << "[DepthWidget] Artec mesh auto-generation completed";
+                    } catch (const std::exception& e) {
+                        qDebug() << "[DepthWidget] Exception during auto mesh generation:" << e.what();
+                        artec_status_->setStatus("Auto mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
+                    }
+                });
             }
 
             qDebug() << "[DepthWidget] All UI updates completed successfully";
