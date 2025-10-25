@@ -333,7 +333,7 @@ void DepthTestWidget::captureStereoFrame() {
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));  // INCREASED: 500ms for LED + initialization stabilization
             frame1 = camera_system_->captureSingle();
             addStatusMessage("Frame 1 captured");
             QApplication::processEvents();  // Update GUI
@@ -345,7 +345,7 @@ void DepthTestWidget::captureStereoFrame() {
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);  // Reduced for better reliability
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));  // INCREASED: 500ms for LED + initialization stabilization
             frame2 = camera_system_->captureSingle();
             addStatusMessage("Frame 2 captured");
             QApplication::processEvents();  // Update GUI
@@ -373,7 +373,7 @@ void DepthTestWidget::captureStereoFrame() {
             // Activate VCSEL1 only
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // Reduced for better reliability
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));  // INCREASED: 500ms for LED + initialization stabilization
 
             // Capture single frame
             frame1 = camera_system_->captureSingle();
