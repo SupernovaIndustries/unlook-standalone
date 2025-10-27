@@ -143,14 +143,16 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
     
     for (auto camera : cameras) {
         std::string id = camera->id();
-        // Support both hardware paths: original (i2c@1/i2c@0) and actual CM5 (i2c@88000/i2c@70000)
-        if (id.find("i2c@1/imx296@1a") != std::string::npos || 
+        // Support both CM5 and Pi5 hardware paths:
+        // CM5: i2c@1 (LEFT/MASTER), i2c@0 (RIGHT/SLAVE)
+        // Pi5: i2c@88000 (LEFT/MASTER), i2c@80000 (RIGHT/SLAVE)
+        if (id.find("i2c@1/imx296@1a") != std::string::npos ||
             id.find("i2c@88000/imx296@1a") != std::string::npos) {
             camera1 = camera;  // Camera 1 = LEFT/MASTER
             std::cout << "[HardwareSync] Found MASTER camera: " << id << std::endl;
         } else if (id.find("i2c@0/imx296@1a") != std::string::npos ||
-                   id.find("i2c@70000/imx296@1a") != std::string::npos) {
-            camera0 = camera;  // Camera 0 = RIGHT/SLAVE  
+                   id.find("i2c@80000/imx296@1a") != std::string::npos) {
+            camera0 = camera;  // Camera 0 = RIGHT/SLAVE
             std::cout << "[HardwareSync] Found SLAVE camera: " << id << std::endl;
         }
     }
