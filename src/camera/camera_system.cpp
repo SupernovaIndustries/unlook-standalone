@@ -175,12 +175,21 @@ struct CameraSystem::CameraImpl {
                 UNLOOK_LOG_INFO("Camera") << "Camera ID: " << cam_id;
                 
                 // Assign cameras based on ID patterns
-                // Camera 1 (-c 1) = LEFT/MASTER at /base/soc/i2c0mux/i2c@1/imx296@1a
-                // Camera 0 (-c 2) = RIGHT/SLAVE at /base/soc/i2c0mux/i2c@0/imx296@1a
-                if (cam_id.find("i2c@1") != std::string::npos && cam_id.find("imx296") != std::string::npos) {
+                // CM5: Camera 1 = LEFT/MASTER at /base/soc/i2c0mux/i2c@1/imx296@1a
+                //      Camera 0 = RIGHT/SLAVE at /base/soc/i2c0mux/i2c@0/imx296@1a
+                // Pi5: Camera 1 = LEFT/MASTER at /base/axi/pcie@1000120000/rp1/i2c@88000/imx296@1a
+                //      Camera 0 = RIGHT/SLAVE at /base/axi/pcie@1000120000/rp1/i2c@80000/imx296@1a
+
+                bool is_imx296 = cam_id.find("imx296") != std::string::npos;
+                bool is_left_cm5 = cam_id.find("i2c@1/") != std::string::npos;
+                bool is_right_cm5 = cam_id.find("i2c@0/") != std::string::npos;
+                bool is_left_pi5 = cam_id.find("i2c@88000") != std::string::npos;
+                bool is_right_pi5 = cam_id.find("i2c@80000") != std::string::npos;
+
+                if (is_imx296 && (is_left_cm5 || is_left_pi5)) {
                     left_camera = cam;  // Master camera
                     UNLOOK_LOG_INFO("Camera") << "Assigned as LEFT/MASTER camera";
-                } else if (cam_id.find("i2c@0") != std::string::npos && cam_id.find("imx296") != std::string::npos) {
+                } else if (is_imx296 && (is_right_cm5 || is_right_pi5)) {
                     right_camera = cam;  // Slave camera
                     UNLOOK_LOG_INFO("Camera") << "Assigned as RIGHT/SLAVE camera";
                 }
