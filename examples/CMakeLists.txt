@@ -48,6 +48,26 @@ endif()
 #     list(APPEND EXAMPLE_TARGETS stereo_calibration_example)
 # endif()
 
+# VCSEL Stereo Matcher test
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_vcsel_stereo.cpp")
+    add_executable(test_vcsel_stereo
+        test_vcsel_stereo.cpp
+    )
+    target_include_directories(test_vcsel_stereo PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_vcsel_stereo PRIVATE
+        unlook
+        ${OpenCV_LIBS}
+    )
+    # Add OpenMP support if available
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(test_vcsel_stereo PRIVATE OpenMP::OpenMP_CXX)
+    endif()
+    list(APPEND EXAMPLE_TARGETS test_vcsel_stereo)
+endif()
+
 # Depth processing example (temporarily disabled)
 # if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/depth_processing_example.cpp")
 #     add_executable(depth_processing_example
@@ -124,6 +144,22 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_temporal_stereo_enhanced.cpp")
         ${OpenCV_LIBS}
     )
     list(APPEND EXAMPLE_TARGETS test_temporal_stereo_enhanced)
+endif()
+
+# BMI270 Stability Detector Example
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bmi270_stability_example.cpp")
+    add_executable(bmi270_stability_example
+        bmi270_stability_example.cpp
+    )
+    target_include_directories(bmi270_stability_example PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(bmi270_stability_example PRIVATE
+        unlook_hardware
+        unlook_core
+        ${OpenCV_LIBS}
+    )
+    list(APPEND EXAMPLE_TARGETS bmi270_stability_example)
 endif()
 
 # C API example (temporarily disabled - requires C API implementation)

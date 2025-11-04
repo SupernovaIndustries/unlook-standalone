@@ -49,9 +49,25 @@ After completion:
 - **BUILD** - `./build.sh --clean -j4`
 - **testing-validation-framework** - Tests
 
-### Dependencies to Install if Needed:
+### CRITICAL - Dependencies & Resolution:
+
+**Resolution:** HD 1280x720 (same as AD-Census system)
+- Capture: 1456x1088 native → downsample to 1280x720
+- All processing: HD 1280x720
+- Dataset images: HD 1280x720
+
+**Dependencies to Install (AUTO-CHECK & INSTALL):**
 ```bash
+# cmake-build-system-architect MUST install these if missing:
+sudo apt-get update
 sudo apt-get install -y nlohmann-json3-dev
+
+# Verify OpenCV aruco module present
+pkg-config --modversion opencv4
+
+# Create directories
+sudo mkdir -p /unlook_calib_dataset /unlook_calib
+sudo chmod 777 /unlook_calib_dataset /unlook_calib
 ```
 
 ### Target:

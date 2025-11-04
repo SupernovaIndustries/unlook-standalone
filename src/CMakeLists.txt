@@ -25,6 +25,7 @@ set(UNLOOK_API_SOURCES
     api/camera_system.cpp
     api/depth_processor.cpp
     api/calibration_manager.cpp
+    api/HandheldScanPipeline.cpp
 )
 
 # Core component sources (minimal working set)

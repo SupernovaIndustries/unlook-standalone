@@ -7,7 +7,7 @@ if(NOT BUILD_GUI)
 endif()
 
 # Find Qt5 components
-find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui OpenGL)
+find_package(Qt5 REQUIRED COMPONENTS Core Widgets Gui OpenGL Concurrent)
 
 # Enable Qt5 MOC, UIC, RCC
 set(CMAKE_AUTOMOC ON)
@@ -23,7 +23,7 @@ set(GUI_SOURCES
     ../core/QtLogHandler.cpp  # Qt-dependent logging handler (GUI only)
     main_window.cpp
     camera_preview_widget.cpp
-    depth_test_widget.cpp
+    handheld_scan_widget.cpp
     options_widget.cpp
     as1170_debug_dialog.cpp
     widgets/parameter_slider.cpp
@@ -37,7 +37,7 @@ set(GUI_SOURCES
 set(GUI_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/main_window.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/camera_preview_widget.hpp
-    ${CMAKE_SOURCE_DIR}/include/unlook/gui/depth_test_widget.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/handheld_scan_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/options_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/as1170_debug_dialog.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/parameter_slider.hpp
@@ -50,7 +50,7 @@ set(GUI_HEADERS
 set(GUI_UI_FILES
     ui/main_window.ui
     ui/camera_preview_widget.ui
-    ui/depth_test_widget.ui
+    ui/handheld_scan_widget.ui
     ui/options_widget.ui
     ui/as1170_debug_dialog.ui
 )
@@ -102,11 +102,19 @@ target_link_libraries(unlook_scanner PRIVATE
     Qt5::Widgets
     Qt5::Gui
     Qt5::OpenGL
+    Qt5::Concurrent                 # Required for HandheldScanWidget background processing
 )
 
 # OpenGL support for 3D visualization
 find_package(OpenGL REQUIRED)
 target_link_libraries(unlook_scanner PRIVATE ${OPENGL_LIBRARIES})
+
+# Add OpenMP support for parallel processing in GUI
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(unlook_scanner PRIVATE OpenMP::OpenMP_CXX)
+    target_compile_definitions(unlook_scanner PRIVATE HAVE_OPENMP=1)
+    message(STATUS "OpenMP enabled for GUI application")
+endif()
 
 # Platform-specific configurations
 if(WIN32)

@@ -10,7 +10,67 @@ Implementare sistema COMPLETO di calibrazione stereo professionale con GUI intui
 
 ---
 
+## ⚙️ SYSTEM REQUIREMENTS & SETUP
+
+### Resolution Configuration:
+- **Capture from cameras:** 1456x1088 (native IMX296)
+- **Processing resolution:** **HD 1280x720** (downsampled con cv::INTER_AREA)
+- **ALL calibration processing:** HD 1280x720
+- **Dataset images saved:** HD 1280x720 PNG files
+- **Why HD:** Same resolution as AD-Census system for consistency
+
+### Dependencies to Install:
+
+**CRITICAL: Agents devono installare automaticamente se mancanti!**
+
+```bash
+# 1. nlohmann-json (for dataset JSON metadata)
+sudo apt-get update
+sudo apt-get install -y nlohmann-json3-dev
+
+# 2. OpenCV ArUco module (for ChArUco pattern detection)
+# Already included in opencv_contrib - verify:
+pkg-config --modversion opencv4
+# Should show opencv_aruco in modules
+```
+
+**CMakeLists.txt deve fare auto-check:**
+```cmake
+# JSON library
+find_package(nlohmann_json 3.10.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found, installing...")
+    execute_process(COMMAND sudo apt-get install -y nlohmann-json3-dev)
+    find_package(nlohmann_json 3.10.0 REQUIRED)
+endif()
+
+# OpenCV ArUco
+find_package(OpenCV REQUIRED COMPONENTS core calib3d aruco)
+if(NOT OpenCV_aruco_FOUND)
+    message(FATAL_ERROR "OpenCV aruco module not found - install opencv-contrib")
+endif()
+```
+
+### Directories to Create:
+```bash
+# Calibration dataset storage
+sudo mkdir -p /unlook_calib_dataset
+sudo chmod 777 /unlook_calib_dataset
+
+# Calibration files storage
+sudo mkdir -p /unlook_calib
+sudo chmod 777 /unlook_calib
+```
+
+---
+
 ## 📋 EXECUTION PROTOCOL
+
+### STEP 0: INSTALL DEPENDENCIES
+**Prima di iniziare, cmake-build-system-architect deve verificare e installare:**
+- nlohmann-json3-dev
+- OpenCV aruco module
+- Creare directories /unlook_calib_dataset e /unlook_calib
 
 ### STEP 1: AGENT COORDINATION (PARALLEL EXECUTION)
 
@@ -983,8 +1043,8 @@ void DatasetCaptureWidget::onStartCapture() {
     datasetInfo_["pattern_config"]["aruco_marker_size_mm"] = arucoSizeSpinBox_->value();
 
     // Capture config
-    datasetInfo_["capture_config"]["image_width"] = 1280;
-    datasetInfo_["capture_config"]["image_height"] = 720;
+    datasetInfo_["capture_config"]["image_width"] = 1280;   // HD resolution
+    datasetInfo_["capture_config"]["image_height"] = 720;   // HD resolution
     datasetInfo_["capture_config"]["capture_delay_seconds"] = 5;
     datasetInfo_["capture_config"]["target_image_pairs"] = 50;
     datasetInfo_["capture_config"]["vcsel_enabled"] = true;
@@ -1325,7 +1385,11 @@ void CalibrationValidator::validate(const CalibrationResult& result,
 
 **SEQUENTIAL PHASE:**
 5. code-integrity-architect → Code review
-6. cmake-build-system-architect → Build system
+6. cmake-build-system-architect → Install dependencies + Build system
+   - Install nlohmann-json3-dev se mancante
+   - Verify OpenCV aruco module
+   - Create /unlook_calib_dataset and /unlook_calib directories
+   - Update CMakeLists.txt
 7. BUILD → `./build.sh --clean -j4`
 8. testing-validation-framework → Validation tests
 

@@ -9,7 +9,18 @@ set(STEREO_SOURCES
     ParameterManager.cpp
     RawStereoProcessor.cpp
     TemporalStereoProcessor.cpp
+    VCSELStereoMatcher.cpp
 )
+
+# NEON optimized sources
+set(NEON_SOURCES
+    neon/census_neon.cpp
+    neon/hamming_neon.cpp
+    neon/ad_cost_neon.cpp
+)
+
+# Add NEON sources to main sources
+list(APPEND STEREO_SOURCES ${NEON_SOURCES})
 
 # Add BoofCV sources only if enabled
 if(BOOFCV_ENABLED)
@@ -46,6 +57,39 @@ target_link_libraries(unlook_stereo
         unlook_camera_impl
         unlook_hardware
 )
+
+# Explicitly ensure OpenCV modules are linked (especially ximgproc for WLS filtering)
+if(OpenCV_FOUND)
+    target_compile_definitions(unlook_stereo PUBLIC
+        HAVE_OPENCV_XIMGPROC=1
+        HAVE_OPENCV_STEREO=1
+    )
+endif()
+
+# Add OpenMP support
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(unlook_stereo PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+# Add ARM NEON compiler flags for ARM platforms
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "armv7")
+    target_compile_options(unlook_stereo PRIVATE -march=native -mtune=native)
+    target_compile_definitions(unlook_stereo PRIVATE __ARM_NEON HAVE_NEON)
+
+    # Apply aggressive optimization to NEON implementation files
+    set_source_files_properties(
+        neon/census_neon.cpp
+        neon/hamming_neon.cpp
+        neon/ad_cost_neon.cpp
+        PROPERTIES COMPILE_FLAGS "-march=armv8-a+simd -O3 -ftree-vectorize -ffast-math"
+    )
+
+    message(STATUS "NEON optimizations enabled for stereo matching")
+    message(STATUS "  - census_neon.cpp: Census transform with ARM NEON")
+    message(STATUS "  - hamming_neon.cpp: Hamming distance with ARM NEON")
+    message(STATUS "  - ad_cost_neon.cpp: Absolute difference cost with ARM NEON")
+endif()
 
 # Link Open3D if available
 if(Open3D_FOUND)

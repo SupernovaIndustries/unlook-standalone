@@ -35,7 +35,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG -Wall")
 # ARM64 optimizations for Raspberry Pi CM4/CM5
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
     message(STATUS "Enabling ARM64 optimizations for Raspberry Pi")
-    
+
     # CM5 specific optimizations (Cortex-A76)
     if(ENABLE_CM5_OPTIMIZATIONS OR TARGET_ARM_ARCH STREQUAL "cortex-a76")
         message(STATUS "Enabling CM5 Cortex-A76 specific optimizations")
@@ -47,11 +47,15 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
         message(STATUS "Enabling CM4 Cortex-A72 optimizations")
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8-a+simd -mtune=cortex-a72")
     endif()
-    
+
     # Common ARM64 optimizations
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funsafe-math-optimizations")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftree-vectorize -ffast-math")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -flto=auto")  # Link Time Optimization
+
+    # Add NEON definitions globally for ARM64
+    add_definitions(-DHAVE_NEON=1)
+    add_definitions(-D__ARM_NEON=1)
 endif()
 
 # Threading support
@@ -74,10 +78,12 @@ find_package(PkgConfig REQUIRED)
 
 # OpenCV - essential for image processing
 if(USE_SYSTEM_OPENCV)
-    find_package(OpenCV 4.0 REQUIRED 
-        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo highgui)
+    find_package(OpenCV 4.0 REQUIRED
+        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo)
     message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo highgui")
+    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo")
+    message(STATUS "  - ximgproc: Required for WLS (Weighted Least Squares) disparity filtering")
+    message(STATUS "  - stereo: Required for advanced stereo matching algorithms")
 else()
     # Add custom OpenCV build here if needed
     message(FATAL_ERROR "Custom OpenCV build not implemented - use system installation")
@@ -147,9 +153,10 @@ endif()
 
 # Qt5 - for GUI applications (optional)
 if(BUILD_GUI)
-    find_package(Qt5 COMPONENTS Core Widgets OpenGL)
+    find_package(Qt5 COMPONENTS Core Widgets OpenGL Concurrent)
     if(Qt5_FOUND)
         message(STATUS "Qt5 found: ${Qt5_VERSION}")
+        message(STATUS "Qt5 components: Core Widgets OpenGL Concurrent")
         set(CMAKE_AUTOMOC ON)
         set(CMAKE_AUTORCC ON)
         set(CMAKE_AUTOUIC ON)
@@ -157,6 +164,20 @@ if(BUILD_GUI)
         message(WARNING "Qt5 not found - GUI applications will not be built")
         set(BUILD_GUI OFF)
     endif()
+endif()
+
+# Vulkan - for GPU-accelerated stereo processing (optional, experimental)
+find_package(Vulkan QUIET)
+if(Vulkan_FOUND)
+    message(STATUS "Vulkan found: ${Vulkan_VERSION}")
+    message(STATUS "Vulkan include dirs: ${Vulkan_INCLUDE_DIRS}")
+    message(STATUS "Vulkan libraries: ${Vulkan_LIBRARIES}")
+    set(VULKAN_ENABLED TRUE)
+    add_definitions(-DHAVE_VULKAN=1)
+else()
+    message(STATUS "Vulkan not found - GPU-accelerated stereo features will be disabled")
+    message(STATUS "To install Vulkan: sudo apt install libvulkan-dev vulkan-tools")
+    set(VULKAN_ENABLED FALSE)
 endif()
 
 # Open3D - for point cloud processing and mesh generation

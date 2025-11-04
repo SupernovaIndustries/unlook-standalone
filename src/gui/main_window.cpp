@@ -1,6 +1,6 @@
 #include "unlook/gui/main_window.hpp"
 #include "unlook/gui/camera_preview_widget.hpp"
-#include "unlook/gui/depth_test_widget.hpp"
+#include "unlook/gui/handheld_scan_widget.hpp"
 // #include "unlook/gui/face_enrollment_widget.hpp"  // Temporarily disabled
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
@@ -214,8 +214,8 @@ void UnlookMainWindow::showCameraPreview() {
     navigateToScreen(Screen::CAMERA_PREVIEW);
 }
 
-void UnlookMainWindow::showDepthTest() {
-    navigateToScreen(Screen::DEPTH_TEST);
+void UnlookMainWindow::showHandheldScan() {
+    navigateToScreen(Screen::HANDHELD_SCAN);
 }
 
 // void UnlookMainWindow::showFaceEnrollment() {
@@ -278,7 +278,7 @@ void UnlookMainWindow::updateSystemStatus() {
 void UnlookMainWindow::initializeAdditionalComponents() {
     // Connect UI signals to slots
     connect(ui->camera_preview_button, &QPushButton::clicked, this, &UnlookMainWindow::showCameraPreview);
-    connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showDepthTest);
+    connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showHandheldScan);
     // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
@@ -394,13 +394,13 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             ui->title_label->setText("CAMERA PREVIEW");
             break;
             
-        case Screen::DEPTH_TEST:
-            if (!depth_test_widget_) {
-                depth_test_widget_ = std::make_unique<DepthTestWidget>(camera_system_);
-                ui->screen_stack->addWidget(depth_test_widget_.get());
+        case Screen::HANDHELD_SCAN:
+            if (!handheld_scan_widget_) {
+                handheld_scan_widget_ = std::make_unique<HandheldScanWidget>(camera_system_);
+                ui->screen_stack->addWidget(handheld_scan_widget_.get());
             }
-            ui->screen_stack->setCurrentWidget(depth_test_widget_.get());
-            ui->title_label->setText("DEPTH TEST");
+            ui->screen_stack->setCurrentWidget(handheld_scan_widget_.get());
+            ui->title_label->setText("HANDHELD SCAN");
             break;
 
         // case Screen::FACE_ENROLLMENT:

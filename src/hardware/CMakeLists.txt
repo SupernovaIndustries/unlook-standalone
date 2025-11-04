@@ -15,6 +15,8 @@ set(HARDWARE_SOURCES
     LEDThermalManager.cpp
     VCSELProjector.cpp
     StructuredLightSystem.cpp
+    BMI270Driver.cpp
+    StabilityDetector.cpp
 )
 
 set(HARDWARE_HEADERS
@@ -24,6 +26,8 @@ set(HARDWARE_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/LEDThermalManager.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/VCSELProjector.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/hardware/StructuredLightSystem.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/hardware/BMI270Driver.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/hardware/StabilityDetector.hpp
 )
 
 # Create hardware static library
@@ -45,6 +49,13 @@ target_link_libraries(unlook_hardware
         gpiod
         pthread
 )
+
+# Add OpenMP support for parallel IMU data processing
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(unlook_hardware PRIVATE OpenMP::OpenMP_CXX)
+    target_compile_definitions(unlook_hardware PRIVATE HAVE_OPENMP=1)
+    message(STATUS "OpenMP enabled for hardware library (IMU processing)")
+endif()
 
 # Compiler flags
 target_compile_features(unlook_hardware PUBLIC cxx_std_17)

@@ -22,7 +22,7 @@ namespace gui {
 
 // Forward declarations
 class CameraPreviewWidget;
-class DepthTestWidget;
+class HandheldScanWidget;
 class OptionsWidget;
 // class FaceEnrollmentWidget; // VCSEL-integrated face enrollment  // Temporarily disabled
 
@@ -44,7 +44,7 @@ public:
     enum class Screen {
         MAIN_MENU,
         CAMERA_PREVIEW,
-        DEPTH_TEST,
+        HANDHELD_SCAN,
         FACE_ENROLLMENT, // VCSEL-integrated face enrollment
         OPTIONS
     };
@@ -83,9 +83,9 @@ private slots:
     void showCameraPreview();
     
     /**
-     * @brief Navigate to depth test screen
+     * @brief Navigate to handheld scan screen
      */
-    void showDepthTest();
+    void showHandheldScan();
     
     /**
      * @brief Navigate to face enrollment screen with VCSEL integration (temporarily disabled)
@@ -170,7 +170,7 @@ private:
     
     // Screen widgets
     std::unique_ptr<CameraPreviewWidget> camera_preview_widget_;
-    std::unique_ptr<DepthTestWidget> depth_test_widget_;
+    std::unique_ptr<HandheldScanWidget> handheld_scan_widget_;
     // std::unique_ptr<FaceEnrollmentWidget> face_enrollment_widget_; // VCSEL-integrated  // Temporarily disabled
     std::unique_ptr<OptionsWidget> options_widget_;
     
