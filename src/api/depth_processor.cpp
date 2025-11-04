@@ -28,21 +28,25 @@ static stereo::StereoAlgorithm convertStereoAlgorithm(core::StereoAlgorithm core
     switch (coreAlgorithm) {
         case core::StereoAlgorithm::SGBM_OPENCV:
             return stereo::StereoAlgorithm::SGBM;
-        
+
+        // Census Transform algorithm (VCSEL-optimized)
+        case core::StereoAlgorithm::CENSUS:
+            return stereo::StereoAlgorithm::CENSUS;
+
         // BoofCV Dense algorithms (standard precision)
         case core::StereoAlgorithm::BOOFCV_DENSE_BM:
             return stereo::StereoAlgorithm::BOOFCV_BM;
         case core::StereoAlgorithm::BOOFCV_DENSE_SGM:
             return stereo::StereoAlgorithm::BOOFCV_SGBM;
-            
+
         // BoofCV Sub-pixel algorithms (high precision targeting 0.005mm)
         case core::StereoAlgorithm::BOOFCV_SUBPIXEL_BM:
             return stereo::StereoAlgorithm::BOOFCV_BM;  // Sub-pixel handled in BoofCVStereoMatcher
         case core::StereoAlgorithm::BOOFCV_SUBPIXEL_SGM:
             return stereo::StereoAlgorithm::BOOFCV_SGBM; // Sub-pixel handled in BoofCVStereoMatcher
-            
+
         // Note: BOOFCV_BASIC and BOOFCV_PRECISE are aliases, handled by cases above
-            
+
         default:
             return stereo::StereoAlgorithm::SGBM; // Fallback
     }
@@ -108,7 +112,19 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
         case core::StereoAlgorithm::SGBM_OPENCV:
             params.mode = 0;  // MODE_SGBM
             break;
-            
+
+        case core::StereoAlgorithm::CENSUS:
+            // Census Transform specific parameters
+            params.mode = 0;  // Standard SGBM mode
+            params.blockSize = 5;  // Optimal for Census with dots
+            params.numDisparities = 448;  // Maximum range for comprehensive coverage
+            params.P1 = 200;  // Census-optimized smoothness
+            params.P2 = 800;  // Census-optimized discontinuity
+            params.uniquenessRatio = 10;  // More tolerant for Census
+            params.speckleWindowSize = 50;  // Balanced for dots
+            params.speckleRange = 128;  // Wide range for dot preservation
+            break;
+
         // BoofCV Dense algorithms (standard precision)
         case core::StereoAlgorithm::BOOFCV_DENSE_BM:
             params.mode = 0;  // Basic block matching mode
@@ -116,17 +132,17 @@ static stereo::StereoMatchingParams convertToStereoMatchingParams(const core::St
         case core::StereoAlgorithm::BOOFCV_DENSE_SGM:
             params.mode = 1;  // Semi-global matching mode
             break;
-            
-        // BoofCV Sub-pixel algorithms (high precision)  
+
+        // BoofCV Sub-pixel algorithms (high precision)
         case core::StereoAlgorithm::BOOFCV_SUBPIXEL_BM:
             params.mode = 2;  // High quality mode for sub-pixel precision
             break;
         case core::StereoAlgorithm::BOOFCV_SUBPIXEL_SGM:
             params.mode = 2;  // Highest quality SGM mode for 0.005mm precision
             break;
-            
+
         // Note: BOOFCV_BASIC and BOOFCV_PRECISE are aliases, handled by cases above
-            
+
         default:
             params.mode = 0;
     }

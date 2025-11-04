@@ -17,11 +17,13 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
     // Optimized for maximum point retention while preserving 0.005mm precision
     // Based on analysis: dots are SMALL and need larger blocks to capture context
 
-    // MAXIMUM disparity range for comprehensive depth coverage
-    params_.minDisparity = 0;         // Start from 0 to capture far objects
-    params_.numDisparities = 448;     // MAXIMUM: 448 pixels (divisible by 16)
-                                      // Increased from 384 for even better close-range coverage
-                                      // Supports 25cm-100m depth range at 70mm baseline
+    // OPTIMIZED disparity range for realistic scene depths (400mm-2500mm)
+    // Baseline=70mm, focal≈1755px → disparity = (focal*baseline)/depth
+    // 400mm → 308px, 2500mm → 49px → use range 48-240px
+    params_.minDisparity = 48;        // Skip far plane (>2500mm) to reduce false matches
+    params_.numDisparities = 192;     // 192 pixels (divisible by 16)
+                                      // Range 48-240px → depth ~500mm-2500mm
+                                      // REDUCED from 448 to eliminate false matches in wide search
 
     // VCSEL DOT-OPTIMIZED: Larger block to capture complete dots + context
     params_.blockSize = 5;            // OPTIMIZED: 5x5 captures small dots completely
@@ -34,12 +36,13 @@ SGBMStereoMatcher::SGBMStereoMatcher() {
     params_.P2 = 800;                 // 32 * 1 * 5 * 5 = 800 (penalty for disparity jumps)
                                       // P2/P1 ratio = 4 optimal for structured light dots
 
-    // MORE TOLERANT uniqueness for sparse dot patterns
-    params_.uniquenessRatio = 15;     // REDUCED from 22: Accept more dot matches
-                                      // Critical for low-texture areas with sparse dots
-                                      // Improves retention from 4.2% to target 60%+
+    // STRICTER uniqueness to avoid ambiguous matches on repetitive VCSEL dots
+    params_.uniquenessRatio = 25;     // INCREASED: Reject ambiguous matches on similar dots
+                                      // Higher value = more conservative matching
+                                      // Reduces false matches on repetitive dot patterns
     params_.textureThreshold = 5;     // LOW: Accept dots even in low-texture areas
-    params_.preFilterCap = 10;        // MINIMAL: Less preprocessing preserves dot structure
+    params_.preFilterCap = 63;        // INCREASED: Better normalization for VCSEL illumination
+                                      // Helps with intensity variations across dot field
 
     // BALANCED speckle filtering: Remove noise but preserve dot clusters
     params_.speckleWindowSize = 50;   // INCREASED from 15: Better noise removal between dots

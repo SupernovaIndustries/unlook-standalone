@@ -120,6 +120,33 @@ void DepthTestWidget::connectSignals() {
                 }
             });
 
+    // Connect Census Transform checkbox (VCSEL-optimized)
+    connect(ui->use_census_checkbox, &QCheckBox::toggled,
+            this, [this](bool checked) {
+                if (!depth_processor_) {
+                    qWarning() << "[DepthWidget] Cannot switch algorithm: depth_processor_ is null";
+                    return;
+                }
+
+                // Get current stereo configuration
+                auto config = depth_processor_->getStereoConfig();
+
+                if (checked) {
+                    // CENSUS TRANSFORM MODE - Optimized for VCSEL dots
+                    qDebug() << "[DepthWidget] CENSUS TRANSFORM ENABLED (VCSEL-optimized)";
+                    addStatusMessage("Algorithm: Census Transform (target 60-80% coverage)");
+                    config.algorithm = core::StereoAlgorithm::CENSUS;
+                } else {
+                    // STANDARD SGBM MODE
+                    qDebug() << "[DepthWidget] SGBM MODE ENABLED (standard)";
+                    addStatusMessage("Algorithm: SGBM (OpenCV standard)");
+                    config.algorithm = core::StereoAlgorithm::SGBM_OPENCV;
+                }
+
+                // Apply the new configuration
+                depth_processor_->configureStereo(config);
+            });
+
     // Connect Ambient Light Mode checkbox
     connect(ui->ambient_light_mode_checkbox, &QCheckBox::toggled,
             this, [this](bool checked) {
@@ -312,71 +339,59 @@ void DepthTestWidget::captureStereoFrame() {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    // TEMPORAL MATCHING: Capture 3 frames for pattern isolation
-    capture_status_->setStatus("Temporal capture 1/3...", StatusDisplay::StatusType::PROCESSING);
-    qDebug() << "[DepthWidget] TEMPORAL MATCHING: Starting 3-frame capture sequence";
+    // TEMPORAL MATCHING: Capture 2 frames for Census pattern isolation
+    capture_status_->setStatus("Temporal capture 1/2...", StatusDisplay::StatusType::PROCESSING);
+    qDebug() << "[DepthWidget] CENSUS MATCHING: Starting 2-frame capture sequence for pattern isolation";
 
-    core::StereoFramePair frame1, frame2, frame3;  // 3 frames for temporal matching
+    core::StereoFramePair frame_vcsel, frame_ambient;  // 2 frames for pattern isolation
 
     // Only do temporal matching if LEDs are enabled
     // ambient_subtract_enabled_ NOW CONTROLS CAPTURE MODE:
-    // - CHECKED: 3-frame averaging mode (VCSEL1 + VCSEL2 + Ambient)
-    // - UNCHECKED: Single VCSEL frame mode (VCSEL1 only at 446mA)
+    // - CHECKED: 2-frame pattern isolation mode (VCSEL - Ambient)
+    // - UNCHECKED: Single VCSEL frame mode (VCSEL only at 280mA)
     if (led_enabled_ && as1170) {
         if (ambient_subtract_enabled_) {
-            // 3-FRAME MODE: VCSEL1 + VCSEL2 + Ambient for averaging
-            qDebug() << "[DepthWidget] 3-FRAME MODE: Capturing VCSEL1, VCSEL2, Ambient";
+            // 2-FRAME MODE: VCSEL + Ambient for pattern isolation
+            qDebug() << "[DepthWidget] 2-FRAME MODE: Capturing VCSEL and Ambient for pattern isolation";
 
-            // FRAME 1: VCSEL1 (Upper) ON, VCSEL2 OFF
-            qDebug() << "[DepthWidget] FRAME 1: VCSEL1 ON (upper)";
-            addStatusMessage("Capturing Frame 1/3: VCSEL1 ON (446mA)");
+            // FRAME 1: VCSEL ON (280mA verified working)
+            qDebug() << "[DepthWidget] FRAME 1: VCSEL ON (280mA for BELAGO1.1)";
+            addStatusMessage("Capturing Frame 1/2: VCSEL ON (280mA)");
             QApplication::processEvents();  // Update GUI
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // 280mA verified working
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
-            frame1 = camera_system_->captureSingle();
-            addStatusMessage("Frame 1 captured");
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // VCSEL stabilization
+            frame_vcsel = camera_system_->captureSingle();
+            addStatusMessage("Frame 1 (VCSEL) captured");
             QApplication::processEvents();  // Update GUI
 
-            // FRAME 2: VCSEL1 OFF, VCSEL2 (Lower) ON
-            capture_status_->setStatus("Temporal capture 2/3...", StatusDisplay::StatusType::PROCESSING);
-            qDebug() << "[DepthWidget] FRAME 2: VCSEL2 ON (lower)";
-            addStatusMessage("Capturing Frame 2/3: VCSEL2 ON (446mA)");
+            // FRAME 2: Ambient reference (no VCSEL)
+            capture_status_->setStatus("Temporal capture 2/2...", StatusDisplay::StatusType::PROCESSING);
+            qDebug() << "[DepthWidget] FRAME 2: Ambient (no VCSEL)";
+            addStatusMessage("Capturing Frame 2/2: Ambient reference");
             QApplication::processEvents();  // Update GUI
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 446);  // AS1170 hardware maximum
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
-            frame2 = camera_system_->captureSingle();
-            addStatusMessage("Frame 2 captured");
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);  // Pure ambient
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Short delay for LED off
+            frame_ambient = camera_system_->captureSingle();
+            addStatusMessage("Frame 2 (Ambient) captured");
             QApplication::processEvents();  // Update GUI
 
-            // FRAME 3: Both VCSELs OFF (Ambient)
-            capture_status_->setStatus("Temporal capture 3/3...", StatusDisplay::StatusType::PROCESSING);
-            qDebug() << "[DepthWidget] FRAME 3: Ambient (no VCSEL)";
-            addStatusMessage("Capturing Frame 3/3: Ambient (no VCSEL)");
-            QApplication::processEvents();  // Update GUI
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));  // Ambient frame delay
-            frame3 = camera_system_->captureSingle();
-            addStatusMessage("Frame 3 captured");
-            QApplication::processEvents();  // Update GUI
-
-            qDebug() << "[DepthWidget] 3-frame capture complete";
-            addStatusMessage("3-frame capture complete");
+            qDebug() << "[DepthWidget] 2-frame capture complete";
+            addStatusMessage("2-frame capture complete");
         } else {
-            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 446mA
-            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 446mA";
-            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 446mA");
+            // SINGLE VCSEL FRAME MODE: Only VCSEL1 at 280mA
+            qDebug() << "[DepthWidget] SINGLE VCSEL MODE: Capturing single frame with VCSEL1 at 280mA";
+            addStatusMessage("Single VCSEL frame mode: VCSEL1 at 280mA");
             QApplication::processEvents();  // Update GUI
 
             // Activate VCSEL1 only
-            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 446);  // AS1170 hardware maximum
+            as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);  // 280mA verified working
             as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // INCREASED: 200ms VCSEL stabilization
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));  // VCSEL stabilization
 
             // Capture single frame
-            frame1 = camera_system_->captureSingle();
+            frame_vcsel = camera_system_->captureSingle();
             addStatusMessage("Single VCSEL frame captured");
             QApplication::processEvents();  // Update GUI
 
@@ -386,87 +401,86 @@ void DepthTestWidget::captureStereoFrame() {
             qDebug() << "[DepthWidget] Single VCSEL frame captured successfully";
         }
 
-        // PROCESSING LOGIC UPDATED TO MATCH NEW CAPTURE BEHAVIOR:
-        // - ambient_subtract_enabled_ CHECKED: 3-frame averaging mode
-        // - ambient_subtract_enabled_ UNCHECKED: Single VCSEL frame (no processing)
+        // PROCESSING LOGIC FOR PATTERN ISOLATION (Census Transform optimization)
+        // - ambient_subtract_enabled_ CHECKED: 2-frame pattern isolation (VCSEL - Ambient)
+        // - ambient_subtract_enabled_ UNCHECKED: Single VCSEL frame (no isolation)
         if (ambient_subtract_enabled_) {
-            // 3-FRAME AVERAGING FOR NOISE REDUCTION
-            // Average all 3 frames (VCSEL1, VCSEL2, Ambient) to reduce temporal noise
-            // Apply moderate contrast enhancement to final averaged result
-            // This provides sqrt(3) = 1.73x noise reduction, approximately 4.77 dB SNR improvement
-            qDebug() << "[DepthWidget] AMBIENT SUBTRACTION DISABLED - Using 3-FRAME AVERAGING";
-            addStatusMessage("Using 3-frame averaging for noise reduction");
+            // PATTERN ISOLATION: VCSEL - Ambient for Census Transform
+            qDebug() << "[DepthWidget] PATTERN ISOLATION: Subtracting ambient from VCSEL pattern";
+            addStatusMessage("Isolating VCSEL dot pattern from ambient");
 
-            if (frame1.synchronized && frame2.synchronized && frame3.synchronized) {
-                // SAVE ORIGINAL 3 FRAMES BEFORE AVERAGING (for debugging)
+            if (frame_vcsel.synchronized && frame_ambient.synchronized) {
                 // Create debug directory early to save individual frames
                 std::string debug_dir = createDebugDirectory();
                 current_debug_directory_ = debug_dir;
 
-                qDebug() << "[DepthWidget] Saving 3 original frames to debug dir:" << QString::fromStdString(debug_dir);
+                qDebug() << "[DepthWidget] Saving original frames to debug dir:" << QString::fromStdString(debug_dir);
 
-                // Save VCSEL1 frame (frame1)
-                cv::imwrite(debug_dir + "/00a_frame1_vcsel1_left.png", frame1.left_frame.image);
-                cv::imwrite(debug_dir + "/00a_frame1_vcsel1_right.png", frame1.right_frame.image);
+                // Save original VCSEL frames
+                cv::imwrite(debug_dir + "/01_vcsel_left.png", frame_vcsel.left_frame.image);
+                cv::imwrite(debug_dir + "/01_vcsel_right.png", frame_vcsel.right_frame.image);
 
-                // Save VCSEL2 frame (frame2)
-                cv::imwrite(debug_dir + "/00b_frame2_vcsel2_left.png", frame2.left_frame.image);
-                cv::imwrite(debug_dir + "/00b_frame2_vcsel2_right.png", frame2.right_frame.image);
+                // Save ambient frames
+                cv::imwrite(debug_dir + "/02_ambient_left.png", frame_ambient.left_frame.image);
+                cv::imwrite(debug_dir + "/02_ambient_right.png", frame_ambient.right_frame.image);
 
-                // Save Ambient frame (frame3)
-                cv::imwrite(debug_dir + "/00c_frame3_ambient_left.png", frame3.left_frame.image);
-                cv::imwrite(debug_dir + "/00c_frame3_ambient_right.png", frame3.right_frame.image);
+                // CRITICAL: Convert to CV_16S for subtraction to avoid underflow
+                cv::Mat vcsel_left_16s, vcsel_right_16s, ambient_left_16s, ambient_right_16s;
+                frame_vcsel.left_frame.image.convertTo(vcsel_left_16s, CV_16S);
+                frame_vcsel.right_frame.image.convertTo(vcsel_right_16s, CV_16S);
+                frame_ambient.left_frame.image.convertTo(ambient_left_16s, CV_16S);
+                frame_ambient.right_frame.image.convertTo(ambient_right_16s, CV_16S);
 
-                qDebug() << "[DepthWidget] All 3 original frames saved to debug folder";
+                // Subtract ambient from VCSEL to isolate pattern
+                cv::Mat isolated_left, isolated_right;
+                cv::subtract(vcsel_left_16s, ambient_left_16s, isolated_left);
+                cv::subtract(vcsel_right_16s, ambient_right_16s, isolated_right);
 
-                cv::Mat averaged_left, averaged_right;
+                // Clamp negative values to 0
+                isolated_left = cv::max(isolated_left, 0);
+                isolated_right = cv::max(isolated_right, 0);
 
-                // Convert to float for accurate averaging
-                cv::Mat temp_left1, temp_left2, temp_left3;
-                cv::Mat temp_right1, temp_right2, temp_right3;
+                // Convert back to 8-bit for processing
+                isolated_left.convertTo(frame_vcsel.left_frame.image, CV_8U);
+                isolated_right.convertTo(frame_vcsel.right_frame.image, CV_8U);
 
-                frame1.left_frame.image.convertTo(temp_left1, CV_32F);
-                frame2.left_frame.image.convertTo(temp_left2, CV_32F);
-                frame3.left_frame.image.convertTo(temp_left3, CV_32F);
+                // Save isolated pattern
+                cv::imwrite(debug_dir + "/03_isolated_pattern_left.png", frame_vcsel.left_frame.image);
+                cv::imwrite(debug_dir + "/03_isolated_pattern_right.png", frame_vcsel.right_frame.image);
 
-                frame1.right_frame.image.convertTo(temp_right1, CV_32F);
-                frame2.right_frame.image.convertTo(temp_right2, CV_32F);
-                frame3.right_frame.image.convertTo(temp_right3, CV_32F);
+                // VALIDATION METRICS: Pattern variance check
+                cv::Scalar mean_val, stddev_val;
+                cv::meanStdDev(frame_vcsel.left_frame.image, mean_val, stddev_val);
+                float pattern_variance = stddev_val[0] * stddev_val[0];
 
-                // Average all three frames (VCSEL1 + VCSEL2 + Ambient)
-                averaged_left = (temp_left1 + temp_left2 + temp_left3) / 3.0;
-                averaged_right = (temp_right1 + temp_right2 + temp_right3) / 3.0;
+                qDebug() << "[DepthWidget] PATTERN METRICS:";
+                qDebug() << "  Pattern variance:" << pattern_variance << "(target >200 for good dots)";
+                qDebug() << "  Mean intensity:" << mean_val[0];
+                qDebug() << "  Std deviation:" << stddev_val[0];
 
-                // Convert averaged frames directly to 8-bit (no contrast or CLAHE)
-                averaged_left.convertTo(frame1.left_frame.image, CV_8U);
-                averaged_right.convertTo(frame1.right_frame.image, CV_8U);
+                addStatusMessage(QString("Pattern variance: %1 (target >200)").arg(pattern_variance));
 
-                // Save averaged frame (this will be overwritten by saveDebugImages as 01_left_original.png)
-                cv::imwrite(debug_dir + "/00d_averaged_left.png", frame1.left_frame.image);
-                cv::imwrite(debug_dir + "/00d_averaged_right.png", frame1.right_frame.image);
-
-                qDebug() << "[DepthWidget] 3-frame averaging complete:"
-                         << "left=" << frame1.left_frame.image.cols << "x" << frame1.left_frame.image.rows
-                         << "right=" << frame1.right_frame.image.cols << "x" << frame1.right_frame.image.rows
-                         << "SNR improvement: ~4.77 dB, NO contrast/CLAHE";
-                addStatusMessage("3-frame averaging applied (pure averaging, no processing)");
+                qDebug() << "[DepthWidget] Pattern isolation complete:"
+                         << "left=" << frame_vcsel.left_frame.image.cols << "x" << frame_vcsel.left_frame.image.rows
+                         << "right=" << frame_vcsel.right_frame.image.cols << "x" << frame_vcsel.right_frame.image.rows;
+                addStatusMessage("VCSEL pattern isolated successfully");
             } else {
-                qWarning() << "[DepthWidget] Frame synchronization issue - using frame 1 only";
-                addStatusMessage("WARNING: Not all frames synchronized, using single frame");
-                // Frame1 already contains the first captured frame, no modification needed
+                qWarning() << "[DepthWidget] Frame synchronization issue - using VCSEL frame only";
+                addStatusMessage("WARNING: Frames not synchronized, using VCSEL frame without isolation");
             }
+        } else {
+            qDebug() << "[DepthWidget] Using single VCSEL frame without pattern isolation";
+            addStatusMessage("Single VCSEL frame mode (no ambient subtraction)");
         }
 
-        // TODO: Future enhancement - combine pattern1 and pattern2 for maximum density
-        // For now, use pattern1 as primary
     } else {
         // No temporal matching - just capture ambient
         qDebug() << "[DepthWidget] Single frame capture (LED disabled or not available)";
-        frame1 = camera_system_->captureSingle();
+        frame_vcsel = camera_system_->captureSingle();
     }
 
-    // Use frame1 as the primary frame for processing (now potentially with patterns)
-    core::StereoFramePair frame_pair = frame1;
+    // Use frame_vcsel as the primary frame for processing (now with isolated patterns if enabled)
+    core::StereoFramePair frame_pair = frame_vcsel;
     
     qDebug() << "[DepthWidget] Frame capture result:"
              << "synchronized=" << frame_pair.synchronized
@@ -2208,11 +2222,48 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
         try {
             if (quality_metrics_label_) {
                 qDebug() << "[DepthWidget] quality_metrics_label_ is valid, updating text...";
-                QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
-                    .arg(result.coverage_ratio * 100, 0, 'f', 1)
-                    .arg(result.mean_depth, 0, 'f', 2)
-                    .arg(result.std_depth, 0, 'f', 2);
-                quality_metrics_label_->setText(metrics);
+
+                // Calculate actual coverage from disparity map (more accurate than result.coverage_ratio)
+                float actual_coverage = 0.0f;
+                if (!result.disparity_map.empty()) {
+                    int valid_pixels = cv::countNonZero(result.disparity_map > 0);
+                    int total_pixels = result.disparity_map.rows * result.disparity_map.cols;
+                    actual_coverage = static_cast<float>(valid_pixels) / total_pixels * 100.0f;
+
+                    // Log coverage metrics for Census Transform analysis
+                    qDebug() << "[METRICS] COVERAGE ANALYSIS:";
+                    qDebug() << "[METRICS]   Algorithm:" << (ui->use_census_checkbox->isChecked() ? "CENSUS" : "SGBM");
+                    qDebug() << "[METRICS]   Coverage:" << actual_coverage << "% (target 60-80% for Census)";
+                    qDebug() << "[METRICS]   Valid pixels:" << valid_pixels << "/" << total_pixels;
+                    qDebug() << "[METRICS]   Pattern isolation:" << (ambient_subtract_enabled_ ? "ENABLED" : "DISABLED");
+
+                    // Add coverage status to UI
+                    QString coverage_status = "";
+                    if (ui->use_census_checkbox->isChecked()) {
+                        if (actual_coverage >= 60.0f) {
+                            coverage_status = " ✓ TARGET MET";
+                            addStatusMessage(QString("Coverage: %1% ✓ Census target achieved!").arg(actual_coverage, 0, 'f', 1));
+                        } else {
+                            coverage_status = " (target: 60-80%)";
+                            addStatusMessage(QString("Coverage: %1% (below Census target 60%)").arg(actual_coverage, 0, 'f', 1));
+                        }
+                    }
+
+                    QString metrics = QString("Coverage: %1%%2 | Mean Depth: %3mm | Std Dev: %4mm")
+                        .arg(actual_coverage, 0, 'f', 1)
+                        .arg(coverage_status)
+                        .arg(result.mean_depth, 0, 'f', 2)
+                        .arg(result.std_depth, 0, 'f', 2);
+                    quality_metrics_label_->setText(metrics);
+                } else {
+                    // Fallback to original metrics if disparity map is empty
+                    QString metrics = QString("Coverage: %1% | Mean Depth: %2mm | Std Dev: %3mm")
+                        .arg(result.coverage_ratio * 100, 0, 'f', 1)
+                        .arg(result.mean_depth, 0, 'f', 2)
+                        .arg(result.std_depth, 0, 'f', 2);
+                    quality_metrics_label_->setText(metrics);
+                }
+
                 qDebug() << "[DepthWidget] Quality metrics updated successfully";
             } else {
                 qDebug() << "[DepthWidget] WARNING: quality_metrics_label_ is null or invalid";
@@ -2270,18 +2321,18 @@ void DepthTestWidget::onDepthResultReceived(const core::DepthResult& result) {
                 industrial_status_->setStatus("Ready to generate Industrial mesh", widgets::StatusDisplay::StatusType::SUCCESS);
                 qDebug() << "[DepthWidget] industrial_export_button_ enabled successfully";
 
-                // AUTOMATIC MESH GENERATION: Generate Industrial mesh immediately after successful depth capture
-                qDebug() << "[DepthWidget] AUTO-GENERATING Industrial mesh for testing...";
-                industrial_status_->setStatus("Auto-generating Industrial mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
-                QTimer::singleShot(100, this, [this]() {
-                    try {
-                        exportUnlookMesh();
-                        qDebug() << "[DepthWidget] Industrial mesh auto-generation completed";
-                    } catch (const std::exception& e) {
-                        qDebug() << "[DepthWidget] Exception during auto mesh generation:" << e.what();
-                        industrial_status_->setStatus("Auto mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
-                    }
-                });
+                // AUTOMATIC MESH GENERATION DISABLED - Manual trigger only
+                // qDebug() << "[DepthWidget] AUTO-GENERATING Industrial mesh for testing...";
+                // industrial_status_->setStatus("Auto-generating Industrial mesh...", widgets::StatusDisplay::StatusType::PROCESSING);
+                // QTimer::singleShot(100, this, [this]() {
+                //     try {
+                //         exportUnlookMesh();
+                //         qDebug() << "[DepthWidget] Industrial mesh auto-generation completed";
+                //     } catch (const std::exception& e) {
+                //         qDebug() << "[DepthWidget] Exception during auto mesh generation:" << e.what();
+                //         industrial_status_->setStatus("Auto mesh generation failed", widgets::StatusDisplay::StatusType::ERROR);
+                //     }
+                // });
             }
 
             qDebug() << "[DepthWidget] All UI updates completed successfully";

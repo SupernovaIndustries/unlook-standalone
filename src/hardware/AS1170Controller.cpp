@@ -235,60 +235,66 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
         current_ma = thermal_status_.throttled_current_ma;
     }
 
-    // CRITICAL FIX: Force reset AS1170 when disabling LEDs
-    // The chip can enter fault state during operation, causing I2C errors
-    // forceResetHardware() bypasses normal I2C and forces register reset
+    // NEW LOGIC: Disable individual LED without affecting the other
+    // Only turn off GPIO when BOTH LEDs are disabled
     if (!enable) {
-        core::Logger::getInstance().info("Disabling LEDs - forcing complete hardware reset to clear any fault state");
+        core::Logger::getInstance().info("Disabling LED channel " + std::to_string(static_cast<int>(channel)));
 
-        // Temporarily unlock mutex for forceResetHardware (it doesn't need the lock)
-        mutex_.unlock();
-        bool reset_success = forceResetHardware();
-        mutex_.lock();
-
-        if (!reset_success) {
-            core::Logger::getInstance().warning("Force reset during LED disable had issues, but continuing");
+        // Set the specific LED current to 0
+        AS1170Register current_reg;
+        if (channel == LEDChannel::LED1) {
+            current_reg = AS1170Register::CURRENT_SET_LED1;
+        } else {
+            current_reg = AS1170Register::CURRENT_SET_LED2;
         }
 
+        // Write 0 to the LED current register
+        if (!writeRegisterWithRetry(current_reg, 0x00)) {
+            core::Logger::getInstance().error("Failed to disable LED channel " + std::to_string(static_cast<int>(channel)));
+            return false;
+        }
+
+        // Update status for this specific LED
         {
             std::lock_guard<std::mutex> status_lock(status_mutex_);
-            status_.led1_current_ma = 0;
-            status_.led2_current_ma = 0;
-            status_.current_mode = FlashMode::DISABLED;
+            if (channel == LEDChannel::LED1) {
+                status_.led1_current_ma = 0;
+            } else {
+                status_.led2_current_ma = 0;
+            }
+
+            // Check if BOTH LEDs are now disabled
+            if (status_.led1_current_ma == 0 && status_.led2_current_ma == 0) {
+                core::Logger::getInstance().info("Both LEDs disabled - setting GPIO LOW");
+
+                // Only now turn off GPIO (both LEDs are off)
+                if (gpio_initialized_) {
+                    mutex_.unlock();
+                    bool gpio_success = setGPIOValue(config_.strobe_gpio, false);
+                    mutex_.lock();
+
+                    if (gpio_success) {
+                        core::Logger::getInstance().info("GPIO 17 set LOW - all LEDs off");
+                    }
+                }
+
+                status_.current_mode = FlashMode::DISABLED;
+            } else {
+                core::Logger::getInstance().info("Other LED still active - GPIO remains HIGH");
+            }
         }
 
-        core::Logger::getInstance().info("AS1170 force reset complete - LEDs disabled and ready for next activation");
+        core::Logger::getInstance().info("LED channel " + std::to_string(static_cast<int>(channel)) + " disabled successfully");
         return true;
     }
 
-    // CRITICAL FIX: Reconfigure AS1170 when enabling LEDs
-    // This ensures the chip is in correct FLASH MODE state for operation
-    core::Logger::getInstance().info("Enabling LEDs - reconfiguring AS1170 to FLASH MODE");
+    // NEW LOGIC: No need to reconfigure FLASH MODE every time
+    // It's already configured during initialize() and persists
+    core::Logger::getInstance().info("Enabling LED channel " + std::to_string(static_cast<int>(channel)) + " at " + std::to_string(current_ma) + "mA");
 
-    // Step 1: Reset control register first to ensure clean state
-    writeRegisterWithRetry(AS1170Register::CONTROL, 0x00);
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-    // Step 2: Reconfigure FLASH MODE (0x1B)
-    if (!writeRegisterWithRetry(AS1170Register::CONTROL, 0x1B)) {
-        core::Logger::getInstance().error("Failed to reconfigure control register to FLASH MODE");
-        return false;
-    }
-
-    // Verify control register configuration
-    uint8_t control_check;
-    if (readRegister(AS1170Register::CONTROL, control_check)) {
-        std::stringstream ctrl_hex;
-        ctrl_hex << "0x" << std::hex << (int)control_check;
-        if (control_check != 0x1B) {
-            core::Logger::getInstance().error("Control register verification failed - got " + ctrl_hex.str() + ", expected 0x1b");
-            return false;
-        }
-        core::Logger::getInstance().info("FLASH MODE reconfigured successfully: " + ctrl_hex.str());
-    }
-
-    // Step 3: Reset flash timer to ensure timeout is ready
-    writeRegisterWithRetry(AS1170Register::FLASH_TIMER, 0x80);
+    // REMOVED: Redundant CONTROL register reset (was workaround for old broken board)
+    // FLASH MODE (0x1B) is already configured in initialize() and persists
+    // Only reconfigure if there's a hardware fault detected
 
     bool success = true;
 
@@ -351,6 +357,28 @@ bool AS1170Controller::setLEDState(LEDChannel channel, bool enable, uint16_t cur
             std::lock_guard<std::mutex> status_lock(status_mutex_);
             status_.led2_current_ma = current_ma;
         }
+    }
+
+    // CRITICAL: Set GPIO HIGH to activate LEDs in FLASH MODE (VERIFIED WORKING)
+    // AS1170 in FLASH MODE: GPIO HIGH = LEDs ON continuously (not pulse!)
+    // LEDs will remain ON as long as GPIO stays HIGH
+    if (success && gpio_initialized_) {
+        core::Logger::getInstance().info("Setting GPIO 17 HIGH to enable LEDs (FLASH MODE - VERIFIED)");
+
+        // Temporarily unlock mutex for setGPIOValue (it doesn't have internal locking)
+        // setGPIOValue() only accesses GPIO line handle, safe to call without mutex
+        mutex_.unlock();
+        bool gpio_success = setGPIOValue(config_.strobe_gpio, true);  // Set GPIO HIGH (continuous)
+        mutex_.lock();
+
+        if (!gpio_success) {
+            core::Logger::getInstance().error("Failed to set GPIO HIGH - LEDs will not activate");
+        } else {
+            core::Logger::getInstance().info("GPIO 17 set HIGH successfully - LEDs should now be ON continuously");
+        }
+    } else if (success && !gpio_initialized_) {
+        core::Logger::getInstance().warning("GPIO not initialized - FLASH MODE requires GPIO control, LEDs will NOT work");
+        core::Logger::getInstance().warning("To enable GPIO: ensure GPIO initialization succeeds during AS1170Controller::initialize()");
     }
 
     //     updateStatus();
@@ -436,6 +464,11 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
         return false;
     }
 
+    if (!gpio_initialized_) {
+        core::Logger::getInstance().warning("GPIO not initialized - cannot generate strobe pulse");
+        return false;
+    }
+
     // Generate GPIO strobe pulse for LED activation
     core::Logger::getInstance().info("GPIO strobe: Setting GPIO " + std::to_string(config_.strobe_gpio) + " HIGH");
     if (!setGPIOValue(config_.strobe_gpio, true)) {
@@ -444,14 +477,9 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
     }
 
     // Verify GPIO is actually HIGH
-    std::string gpio_value_path = "/sys/class/gpio/gpio" + std::to_string(config_.strobe_gpio) + "/value";
-    std::ifstream value_file(gpio_value_path);
-    if (value_file.is_open()) {
-        std::string value;
-        std::getline(value_file, value);
-        core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) + " physical state: " + value);
-        value_file.close();
-    }
+    bool current_value = getGPIOValue(config_.strobe_gpio);
+    core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) +
+                                     " physical state verified: " + (current_value ? "HIGH" : "LOW"));
 
     // Use high-precision sleep for microsecond timing
     core::Logger::getInstance().info("GPIO strobe: Holding HIGH for " + std::to_string(duration_us) + " microseconds");
@@ -464,13 +492,9 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
     }
 
     // Verify GPIO is actually LOW
-    value_file.open(gpio_value_path);
-    if (value_file.is_open()) {
-        std::string value;
-        std::getline(value_file, value);
-        core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) + " final state: " + value);
-        value_file.close();
-    }
+    current_value = getGPIOValue(config_.strobe_gpio);
+    core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) +
+                                     " final state verified: " + (current_value ? "HIGH" : "LOW"));
 
     // Update strobe counter
     {
@@ -478,8 +502,7 @@ bool AS1170Controller::generateStrobe(uint32_t duration_us) {
         status_.strobe_count++;
     }
 
-    // TODO: Fix formatted logging
-    core::Logger::getInstance().debug("Strobe pulse generated");
+    core::Logger::getInstance().debug("Strobe pulse generated successfully (libgpiod)");
     return true;
 }
 
@@ -529,7 +552,7 @@ void AS1170Controller::emergencyShutdown() {
     }
 
     // Ensure strobe GPIO is low
-    if (gpio_fd_ >= 0) {
+    if (gpio_initialized_) {
         setGPIOValue(config_.strobe_gpio, false);
     }
 
@@ -666,43 +689,39 @@ bool AS1170Controller::initializeI2C() {
 }
 
 bool AS1170Controller::initializeGPIO() {
-    // INVESTOR DEMO FIX: Make GPIO non-critical for VCSEL operation
-    // AS1170 works in TORCH MODE without GPIO (continuous illumination)
-    // GPIO only needed for advanced STROBE control (future feature)
+    // Modern libgpiod-based GPIO initialization for Raspberry Pi 5
+    // GPIO strobe control for synchronized LED activation
+    // Falls back to FLASH MODE if GPIO unavailable (but GPIO is REQUIRED for LED control)
 
-    if (!exportGPIO(config_.strobe_gpio)) {
-        core::Logger::getInstance().warning("GPIO export failed - continuing with TORCH MODE only (no strobe control)");
-        gpio_exported_ = false;
+    if (!initializeGPIOLine(config_.strobe_gpio)) {
+        core::Logger::getInstance().warning("GPIO initialization failed - continuing with FLASH MODE only (no strobe control)");
+        gpio_initialized_ = false;
 
         {
             std::lock_guard<std::mutex> status_lock(status_mutex_);
             status_.gpio_configured = false;  // Strobe control unavailable
         }
 
-        return true;  // ← CRITICAL: Don't fail initialization!
-    }
-
-    if (!setGPIODirection(config_.strobe_gpio, "out")) {
-        core::Logger::getInstance().warning("GPIO direction failed - continuing with TORCH MODE only");
-        gpio_exported_ = false;
-        return true;  // Don't fail
+        return true;  // Don't fail initialization - AS1170 works without strobe
     }
 
     // Set initial state to LOW
     if (!setGPIOValue(config_.strobe_gpio, false)) {
-        core::Logger::getInstance().warning("GPIO value set failed - continuing with TORCH MODE only");
-        gpio_exported_ = false;
+        core::Logger::getInstance().warning("GPIO value set failed - continuing with FLASH MODE only");
+        releaseGPIOLine();
+        gpio_initialized_ = false;
         return true;  // Don't fail
     }
 
-    gpio_exported_ = true;
+    gpio_initialized_ = true;
 
     {
         std::lock_guard<std::mutex> status_lock(status_mutex_);
         status_.gpio_configured = true;
     }
 
-    core::Logger::getInstance().info("GPIO configured successfully for strobe control");
+    core::Logger::getInstance().info("GPIO " + std::to_string(config_.strobe_gpio) +
+                                     " configured successfully for strobe control (libgpiod)");
     return true;
 }
 
@@ -733,7 +752,7 @@ bool AS1170Controller::detectI2CAddress() {
 }
 
 bool AS1170Controller::configureAS1170Registers() {
-    core::Logger::getInstance().info("Configuring AS1170 registers for FLASH MODE per OSRAM/ams specification");
+    core::Logger::getInstance().info("Configuring AS1170 registers for FLASH MODE with GPIO level control (VERIFIED WORKING)");
 
     // Following exact OSRAM initialization sequence with GPIO 573
 
@@ -763,7 +782,7 @@ bool AS1170Controller::configureAS1170Registers() {
         return false;
     }
 
-    // 5. Configure control register (Reg.0x06) for FLASH MODE with GPIO 573
+    // 5. Configure control register (Reg.0x06) for FLASH MODE with GPIO level control (VERIFIED WORKING)
     core::Logger::getInstance().info("Reading current AS1170 control register state");
 
     uint8_t current_control;
@@ -776,13 +795,14 @@ bool AS1170Controller::configureAS1170Registers() {
     current_hex << "0x" << std::hex << (int)current_control;
     core::Logger::getInstance().info("Current control register value: " + current_hex.str());
 
-    // Configure for FLASH mode per OSRAM/ams specification
-    // FLASH MODE: 0x1B = 00011011 per exact OSRAM initialization sequence
+    // Configure for FLASH MODE: GPIO HIGH = LED ON continuous, GPIO LOW = LED OFF
+    // FLASH MODE: 0x1B = 00011011 = FLASH(11) + OUT_ON(1) + AUTO_STROBE(1) + STROBE_RAMP(0)
+    // VERIFIED WORKING: This is the ONLY mode that works with our VCSEL hardware
     uint8_t target_control = 0x1B;
 
     std::stringstream target_hex;
     target_hex << "0x" << std::hex << (int)target_control;
-    core::Logger::getInstance().info("Target control register value: " + target_hex.str() + " (FLASH MODE with GPIO 573)");
+    core::Logger::getInstance().info("Target control register value: " + target_hex.str() + " (FLASH MODE - GPIO level control VERIFIED)");
 
     // Try writing the control register
     bool control_written = false;
@@ -801,7 +821,7 @@ bool AS1170Controller::configureAS1170Registers() {
 
                 if (control_readback == target_control) {
                     control_written = true;
-                    core::Logger::getInstance().info("Control register configured successfully for FLASH MODE");
+                    core::Logger::getInstance().info("Control register configured successfully for FLASH MODE (VERIFIED WORKING)");
                 } else {
                     core::Logger::getInstance().warning("Control register not matching, retrying...");
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -832,15 +852,10 @@ bool AS1170Controller::configureAS1170Registers() {
 }
 
 void AS1170Controller::cleanupResources() {
-    if (gpio_exported_) {
+    if (gpio_initialized_) {
         setGPIOValue(config_.strobe_gpio, false);  // Ensure GPIO is low
-    //         unexportGPIO(config_.strobe_gpio);
-        gpio_exported_ = false;
-    }
-
-    if (gpio_fd_ >= 0) {
-    //         close(gpio_fd_);
-        gpio_fd_ = -1;
+        releaseGPIOLine();
+        gpio_initialized_ = false;
     }
 
     if (i2c_fd_ >= 0) {
@@ -917,95 +932,95 @@ bool AS1170Controller::readRegisterWithRetry(AS1170Register reg, uint8_t& value,
     return false;
 }
 
-bool AS1170Controller::exportGPIO(uint32_t gpio) {
-    std::string export_path = "/sys/class/gpio/export";
-    std::ofstream export_file(export_path);
+bool AS1170Controller::initializeGPIOLine(uint32_t gpio) {
+    // Open GPIO chip (Raspberry Pi 5 uses gpiochip0)
+    const char* chip_path = "/dev/gpiochip0";
+    gpio_chip_ = gpiod_chip_open(chip_path);
 
-    if (!export_file.is_open()) {
-        core::Logger::getInstance().error("Failed to open GPIO export file");
+    if (!gpio_chip_) {
+        core::Logger::getInstance().error("Failed to open GPIO chip: " + std::string(chip_path) +
+                                        " (error: " + std::string(strerror(errno)) + ")");
         return false;
     }
 
-    export_file << gpio;
-    export_file.close();
+    core::Logger::getInstance().info("GPIO chip opened successfully: " + std::string(chip_path));
 
-    // Wait for GPIO to be exported (critical for timing)
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Verify that GPIO was exported successfully
-    std::string gpio_path = "/sys/class/gpio/gpio" + std::to_string(gpio);
-    std::ifstream test_file(gpio_path + "/value");
-    if (!test_file.is_open()) {
-        core::Logger::getInstance().error("GPIO " + std::to_string(gpio) + " export failed - GPIO path not created");
+    // Get GPIO line
+    gpio_line_ = gpiod_chip_get_line(gpio_chip_, gpio);
+    if (!gpio_line_) {
+        core::Logger::getInstance().error("Failed to get GPIO line " + std::to_string(gpio) +
+                                        " (error: " + std::string(strerror(errno)) + ")");
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
         return false;
     }
-    test_file.close();
 
-    core::Logger::getInstance().info("GPIO " + std::to_string(gpio) + " exported successfully");
+    core::Logger::getInstance().info("GPIO line " + std::to_string(gpio) + " acquired successfully");
+
+    // Request line as output with initial value LOW
+    int ret = gpiod_line_request_output(gpio_line_, "AS1170-strobe", 0);
+    if (ret < 0) {
+        core::Logger::getInstance().error("Failed to request GPIO " + std::to_string(gpio) +
+                                        " as output (error: " + std::string(strerror(errno)) + ")");
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+        gpio_line_ = nullptr;
+        return false;
+    }
+
+    core::Logger::getInstance().info("GPIO " + std::to_string(gpio) +
+                                     " configured as output (initial: LOW)");
     return true;
 }
 
-void AS1170Controller::unexportGPIO(uint32_t gpio) {
-    std::string unexport_path = "/sys/class/gpio/unexport";
-    std::ofstream unexport_file(unexport_path);
-
-    if (unexport_file.is_open()) {
-        unexport_file << gpio;
-    //         unexport_file.close();
-    }
-}
-
-bool AS1170Controller::setGPIODirection(uint32_t gpio, const std::string& direction) {
-    std::string direction_path = "/sys/class/gpio/gpio" + std::to_string(gpio) + "/direction";
-
-    core::Logger::getInstance().info("Setting GPIO " + std::to_string(gpio) + " direction to: " + direction);
-    core::Logger::getInstance().info("Direction file path: " + direction_path);
-
-    std::ofstream direction_file(direction_path);
-    if (!direction_file.is_open()) {
-        core::Logger::getInstance().error("Failed to open GPIO direction file: " + direction_path);
-        core::Logger::getInstance().error("Check if GPIO " + std::to_string(gpio) + " was exported successfully");
-        return false;
+void AS1170Controller::releaseGPIOLine() {
+    if (gpio_line_) {
+        gpiod_line_release(gpio_line_);
+        gpio_line_ = nullptr;
+        core::Logger::getInstance().info("GPIO line released");
     }
 
-    direction_file << direction;
-    direction_file.close();
-
-    core::Logger::getInstance().info("GPIO " + std::to_string(gpio) + " direction set to " + direction + " successfully");
-    return true;
+    if (gpio_chip_) {
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+        core::Logger::getInstance().info("GPIO chip closed");
+    }
 }
 
 bool AS1170Controller::setGPIOValue(uint32_t gpio, bool value) {
-    std::string value_path = "/sys/class/gpio/gpio" + std::to_string(gpio) + "/value";
-    std::ofstream value_file(value_path);
-
-    if (!value_file.is_open()) {
-        // TODO: Fix formatted logging
-        core::Logger::getInstance().error("Failed to open GPIO value file");
+    if (!gpio_line_) {
+        core::Logger::getInstance().error("GPIO line not initialized - cannot set value");
         return false;
     }
 
-    value_file << (value ? "1" : "0");
-    //     value_file.close();
+    int ret = gpiod_line_set_value(gpio_line_, value ? 1 : 0);
+    if (ret < 0) {
+        core::Logger::getInstance().error("Failed to set GPIO " + std::to_string(gpio) +
+                                        " value to " + (value ? "HIGH" : "LOW") +
+                                        " (error: " + std::string(strerror(errno)) + ")");
+        return false;
+    }
 
+    // Verbose logging for debugging strobe control
+    core::Logger::getInstance().debug("GPIO " + std::to_string(gpio) + " set to " +
+                                      (value ? "HIGH" : "LOW"));
     return true;
 }
 
 bool AS1170Controller::getGPIOValue(uint32_t gpio) {
-    std::string value_path = "/sys/class/gpio/gpio" + std::to_string(gpio) + "/value";
-    std::ifstream value_file(value_path);
-
-    if (!value_file.is_open()) {
-        // TODO: Fix formatted logging
-        core::Logger::getInstance().error("Failed to open GPIO value file for reading");
+    if (!gpio_line_) {
+        core::Logger::getInstance().error("GPIO line not initialized - cannot read value");
         return false;
     }
 
-    char value;
-    value_file >> value;
-    //     value_file.close();
+    int ret = gpiod_line_get_value(gpio_line_);
+    if (ret < 0) {
+        core::Logger::getInstance().error("Failed to read GPIO " + std::to_string(gpio) +
+                                        " value (error: " + std::string(strerror(errno)) + ")");
+        return false;
+    }
 
-    return (value == '1');
+    return (ret == 1);
 }
 
 uint8_t AS1170Controller::currentToRegisterValue(uint16_t current_ma) const {

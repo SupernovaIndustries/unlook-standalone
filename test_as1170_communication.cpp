@@ -36,11 +36,10 @@ int main() {
         // Test 1: Initialize controller (this will test I2C communication)
         AS1170Controller::AS1170Config config;
         config.i2c_bus = 1;           // Final configuration: Bus 1
-        config.device_address = 0x30; // Final configuration: Address 0x30
-        config.gpio_strobe_pin = 19;  // Final configuration: GPIO 19
+        config.i2c_address = 0x30;    // Final configuration: Address 0x30
+        config.strobe_gpio = 17;      // Final configuration: GPIO 17 physical
         config.enable_thermal_protection = true;
-        config.target_current_led1_ma = 0;  // IMPORTANT: 0mA = NO LED activation
-        config.target_current_led2_ma = 0;  // IMPORTANT: 0mA = NO LED activation
+        config.target_current_ma = 0;  // IMPORTANT: 0mA = NO LED activation
 
         if (!controller.initialize(config)) {
             Logger::error("FAILED: Could not initialize AS1170 controller");

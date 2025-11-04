@@ -42,6 +42,7 @@ target_link_libraries(unlook_hardware
         ${OpenCV_LIBS}
     PRIVATE
         i2c
+        gpiod
         pthread
 )
 

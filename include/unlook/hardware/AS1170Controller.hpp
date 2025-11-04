@@ -11,6 +11,7 @@
 extern "C" {
 #include <linux/i2c-dev.h>
 #include <i2c/smbus.h>
+#include <gpiod.h>  // libgpiod for modern GPIO control (Pi5+)
 }
 
 namespace unlook {
@@ -25,7 +26,7 @@ namespace hardware {
  * Hardware Configuration (FINAL):
  * - I2C Bus: 1 (confirmed working, final configuration)
  * - I2C Address: 0x30 (final production address)
- * - GPIO Strobe: 4 (strobe control pin for CM5)
+ * - GPIO Strobe: 17 (strobe control pin, physical GPIO)
  * - Target Current: 250mA (industrial safety limit vs 450mA OSRAM example)
  * - VCSEL: OSRAM BELAGO 15k points projector
  *
@@ -72,9 +73,9 @@ public:
         AS1170Config() :
             i2c_bus(1),                           // I2C bus number (FINAL CONFIG: bus 1)
             i2c_address(0x30),                    // I2C address (FINAL CONFIG: 0x30)
-            strobe_gpio(4),                       // GPIO pin for strobe control
+            strobe_gpio(17),                      // GPIO pin for strobe control (physical GPIO 17)
             target_current_ma(280),               // Reduced from 446mA max - better for most scanning scenarios
-            flash_mode(FlashMode::FLASH_MODE),
+            flash_mode(FlashMode::FLASH_MODE),    // FLASH MODE: GPIO HIGH = LED ON, GPIO LOW = LED OFF (VERIFIED WORKING)
             strobe_type(StrobeType::LEVEL_SENSITIVE),
             flash_timeout_ms(129),                // Flash timeout in ms
             enable_thermal_protection(true),
@@ -264,8 +265,8 @@ private:
 
     // I2C and GPIO resources
     int i2c_fd_ = -1;
-    int gpio_fd_ = -1;
-    bool gpio_exported_ = false;
+    struct gpiod_chip* gpio_chip_ = nullptr;    // libgpiod chip handle
+    struct gpiod_line* gpio_line_ = nullptr;    // libgpiod line handle
     bool gpio_initialized_ = false;
 
     // Status tracking
@@ -296,10 +297,9 @@ private:
     bool writeRegisterWithRetry(AS1170Register reg, uint8_t value, int max_retries = 3);
     bool readRegisterWithRetry(AS1170Register reg, uint8_t& value, int max_retries = 3);
 
-    // GPIO control methods
-    bool exportGPIO(uint32_t gpio);
-    void unexportGPIO(uint32_t gpio);
-    bool setGPIODirection(uint32_t gpio, const std::string& direction);
+    // GPIO control methods (libgpiod-based)
+    bool initializeGPIOLine(uint32_t gpio);
+    void releaseGPIOLine();
     bool setGPIOValue(uint32_t gpio, bool value);
     bool getGPIOValue(uint32_t gpio);
 

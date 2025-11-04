@@ -288,18 +288,18 @@ void CameraPreviewWidget::onLEDTestOn() {
         }
     }
 
-    // Activate BOTH LED1 and LED2 at 150mA
-    bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 150);
-    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 150);
+    // Activate BOTH LED1 and LED2 at 280mA (VCSEL requires minimum 250mA, VERIFIED)
+    bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);
+    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);
 
     if (led1_success) {
-        qDebug() << "[CameraPreview] LED1 activated successfully at 150mA";
+        qDebug() << "[CameraPreview] LED1 activated successfully at 280mA (VCSEL minimum)";
     } else {
         qWarning() << "[CameraPreview] LED1 activation failed";
     }
 
     if (led2_success) {
-        qDebug() << "[CameraPreview] LED2 activated successfully at 150mA";
+        qDebug() << "[CameraPreview] LED2 activated successfully at 280mA (VCSEL minimum)";
     } else {
         qWarning() << "[CameraPreview] LED2 activation failed";
     }

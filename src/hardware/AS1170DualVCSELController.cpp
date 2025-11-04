@@ -73,7 +73,7 @@ bool AS1170DualVCSELController::initialize(
     AS1170Controller::AS1170Config as1170_config;
     as1170_config.i2c_bus = 1;
     as1170_config.i2c_address = 0x30;
-    as1170_config.strobe_gpio = 4;  // GPIO4 physical = 573 on CM5
+    as1170_config.strobe_gpio = 17;  // GPIO 17 physical
     as1170_config.target_current_ma = std::max(config_.vcsel1_current_ma, config_.vcsel2_current_ma);
     as1170_config.flash_mode = config_.use_strobe_mode ?
         AS1170Controller::FlashMode::FLASH_MODE :

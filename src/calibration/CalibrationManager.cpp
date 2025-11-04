@@ -350,18 +350,23 @@ public:
                 std::cout << "[CalibrationManager] Using pre-computed BoofCV rectification matrices (CORRECT!)" << std::endl;
             }
 
-            // Compute rectification maps for left camera
+            // SWAP FIX: Calibration file has cameras swapped (Tx negative)
+            // LEFT camera (Camera 1) uses R2/P2 from calibration file
+            // RIGHT camera (Camera 0) uses R1/P1 from calibration file
+            std::cout << "[CalibrationManager] SWAPPING R1↔R2 and P1↔P2 to fix camera mapping" << std::endl;
+
+            // Compute rectification maps for left camera (uses R2/P2 from file)
             cv::initUndistortRectifyMap(
                 calibData.cameraMatrixLeft, calibData.distCoeffsLeft,
-                calibData.R1, calibData.P1,
+                calibData.R2, calibData.P2,  // SWAPPED: R1→R2, P1→P2
                 calibData.imageSize, CV_32FC1,
                 calibData.map1Left, calibData.map2Left
             );
-            
-            // Compute rectification maps for right camera
+
+            // Compute rectification maps for right camera (uses R1/P1 from file)
             cv::initUndistortRectifyMap(
                 calibData.cameraMatrixRight, calibData.distCoeffsRight,
-                calibData.R2, calibData.P2,
+                calibData.R1, calibData.P1,  // SWAPPED: R2→R1, P2→P1
                 calibData.imageSize, CV_32FC1,
                 calibData.map1Right, calibData.map2Right
             );

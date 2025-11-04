@@ -625,6 +625,75 @@ QCheckBox::indicator:checked:hover {
             </widget>
            </item>
            <item>
+            <widget class="QCheckBox" name="use_census_checkbox">
+             <property name="minimumSize">
+              <size>
+               <width>140</width>
+               <height>32</height>
+              </size>
+             </property>
+             <property name="maximumSize">
+              <size>
+               <width>200</width>
+               <height>40</height>
+              </size>
+             </property>
+             <property name="font">
+              <font>
+               <family>Inter</family>
+               <pointsize>9</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="toolTip">
+              <string>Census Transform stereo matching
+Optimized for VCSEL dot patterns
+Research: 'Census produced lowest average error for active stereo' (PMC)
+Target: 60-80% coverage vs 5.65% current SGBM</string>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">/* Supernova-tech Checkbox */
+QCheckBox {
+    color: #FFFFFF;
+    font-family: "Inter", sans-serif;
+    font-weight: 700;
+    spacing: 8px;
+    min-height: 48px;
+}
+
+QCheckBox::indicator {
+    width: 24px;
+    height: 24px;
+    border: 2px solid #008B7A;
+    border-radius: 4px;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:hover {
+    border: 2px solid #00E5CC;
+    background: #1A2B2A;
+}
+
+QCheckBox::indicator:checked {
+    background: #00E5CC;
+    border: 2px solid #00B8A3;
+}
+
+QCheckBox::indicator:checked:hover {
+    background: #00FFE6;
+    border: 2px solid #00E5CC;
+}</string>
+             </property>
+             <property name="text">
+              <string>Use Census (VCSEL-optimized)</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
             <widget class="QLabel" name="status_label">
              <property name="text">
               <string>Processing Status:</string>

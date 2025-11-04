@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QLabel>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QListWidget>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -311,6 +312,7 @@ private:
     float ambient_subtraction_weight_;  // Weight for ambient subtraction (0.0-1.0, default 0.3)
     float ambient_pattern_gain_;  // Gain to apply after ambient subtraction (default 1.5)
     std::string current_debug_directory_;  // Store current debug directory for image loading
+    QCheckBox* use_census_checkbox_;  // Checkbox to enable Census Transform for VCSEL dots
 
 #ifndef DISABLE_POINTCLOUD_FUNCTIONALITY
     // Point cloud export configuration
