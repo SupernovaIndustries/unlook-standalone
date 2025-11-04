@@ -16,10 +16,10 @@ Dopo che tutti gli agent hanno completato, lancia sequenzialmente:
 - **testing-validation-framework** - Validation tests
 
 **Target:**
-- Resolution: FULL HD 1456x1088 (native IMX296)
+- Resolution: HD 1280x720 (downsampled from 1456x1088 native)
 - Precision: 500mm @ 0.1mm, 1000mm @ 0.5mm
-- Performance: 3-5 FPS per frame, multi-frame scan 2.8 seconds
-- Mode: Handheld con IMU stability detection
+- Performance: ~10 FPS per frame, multi-frame scan 1.0 second
+- Mode: Handheld con IMU stability detection real-time
 
 **CRITICAL:** Agent GUI deve ELIMINARE depth_test_widget completamente e sostituirlo con handheld_scan_widget.
 

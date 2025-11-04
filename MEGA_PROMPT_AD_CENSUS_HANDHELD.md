@@ -3,8 +3,8 @@
 ## 🎯 MISSION
 Implementare COMPLETO sistema di scansione 3D handheld professionale con AD-Census stereo matching, ARM NEON optimization, tentativo GPU acceleration, IMU stability detection, e multi-frame fusion.
 
-**RESOLUTION:** Full HD 1456x1088 (native IMX296 resolution)
-**TARGETS:** 500mm @ 0.1mm precision, 1000mm @ 0.5mm precision, 3-5 FPS per frame (acceptable for multi-frame handheld scanning)
+**RESOLUTION:** HD 1280x720 (downsampled from 1456x1088 native)
+**TARGETS:** 500mm @ 0.1mm precision, 1000mm @ 0.5mm precision, ~10 FPS per frame (real-time handheld scanning)
 
 **CRITICAL:** Implementare TUTTO in questa sessione. Nessuna feature lasciata non implementata. Ristrutturazione COMPLETA del depth processing pipeline. ELIMINARE completamente il vecchio depth_test_widget e sostituirlo con nuovo handheld_scan_widget.
 
@@ -126,21 +126,23 @@ Features: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp
 - `veorq_u8()` - XOR for census comparison
 - `vcgtq_u8()` - Greater-than comparison for census bit generation
 
-**Performance Estimates @ FULL HD 1456x1088:**
+**Performance Estimates @ HD 1280x720:**
 ```
-Pixels: 1,584,128 (5.16x more than VGA)
+Pixels: 921,600 (3x VGA, 58% of Full HD 1456x1088)
 
-Census transform (9x9 NEON):      ~10ms
-Hamming distance (NEON POPCOUNT): ~15ms
-AD computation (NEON):            ~5ms
-Cost fusion:                      ~2.5ms
-SGM 4-path:                       ~230ms  (bottleneck!)
-Post-processing:                  ~25ms
-──────────────────────────────────────────
-TOTAL:                            ~288ms → 3.5 FPS ✅
+Census transform (9x9 NEON):      ~6ms
+Hamming distance (NEON POPCOUNT): ~9ms
+AD computation (NEON):            ~3ms
+Cost fusion:                      ~1.5ms
+SGM 4-path:                       ~75ms  (bottleneck! scales with width×height×disparities)
+Post-processing:                  ~15ms
+────────────────────────────────────────────
+TOTAL:                            ~110ms → 9 FPS ✅
 
-Multi-frame scan: 10 frames @ 3.5 FPS = 2.8 seconds
-→ Acceptable for handheld high-precision scanning!
+With optimizations (OpenMP, cache tuning): ~100ms → 10 FPS ✅✅
+
+Multi-frame scan: 10 frames @ 10 FPS = 1.0 second
+→ PERFECT for real-time handheld scanning!
 ```
 
 ### GPU Capabilities (VideoCore VII)
@@ -175,23 +177,24 @@ Depth precision: ΔZ = (Z² / (f × B)) × Δd
 ```
 
 ### Performance Target:
-- **Full HD Processing:** 3-5 FPS per frame @ 1456x1088
-- **Multi-frame scan:** 10 frames @ 3.5 FPS = 2.8 sec per high-precision scan (acceptable!)
+- **HD Processing:** ~10 FPS per frame @ 1280x720
+- **Multi-frame scan:** 10 frames @ 10 FPS = 1.0 sec per high-precision scan
 - **Handheld mode:** IMU stability detection mandatory
-- **Resolution:** 1456x1088 native (NO downsampling, full precision)
+- **Resolution:** 1280x720 (downsampled from 1456x1088 native for performance)
 
 ---
 
 ## 🔧 HARDWARE SPECIFICATIONS
 
 ### Cameras:
-- **Sensors:** 2x IMX296 Global Shutter (1456x1088 SBGGR10)
-- **Resolution:** **1456x1088 FULL HD (native, NO downsampling)**
+- **Sensors:** 2x IMX296 Global Shutter (1456x1088 SBGGR10 native)
+- **Capture Resolution:** 1456x1088 (native)
+- **Processing Resolution:** **1280x720 HD (downsampled for 10 FPS real-time)**
 - **Baseline:** 70.017mm (from calibration/calib_boofcv_test3.yaml)
-- **Focal length:** ~1755 pixels
+- **Focal length:** ~1755 pixels @ native, ~1220 pixels @ HD 1280x720
 - **Hardware sync:** XVS/XHS, <1ms precision
 - **Mapping:** Camera 1 = LEFT/MASTER, Camera 0 = RIGHT/SLAVE
-- **CRITICAL:** Configure cameras to capture at FULL 1456x1088 resolution
+- **Downsampling method:** cv::INTER_AREA (best quality for downsampling)
 
 ### VCSEL Illuminator:
 - **LED1 (VCSEL):** ams OSRAM BELAGO1.1 (15k dots, 940nm)
@@ -249,11 +252,16 @@ censusWindowSize = 9;   // 9x9 = 80 bit descriptor
 censusType = CV_MODIFIED_CENSUS_TRANSFORM;
 censusThreshold = 4;    // Tolerance for illumination variations
 
+// Resolution
+captureResolution = cv::Size(1456, 1088);  // Native IMX296
+processingResolution = cv::Size(1280, 720); // HD for 10 FPS
+downsampleMethod = cv::INTER_AREA;          // Best quality
+
 // AD-Census Fusion
 lambda_AD = 0.3;        // AD weight (texture precision)
 lambda_Census = 0.7;    // Census weight (illumination robustness)
 
-// SGM Parameters (VCSEL-optimized)
+// SGM Parameters (VCSEL-optimized for HD)
 P1 = 4;                 // Small penalty (preserve VCSEL dots detail)
 P2 = 24;                // Moderate penalty (avoid false smoothing)
 uniquenessRatio = 25;   // Strict (reject ambiguous dot matches)
@@ -322,6 +330,10 @@ public:
                     const cv::Mat& rightVCSEL,
                     const cv::Mat& leftAmbient,
                     const cv::Mat& rightAmbient) override;
+
+private:
+    // Downsample for performance (1456x1088 → 1280x720)
+    cv::Mat downsampleImage(const cv::Mat& input);
 
 private:
     // Pattern isolation
@@ -1138,9 +1150,9 @@ void HandheldScanWidget::onStartScan() {
 class ADCensusPerformanceTest {
 public:
     void testHDPerformance() {
-        // Target: 3-5 FPS @ 1456x1088 Full HD
-        // Acceptable: 3.5 FPS (288ms per frame)
-        // Multi-frame scan: 10 frames = 2.8 seconds
+        // Target: ~10 FPS @ 1280x720 HD
+        // Acceptable: 9-10 FPS (100-110ms per frame)
+        // Multi-frame scan: 10 frames = 1.0 second
     }
 
     void testNEONOptimization() {
@@ -1243,11 +1255,12 @@ cd /home/alessandro/unlook-standalone
 - [x] Real-time performance (15+ FPS)
 
 ### Performance Requirements:
-- [ ] Full HD 1456x1088: 3-5 FPS per frame
-- [ ] Multi-frame scan (10 frames): 2.5-3 seconds total
+- [ ] HD 1280x720: ~10 FPS per frame (100ms processing time)
+- [ ] Multi-frame scan (10 frames): ~1.0 second total
 - [ ] 500mm distance: ≤0.15mm precision (10-frame fusion)
 - [ ] 1000mm distance: ≤0.6mm precision (10-frame fusion)
-- [ ] Stability detection: <1 second to achieve stable state
+- [ ] Stability detection: <500ms to achieve stable state
+- [ ] Downsampling: 1456x1088 → 1280x720 with INTER_AREA
 
 ### Code Quality:
 - [ ] All code compiles without warnings
