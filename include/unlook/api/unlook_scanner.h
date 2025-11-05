@@ -206,7 +206,10 @@ private:
     core::ResultCode shutdownSubsystems();
     core::ResultCode detectHardware();
     core::ResultCode validateSystem();
-    
+
+    // Calibration auto-load helper
+    std::string findLatestCalibration() const;
+
     // Hardware detection helpers
     bool detectLibCameraSync() const;
     bool detectIMX296Cameras() const;

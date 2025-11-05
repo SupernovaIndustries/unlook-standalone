@@ -79,14 +79,40 @@ find_package(PkgConfig REQUIRED)
 # OpenCV - essential for image processing
 if(USE_SYSTEM_OPENCV)
     find_package(OpenCV 4.0 REQUIRED
-        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo)
+        COMPONENTS core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo aruco)
     message(STATUS "OpenCV version: ${OpenCV_VERSION}")
-    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo")
+    message(STATUS "OpenCV modules: core imgproc imgcodecs calib3d features2d ximgproc photo highgui stereo aruco")
     message(STATUS "  - ximgproc: Required for WLS (Weighted Least Squares) disparity filtering")
     message(STATUS "  - stereo: Required for advanced stereo matching algorithms")
+    message(STATUS "  - aruco: Required for ChArUco calibration pattern detection")
 else()
     # Add custom OpenCV build here if needed
     message(FATAL_ERROR "Custom OpenCV build not implemented - use system installation")
+endif()
+
+# JSON library (nlohmann/json) for dataset metadata
+find_package(nlohmann_json 3.10.0 QUIET)
+if(NOT nlohmann_json_FOUND)
+    message(STATUS "nlohmann_json not found, attempting to install...")
+    execute_process(
+        COMMAND sudo apt-get update
+        RESULT_VARIABLE update_result
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    execute_process(
+        COMMAND sudo apt-get install -y nlohmann-json3-dev
+        RESULT_VARIABLE install_result
+        OUTPUT_QUIET ERROR_QUIET
+    )
+    if(install_result EQUAL 0)
+        find_package(nlohmann_json 3.10.0 REQUIRED)
+        message(STATUS "nlohmann_json installed successfully")
+    else()
+        message(WARNING "Failed to auto-install nlohmann_json. Please install manually: sudo apt-get install nlohmann-json3-dev")
+        message(FATAL_ERROR "nlohmann_json is required for calibration dataset management")
+    endif()
+else()
+    message(STATUS "nlohmann_json found: ${nlohmann_json_VERSION}")
 endif()
 
 # libcamera-sync-fix - EXCLUSIVELY use third-party version for hardware synchronization

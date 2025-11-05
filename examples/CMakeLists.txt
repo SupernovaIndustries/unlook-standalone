@@ -162,6 +162,23 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bmi270_stability_example.cpp")
     list(APPEND EXAMPLE_TARGETS bmi270_stability_example)
 endif()
 
+# Test stereo calibration
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test_stereo_calibration.cpp")
+    add_executable(test_stereo_calibration
+        test_stereo_calibration.cpp
+    )
+    target_include_directories(test_stereo_calibration PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(test_stereo_calibration PRIVATE
+        unlook_calibration
+        unlook_core
+        ${OpenCV_LIBS}
+        nlohmann_json::nlohmann_json
+    )
+    list(APPEND EXAMPLE_TARGETS test_stereo_calibration)
+endif()
+
 # C API example (temporarily disabled - requires C API implementation)
 # if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c_api_example.c")
 #     add_executable(c_api_example

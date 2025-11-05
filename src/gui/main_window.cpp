@@ -1,6 +1,7 @@
 #include "unlook/gui/main_window.hpp"
 #include "unlook/gui/camera_preview_widget.hpp"
 #include "unlook/gui/handheld_scan_widget.hpp"
+#include "unlook/gui/calibration_widget.hpp"
 // #include "unlook/gui/face_enrollment_widget.hpp"  // Temporarily disabled
 #include "unlook/gui/options_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
@@ -218,6 +219,10 @@ void UnlookMainWindow::showHandheldScan() {
     navigateToScreen(Screen::HANDHELD_SCAN);
 }
 
+void UnlookMainWindow::showCalibration() {
+    navigateToScreen(Screen::CALIBRATION);
+}
+
 // void UnlookMainWindow::showFaceEnrollment() {
 //     navigateToScreen(Screen::FACE_ENROLLMENT);
 // }
@@ -279,6 +284,7 @@ void UnlookMainWindow::initializeAdditionalComponents() {
     // Connect UI signals to slots
     connect(ui->camera_preview_button, &QPushButton::clicked, this, &UnlookMainWindow::showCameraPreview);
     connect(ui->depth_test_button, &QPushButton::clicked, this, &UnlookMainWindow::showHandheldScan);
+    connect(ui->calibration_button, &QPushButton::clicked, this, &UnlookMainWindow::showCalibration);
     // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
@@ -401,6 +407,15 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             }
             ui->screen_stack->setCurrentWidget(handheld_scan_widget_.get());
             ui->title_label->setText("HANDHELD SCAN");
+            break;
+
+        case Screen::CALIBRATION:
+            if (!calibration_widget_) {
+                calibration_widget_ = std::make_unique<CalibrationWidget>(camera_system_);
+                ui->screen_stack->addWidget(calibration_widget_.get());
+            }
+            ui->screen_stack->setCurrentWidget(calibration_widget_.get());
+            ui->title_label->setText("CALIBRATION");
             break;
 
         // case Screen::FACE_ENROLLMENT:

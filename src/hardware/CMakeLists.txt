@@ -101,9 +101,10 @@ install(FILES ${HARDWARE_HEADERS}
 #     add_subdirectory(examples)
 # endif()
 
-if(BUILD_TESTS)
-    add_subdirectory(tests)
-endif()
+# Hardware tests are in the main tests directory
+# if(BUILD_TESTS)
+#     add_subdirectory(tests)
+# endif()
 
 # Create hardware examples
 if(BUILD_EXAMPLES)
@@ -125,35 +126,35 @@ if(BUILD_EXAMPLES)
     # )
 endif()
 
-# Hardware validation tests
-if(BUILD_TESTS)
-    # AS1170 Hardware Test
-    add_executable(test_as1170_hardware tests/test_as1170_hardware.cpp)
-    target_link_libraries(test_as1170_hardware unlook_hardware gtest gtest_main)
-
-    # LED Sync Test
-    add_executable(test_led_sync tests/test_led_sync.cpp)
-    target_link_libraries(test_led_sync unlook_hardware gtest gtest_main)
-
-    # Thermal Management Test
-    add_executable(test_thermal_manager tests/test_thermal_manager.cpp)
-    target_link_libraries(test_thermal_manager unlook_hardware gtest gtest_main)
-
-    # VCSEL Integration Test
-    add_executable(test_vcsel_integration tests/test_vcsel_integration.cpp)
-    target_link_libraries(test_vcsel_integration unlook_hardware gtest gtest_main)
-
-    # Register tests with CTest
-    add_test(NAME AS1170Hardware COMMAND test_as1170_hardware)
-    add_test(NAME LEDSync COMMAND test_led_sync)
-    add_test(NAME ThermalManager COMMAND test_thermal_manager)
-    add_test(NAME VCSELIntegration COMMAND test_vcsel_integration)
-
-    # Install tests
-    install(TARGETS test_as1170_hardware test_led_sync test_thermal_manager test_vcsel_integration
-        RUNTIME DESTINATION bin/tests
-    )
-endif()
+# Hardware validation tests - moved to main tests directory
+# if(BUILD_TESTS)
+#     # AS1170 Hardware Test
+#     add_executable(test_as1170_hardware tests/test_as1170_hardware.cpp)
+#     target_link_libraries(test_as1170_hardware unlook_hardware gtest gtest_main)
+#
+#     # LED Sync Test
+#     add_executable(test_led_sync tests/test_led_sync.cpp)
+#     target_link_libraries(test_led_sync unlook_hardware gtest gtest_main)
+#
+#     # Thermal Management Test
+#     add_executable(test_thermal_manager tests/test_thermal_manager.cpp)
+#     target_link_libraries(test_thermal_manager unlook_hardware gtest gtest_main)
+#
+#     # VCSEL Integration Test
+#     add_executable(test_vcsel_integration tests/test_vcsel_integration.cpp)
+#     target_link_libraries(test_vcsel_integration unlook_hardware gtest gtest_main)
+#
+#     # Register tests with CTest
+#     add_test(NAME AS1170Hardware COMMAND test_as1170_hardware)
+#     add_test(NAME LEDSync COMMAND test_led_sync)
+#     add_test(NAME ThermalManager COMMAND test_thermal_manager)
+#     add_test(NAME VCSELIntegration COMMAND test_vcsel_integration)
+#
+#     # Install tests
+#     install(TARGETS test_as1170_hardware test_led_sync test_thermal_manager test_vcsel_integration
+#         RUNTIME DESTINATION bin/tests
+#     )
+# endif()
 
 # Documentation
 if(BUILD_DOCS)

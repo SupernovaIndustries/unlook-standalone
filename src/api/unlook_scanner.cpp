@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <chrono>
+#include <algorithm>
 
 namespace unlook {
 namespace api {
@@ -315,14 +316,27 @@ core::ResultCode UnlookScanner::initializeSubsystems() {
         return cam_result;
     }
     
-    // Initialize depth processor with default calibration
+    // Initialize depth processor with latest calibration (auto-load)
     depth_processor_ = std::make_unique<DepthProcessor>();
-    auto depth_result = depth_processor_->initialize("calibration/calib_boofcv_test3.yaml");
+
+    // Try to find the latest calibration file in /unlook_calib
+    std::string calibPath = findLatestCalibration();
+
+    // If no custom calibration found, use default
+    if (calibPath.empty()) {
+        calibPath = "calibration/calib_boofcv_test3.yaml";
+        UNLOOK_LOG_INFO("Scanner") << "Using default calibration: " << calibPath;
+    } else {
+        UNLOOK_LOG_INFO("Scanner") << "Auto-loading latest calibration: " << calibPath;
+    }
+
+    auto depth_result = depth_processor_->initialize(calibPath);
     if (depth_result != core::ResultCode::SUCCESS) {
         UNLOOK_LOG_WARNING("Scanner") << "Depth processor initialization failed, continuing without calibration";
         // Continue without calibration for now
     } else {
         status_.calibration_loaded = depth_processor_->hasValidCalibration();
+        UNLOOK_LOG_INFO("Scanner") << "Calibration loaded successfully from: " << calibPath;
     }
     
     // Initialize calibration manager
@@ -455,6 +469,55 @@ bool UnlookScanner::validateCameraMapping() const {
     // Camera 0 = RIGHT/SLAVE (/base/soc/i2c0mux/i2c@0/imx296@1a)
     UNLOOK_LOG_INFO("Scanner") << "Validating camera mapping: Camera 1=LEFT/MASTER, Camera 0=RIGHT/SLAVE";
     return true;
+}
+
+std::string UnlookScanner::findLatestCalibration() const {
+    namespace fs = std::filesystem;
+
+    const std::string calibDir = "/unlook_calib";
+
+    // Check if directory exists
+    if (!fs::exists(calibDir) || !fs::is_directory(calibDir)) {
+        UNLOOK_LOG_DEBUG("Scanner") << "Calibration directory not found: " << calibDir;
+        return "";  // Empty means use default
+    }
+
+    // Find all .yaml files starting with "calib-"
+    std::vector<fs::path> calibFiles;
+    try {
+        for (const auto& entry : fs::directory_iterator(calibDir)) {
+            if (entry.is_regular_file()) {
+                std::string filename = entry.path().filename().string();
+                // Match pattern: calib-YYYYMMDD_HHMMSS.yaml
+                // C++17 compatible suffix check
+                const std::string suffix = ".yaml";
+                bool has_suffix = (filename.length() >= suffix.length() &&
+                                 filename.compare(filename.length() - suffix.length(), suffix.length(), suffix) == 0);
+
+                if (filename.find("calib-") == 0 && has_suffix) {
+                    calibFiles.push_back(entry.path());
+                }
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        UNLOOK_LOG_WARNING("Scanner") << "Error reading calibration directory: " << e.what();
+        return "";
+    }
+
+    // If no calibration files found, return empty (use default)
+    if (calibFiles.empty()) {
+        UNLOOK_LOG_DEBUG("Scanner") << "No calibration files found in " << calibDir;
+        return "";
+    }
+
+    // Sort by filename (timestamps in filename ensure chronological order)
+    std::sort(calibFiles.begin(), calibFiles.end());
+
+    // Return the last file (most recent)
+    std::string latestCalib = calibFiles.back().string();
+    UNLOOK_LOG_INFO("Scanner") << "Found latest calibration: " << latestCalib;
+
+    return latestCalib;
 }
 
 // C API implementation

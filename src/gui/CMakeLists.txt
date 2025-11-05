@@ -24,6 +24,9 @@ set(GUI_SOURCES
     main_window.cpp
     camera_preview_widget.cpp
     handheld_scan_widget.cpp
+    calibration_widget.cpp
+    dataset_capture_widget.cpp
+    dataset_processing_widget.cpp
     options_widget.cpp
     as1170_debug_dialog.cpp
     widgets/parameter_slider.cpp
@@ -38,6 +41,9 @@ set(GUI_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/main_window.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/camera_preview_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/handheld_scan_widget.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/calibration_widget.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/dataset_capture_widget.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/dataset_processing_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/options_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/as1170_debug_dialog.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/parameter_slider.hpp

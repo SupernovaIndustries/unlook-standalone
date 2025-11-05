@@ -1,6 +1,9 @@
 # Calibration library
 add_library(unlook_calibration STATIC
     CalibrationManager.cpp
+    StereoCalibrationProcessor.cpp
+    CalibrationValidator.cpp
+    PatternDetector.cpp
 )
 
 # Set target properties
@@ -25,6 +28,8 @@ target_include_directories(unlook_calibration
 target_link_libraries(unlook_calibration
     PUBLIC
         ${OpenCV_LIBS}
+        nlohmann_json::nlohmann_json
+        unlook_core
 )
 
 # Installation and export

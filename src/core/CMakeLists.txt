@@ -15,8 +15,8 @@ set(CORE_HEADERS
     types.h
 )
 
-# Core module can be built as separate library if needed
-add_library(unlook_core OBJECT ${CORE_SOURCES})
+# Core module as STATIC library for export compatibility
+add_library(unlook_core STATIC ${CORE_SOURCES})
 
 target_include_directories(unlook_core
     PUBLIC
@@ -24,7 +24,17 @@ target_include_directories(unlook_core
         $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(unlook_core PUBLIC compiler_flags)
+# Position Independent Code for shared library linkage
+if(BUILD_SHARED_LIBS)
+    set_target_properties(unlook_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+# Installation and export
+install(TARGETS unlook_core
+    EXPORT UnlookTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        COMPONENT Development
+)
 
 # Install headers
 install(FILES ${CORE_HEADERS}
