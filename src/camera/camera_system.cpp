@@ -799,9 +799,9 @@ bool CameraSystem::startCapture(core::StereoFrameCallback frame_callback) {
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             frame_callback_ = frame_callback;
+            // Update impl callback directly without restarting hardware
+            impl_->frame_callback = frame_callback;
         }
-        // Update impl callback too
-        impl_->startCapture(frame_callback);
         UNLOOK_LOG_INFO("Camera") << "Capture already running - callback updated successfully";
         return true;  // Return success, not failure!
     }
