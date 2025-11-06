@@ -1,17 +1,17 @@
 #include "unlook/gui/handheld_scan_widget.hpp"
-#include "unlook/gui/styles/supernova_style.hpp"
+#include "ui_handheld_scan_widget.h"
 #include "unlook/hardware/AS1170Controller.hpp"
 #include "unlook/api/HandheldScanPipeline.hpp"
 #include "unlook/camera/CameraSystem.hpp"
 
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QGroupBox>
-#include <QFrame>
 #include <QtConcurrent>
 #include <QDebug>
 #include <QShowEvent>
 #include <QHideEvent>
+#include <QImage>
+#include <QPixmap>
+#include <QPainter>
+#include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <numeric>
 #include <cmath>
@@ -25,6 +25,7 @@ namespace gui {
 
 HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
+    , ui(new Ui::HandheldScanWidget)
     , camera_system_(camera_system)
     , update_timer_(nullptr)
     , scan_state_(ScanState::IDLE)
@@ -37,7 +38,10 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
     , scan_start_time_(std::chrono::steady_clock::now())
     , scan_watcher_(nullptr)
 {
-    qDebug() << "[HandheldScanWidget] Constructor - using shared GUI camera system";
+    qDebug() << "[HandheldScanWidget] Constructor - using shared GUI camera system + .ui file";
+
+    // Setup UI from .ui file
+    ui->setupUi(this);
 
     // Get LED controller singleton instance (CRITICAL: same as other widgets)
     led_controller_ = hardware::AS1170Controller::getInstance();
@@ -46,7 +50,6 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
     }
 
     setupUI();
-    applySupernovanStyling();
 
     // Setup update timer (30 Hz for smooth UI updates)
     update_timer_ = new QTimer(this);
@@ -56,7 +59,7 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
     // Initialize FPS sample buffer
     fps_samples_.reserve(FPS_SAMPLE_COUNT);
 
-    qDebug() << "[HandheldScanWidget] Initialized with 30 Hz UI updates";
+    qDebug() << "[HandheldScanWidget] Initialized with 30 Hz UI updates and camera preview";
 }
 
 HandheldScanWidget::~HandheldScanWidget() {
@@ -69,6 +72,9 @@ HandheldScanWidget::~HandheldScanWidget() {
         scan_watcher_->waitForFinished();
     }
 
+    // Stop camera preview
+    stopCameraPreview();
+
     // CRITICAL: Disable all LEDs before destroying widget (prevent stuck LED state)
     if (led_controller_) {
         qDebug() << "[HandheldScanWidget] Disabling all LEDs in destructor";
@@ -80,19 +86,25 @@ HandheldScanWidget::~HandheldScanWidget() {
     // The camera systems are singletons that persist across widget lifecycles
     // Other widgets will re-initialize GUI system when they need it
 
+    delete ui;
     qDebug() << "[HandheldScanWidget] Destroyed";
 }
 
 void HandheldScanWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
 
-    qDebug() << "[HandheldScanWidget::showEvent] Widget now visible";
-    // Camera system initialization deferred to onStartScan() to avoid conflicts
+    qDebug() << "[HandheldScanWidget::showEvent] Widget now visible - starting camera preview";
+
+    // Start camera preview for real-time feedback
+    startCameraPreview();
 }
 
 void HandheldScanWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden";
+
+    // Stop camera preview
+    stopCameraPreview();
 
     // CRITICAL: Disable all LEDs when hiding widget (user switched tab)
     if (led_controller_) {
@@ -105,168 +117,27 @@ void HandheldScanWidget::hideEvent(QHideEvent* event) {
 }
 
 void HandheldScanWidget::setupUI() {
-    // Main layout
-    QVBoxLayout* main_layout = new QVBoxLayout(this);
-    main_layout->setSpacing(20);
-    main_layout->setContentsMargins(30, 30, 30, 30);
+    // UI is loaded from .ui file via ui->setupUi(this) in constructor
+    // Here we only connect signals and setup initial state
 
-    // Title
-    title_label_ = new QLabel("HANDHELD SCAN", this);
-    title_label_->setAlignment(Qt::AlignCenter);
-    title_label_->setStyleSheet("font-size: 24pt; font-weight: bold; color: #00E5CC;");
-    main_layout->addWidget(title_label_);
+    // Connect button signals
+    connect(ui->scanButton, &QPushButton::clicked, this, &HandheldScanWidget::onStartScan);
+    connect(ui->stopButton, &QPushButton::clicked, this, &HandheldScanWidget::onStopScan);
 
-    // Stability Section
-    QGroupBox* stability_group = new QGroupBox("Stability Indicator", this);
-    QVBoxLayout* stability_layout = new QVBoxLayout(stability_group);
-    stability_layout->setSpacing(10);
+    // Initialize progress bars
+    ui->stabilityProgressBar->setMinimum(0);
+    ui->stabilityProgressBar->setMaximum(100);
+    ui->stabilityProgressBar->setValue(0);
 
-    stability_bar_ = new QProgressBar(this);
-    stability_bar_->setMinimum(0);
-    stability_bar_->setMaximum(100);
-    stability_bar_->setValue(0);
-    stability_bar_->setTextVisible(true);
-    stability_bar_->setFormat("%p%");
-    stability_bar_->setMinimumHeight(40);
-    stability_layout->addWidget(stability_bar_);
+    ui->captureProgressBar->setMinimum(0);
+    ui->captureProgressBar->setMaximum(TARGET_FRAMES);
+    ui->captureProgressBar->setValue(0);
 
-    stability_text_label_ = new QLabel("Hold steady...", this);
-    stability_text_label_->setAlignment(Qt::AlignCenter);
-    stability_text_label_->setStyleSheet("font-size: 18pt; font-weight: bold;");
-    stability_layout->addWidget(stability_text_label_);
+    // Set initial state
+    ui->stopButton->setEnabled(false);
+    ui->captureProgressBar->setVisible(true);  // Keep visible but at 0
 
-    main_layout->addWidget(stability_group);
-
-    // Capture Progress Section
-    QGroupBox* capture_group = new QGroupBox("Capture Progress", this);
-    QVBoxLayout* capture_layout = new QVBoxLayout(capture_group);
-    capture_layout->setSpacing(10);
-
-    capture_progress_bar_ = new QProgressBar(this);
-    capture_progress_bar_->setMinimum(0);
-    capture_progress_bar_->setMaximum(TARGET_FRAMES);
-    capture_progress_bar_->setValue(0);
-    capture_progress_bar_->setTextVisible(false);
-    capture_progress_bar_->setMinimumHeight(30);
-    capture_progress_bar_->setVisible(false);  // Hidden until capture starts
-    capture_layout->addWidget(capture_progress_bar_);
-
-    capture_count_label_ = new QLabel("0/" + QString::number(TARGET_FRAMES) + " frames", this);
-    capture_count_label_->setAlignment(Qt::AlignCenter);
-    capture_count_label_->setStyleSheet("font-size: 14pt;");
-    capture_count_label_->setVisible(false);  // Hidden until capture starts
-    capture_layout->addWidget(capture_count_label_);
-
-    main_layout->addWidget(capture_group);
-
-    // Metrics Section
-    QGroupBox* metrics_group = new QGroupBox("Metrics", this);
-    QHBoxLayout* metrics_layout = new QHBoxLayout(metrics_group);
-    metrics_layout->setSpacing(20);
-
-    fps_label_ = new QLabel("FPS: --", this);
-    fps_label_->setAlignment(Qt::AlignCenter);
-    fps_label_->setStyleSheet("font-size: 16pt; font-weight: bold;");
-    metrics_layout->addWidget(fps_label_);
-
-    // Separator
-    QFrame* separator = new QFrame(this);
-    separator->setFrameShape(QFrame::VLine);
-    separator->setFrameShadow(QFrame::Sunken);
-    metrics_layout->addWidget(separator);
-
-    precision_label_ = new QLabel("Precision: 0.10mm target", this);
-    precision_label_->setAlignment(Qt::AlignCenter);
-    precision_label_->setStyleSheet("font-size: 16pt; font-weight: bold;");
-    metrics_layout->addWidget(precision_label_);
-
-    main_layout->addWidget(metrics_group);
-
-    // Control Buttons
-    QHBoxLayout* button_layout = new QHBoxLayout();
-    button_layout->setSpacing(15);
-
-    scan_button_ = new QPushButton("START HANDHELD SCAN", this);
-    scan_button_->setMinimumHeight(60);
-    scan_button_->setStyleSheet(
-        "QPushButton {"
-        "    font-size: 18pt;"
-        "    font-weight: bold;"
-        "    padding: 15px;"
-        "    border-radius: 10px;"
-        "    background-color: #00E5CC;"
-        "    color: #000000;"
-        "}"
-        "QPushButton:hover {"
-        "    background-color: #00B8A3;"
-        "}"
-        "QPushButton:pressed {"
-        "    background-color: #008B7A;"
-        "}"
-        "QPushButton:disabled {"
-        "    background-color: #666666;"
-        "    color: #AAAAAA;"
-        "}"
-    );
-    connect(scan_button_, &QPushButton::clicked, this, &HandheldScanWidget::onStartScan);
-    button_layout->addWidget(scan_button_);
-
-    stop_button_ = new QPushButton("STOP SCAN", this);
-    stop_button_->setMinimumHeight(60);
-    stop_button_->setVisible(false);  // Hidden until scan starts
-    stop_button_->setStyleSheet(
-        "QPushButton {"
-        "    font-size: 18pt;"
-        "    font-weight: bold;"
-        "    padding: 15px;"
-        "    border-radius: 10px;"
-        "    background-color: #FF4444;"
-        "    color: #FFFFFF;"
-        "}"
-        "QPushButton:hover {"
-        "    background-color: #CC0000;"
-        "}"
-        "QPushButton:pressed {"
-        "    background-color: #990000;"
-        "}"
-    );
-    connect(stop_button_, &QPushButton::clicked, this, &HandheldScanWidget::onStopScan);
-    button_layout->addWidget(stop_button_);
-
-    main_layout->addLayout(button_layout);
-
-    // Status Section
-    status_label_ = new QLabel("Ready to scan", this);
-    status_label_->setAlignment(Qt::AlignCenter);
-    status_label_->setStyleSheet("font-size: 14pt; color: #00E5CC;");
-    status_label_->setWordWrap(true);
-    main_layout->addWidget(status_label_);
-
-    // Add stretch to push everything to top
-    main_layout->addStretch();
-
-    setLayout(main_layout);
-}
-
-void HandheldScanWidget::applySupernovanStyling() {
-    // Apply Supernova theme to the widget
-    setStyleSheet(
-        "QGroupBox {"
-        "    font-size: 14pt;"
-        "    font-weight: bold;"
-        "    color: #00E5CC;"
-        "    border: 2px solid #00E5CC;"
-        "    border-radius: 8px;"
-        "    margin-top: 10px;"
-        "    padding-top: 10px;"
-        "}"
-        "QGroupBox::title {"
-        "    subcontrol-origin: margin;"
-        "    subcontrol-position: top center;"
-        "    padding: 0 10px;"
-        "    background-color: #000000;"
-        "}"
-    );
+    qDebug() << "[HandheldScanWidget::setupUI] UI initialized from .ui file with camera preview";
 }
 
 void HandheldScanWidget::onStartScan() {
@@ -275,8 +146,8 @@ void HandheldScanWidget::onStartScan() {
     // Check camera system is ready
     if (!camera_system_ || !camera_system_->isReady()) {
         qCritical() << "[HandheldScanWidget] Camera system not ready!";
-        status_label_->setText("ERROR: Camera system not ready");
-        status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+        ui->statusLabel->setText("ERROR: Camera system not ready");
+        ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
         return;  // Abort scan
     }
 
@@ -323,8 +194,8 @@ void HandheldScanWidget::onStartScan() {
             qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 280mA for AD-CENSUS structured light";
         } else {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
-            status_label_->setText("ERROR: Failed to enable VCSEL");
-            status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+            ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
+            ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
             return;  // Abort scan if VCSEL fails
         }
     } else {
@@ -343,15 +214,15 @@ void HandheldScanWidget::onStartScan() {
     fps_samples_.clear();
 
     // Update UI
-    scan_button_->setVisible(false);
-    stop_button_->setVisible(true);
-    capture_progress_bar_->setVisible(true);
-    capture_count_label_->setVisible(true);
-    capture_progress_bar_->setValue(0);
-    capture_count_label_->setText("0/" + QString::number(TARGET_FRAMES) + " frames");
+    ui->scanButton->setVisible(false);
+    ui->stopButton->setVisible(true);
+    ui->captureProgressBar->setVisible(true);
+    // removed capture_count_label(true);
+    ui->captureProgressBar->setValue(0);
+    // ui->statusLabel->setText("0/" + QString::number(TARGET_FRAMES) + " frames");
 
-    status_label_->setText("Waiting for stability...");
-    status_label_->setStyleSheet("font-size: 14pt; color: #FFA500;");
+    ui->statusLabel->setText("Waiting for stability...");
+    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FFA500;");
 
     // Start background scan thread
     startScanThread();
@@ -375,8 +246,8 @@ void HandheldScanWidget::onStopScan() {
     // Reset UI
     resetUI();
 
-    status_label_->setText("Scan cancelled");
-    status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    ui->statusLabel->setText("Scan cancelled");
+    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
 }
 
 void HandheldScanWidget::updateUI() {
@@ -401,8 +272,8 @@ void HandheldScanWidget::updateUI() {
         // Auto-transition to CAPTURING when stable
         if (current_stability_ >= STABILITY_THRESHOLD) {
             scan_state_ = ScanState::CAPTURING;
-            status_label_->setText("Stable! Capturing frames...");
-            status_label_->setStyleSheet("font-size: 14pt; color: #00FF00;");
+            ui->statusLabel->setText("Stable! Capturing frames...");
+            ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
             qDebug() << "[HandheldScanWidget] Stability threshold reached, starting capture";
         }
     } else if (scan_state_ == ScanState::CAPTURING) {
@@ -427,14 +298,14 @@ void HandheldScanWidget::updateUI() {
             }
 
             float avg_fps = calculateFPS();
-            fps_label_->setText("FPS: " + QString::number(avg_fps, 'f', 1));
+            ui->fpsLabel->setText("FPS: " + QString::number(avg_fps, 'f', 1));
 
             qDebug() << "[HandheldScanWidget] Frame" << frames_captured_ << "captured, FPS:" << avg_fps;
 
             if (frames_captured_ >= TARGET_FRAMES) {
                 scan_state_ = ScanState::PROCESSING;
-                status_label_->setText("Processing depth maps...");
-                status_label_->setStyleSheet("font-size: 14pt; color: #00E5CC;");
+                ui->statusLabel->setText("Processing depth maps...");
+                ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
                 qDebug() << "[HandheldScanWidget] All frames captured, processing...";
             }
         }
@@ -444,19 +315,19 @@ void HandheldScanWidget::updateUI() {
         static int dots = 0;
         dots = (dots + 1) % 4;
         QString dot_string = QString(".").repeated(dots);
-        status_label_->setText("Processing" + dot_string);
+        ui->statusLabel->setText("Processing" + dot_string);
     }
 }
 
 void HandheldScanWidget::updateStabilityIndicator(float score) {
     int percentage = static_cast<int>(score * 100.0f);
-    stability_bar_->setValue(percentage);
+    ui->stabilityProgressBar->setValue(percentage);
 
     // Update color based on score
     QColor color = getStabilityColor(score);
     QString color_str = color.name();
 
-    stability_bar_->setStyleSheet(
+    ui->stabilityProgressBar->setStyleSheet(
         "QProgressBar {"
         "    border: 2px solid #555555;"
         "    border-radius: 5px;"
@@ -473,13 +344,13 @@ void HandheldScanWidget::updateStabilityIndicator(float score) {
 
     // Update text label
     QString text = getStabilityText(score);
-    stability_text_label_->setText(text);
-    stability_text_label_->setStyleSheet("font-size: 18pt; font-weight: bold; color: " + color_str + ";");
+    ui->stabilityTextLabel->setText(text);
+    ui->stabilityTextLabel->setStyleSheet("font-size: 18pt; font-weight: bold; color: " + color_str + ";");
 }
 
 void HandheldScanWidget::updateCaptureProgress(int current, int total) {
-    capture_progress_bar_->setValue(current);
-    capture_count_label_->setText(QString::number(current) + "/" + QString::number(total) + " frames");
+    ui->captureProgressBar->setValue(current);
+    // ui->statusLabel->setText(QString::number(current) + "/" + QString::number(total) + " frames");
 
     // Calculate percentage for styling
     float percentage = static_cast<float>(current) / static_cast<float>(total);
@@ -492,7 +363,7 @@ void HandheldScanWidget::updateCaptureProgress(int current, int total) {
         color = QColor("#00FF00");  // Green
     }
 
-    capture_progress_bar_->setStyleSheet(
+    ui->captureProgressBar->setStyleSheet(
         "QProgressBar {"
         "    border: 2px solid #555555;"
         "    border-radius: 5px;"
@@ -539,18 +410,18 @@ QString HandheldScanWidget::getStabilityText(float score) const {
 
 void HandheldScanWidget::resetUI() {
     scan_state_ = ScanState::IDLE;
-    scan_button_->setVisible(true);
-    stop_button_->setVisible(false);
-    capture_progress_bar_->setVisible(false);
-    capture_count_label_->setVisible(false);
+    ui->scanButton->setVisible(true);
+    ui->stopButton->setVisible(false);
+    ui->captureProgressBar->setVisible(false);
+    // removed capture_count_label(false);
 
-    stability_bar_->setValue(0);
-    stability_text_label_->setText("Hold steady...");
-    fps_label_->setText("FPS: --");
-    precision_label_->setText("Precision: 0.10mm target");
+    ui->stabilityProgressBar->setValue(0);
+    ui->stabilityTextLabel->setText("Hold steady...");
+    ui->fpsLabel->setText("FPS: --");
+    ui->precisionLabel->setText("Precision: 0.10mm target");
 
-    status_label_->setText("Ready to scan");
-    status_label_->setStyleSheet("font-size: 14pt; color: #00E5CC;");
+    ui->statusLabel->setText("Ready to scan");
+    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
 }
 
 void HandheldScanWidget::startScanThread() {
@@ -757,18 +628,18 @@ void HandheldScanWidget::onScanCompleted() {
     auto scan_duration = std::chrono::steady_clock::now() - scan_start_time_;
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(scan_duration).count();
 
-    precision_label_->setText("Precision: " + QString::number(achieved_precision_mm_, 'f', 2) + " mm");
-    precision_label_->setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;");
+    ui->precisionLabel->setText("Precision: " + QString::number(achieved_precision_mm_, 'f', 2) + " mm");
+    ui->precisionLabel->setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;");
 
-    status_label_->setText(
+    ui->statusLabel->setText(
         "Scan complete! Duration: " + QString::number(duration_ms) + " ms | Points: " +
         QString::number(point_count_)
     );
-    status_label_->setStyleSheet("font-size: 14pt; color: #00FF00;");
+    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
 
     // Hide stop button, show scan button
-    stop_button_->setVisible(false);
-    scan_button_->setVisible(true);
+    ui->stopButton->setVisible(false);
+    ui->scanButton->setVisible(true);
 
     // Emit completion signal
     emit scanCompleted(point_count_, achieved_precision_mm_);
@@ -788,8 +659,8 @@ void HandheldScanWidget::onScanFailed(const QString& error) {
 
     scan_state_ = ScanState::FAILED;
 
-    status_label_->setText("Scan failed: " + error);
-    status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    ui->statusLabel->setText("Scan failed: " + error);
+    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
 
     // Reset UI after delay
     QTimer::singleShot(3000, this, [this]() {
@@ -798,6 +669,90 @@ void HandheldScanWidget::onScanFailed(const QString& error) {
 
     // Emit failure signal
     emit scanFailed(error);
+}
+
+void HandheldScanWidget::startCameraPreview() {
+    if (!camera_system_ || !camera_system_->isReady()) {
+        qWarning() << "[HandheldScanWidget::startCameraPreview] Camera system not ready";
+        return;
+    }
+
+    qDebug() << "[HandheldScanWidget::startCameraPreview] Starting real-time preview";
+
+    // Start continuous capture with callback for preview
+    bool success = camera_system_->startCapture([this](const core::StereoFramePair& frame) {
+        // This callback runs in camera thread, post to main thread for UI update
+        QMetaObject::invokeMethod(this, [this, frame]() {
+            onPreviewFrame(frame);
+        }, Qt::QueuedConnection);
+    });
+
+    if (!success) {
+        qWarning() << "[HandheldScanWidget::startCameraPreview] Failed to start camera capture";
+    }
+}
+
+void HandheldScanWidget::stopCameraPreview() {
+    if (!camera_system_) {
+        return;
+    }
+
+    qDebug() << "[HandheldScanWidget::stopCameraPreview] Stopping preview";
+    camera_system_->stopCapture();
+
+    // Clear preview
+    ui->cameraPreviewLabel->setText("Camera Preview\n(Stopped)");
+}
+
+void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
+    if (!frame.synchronized || !frame.left_frame.valid) {
+        return;
+    }
+
+    // Convert left camera image to QImage for display
+    const cv::Mat& img = frame.left_frame.image;
+
+    if (img.empty()) {
+        return;
+    }
+
+    // Convert to RGB for display
+    cv::Mat rgb;
+    if (img.channels() == 1) {
+        cv::cvtColor(img, rgb, cv::COLOR_GRAY2RGB);
+    } else if (img.channels() == 3) {
+        cv::cvtColor(img, rgb, cv::COLOR_BGR2RGB);
+    } else {
+        return;
+    }
+
+    // Create QImage
+    QImage qimg(rgb.data, rgb.cols, rgb.rows, rgb.step, QImage::Format_RGB888);
+
+    // Scale to fit preview label while maintaining aspect ratio
+    QPixmap pixmap = QPixmap::fromImage(qimg.copy());  // copy() to detach from cv::Mat memory
+    QPixmap scaled = pixmap.scaled(ui->cameraPreviewLabel->size(),
+                                   Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+
+    // Draw crosshair overlay
+    QPainter painter(&scaled);
+    painter.setPen(QPen(QColor(0, 217, 255), 2));  // Cyan color
+    int cx = scaled.width() / 2;
+    int cy = scaled.height() / 2;
+    int crosshair_size = 30;
+
+    // Horizontal line
+    painter.drawLine(cx - crosshair_size, cy, cx + crosshair_size, cy);
+    // Vertical line
+    painter.drawLine(cx, cy - crosshair_size, cx, cy + crosshair_size);
+    // Circle
+    painter.drawEllipse(QPoint(cx, cy), crosshair_size / 2, crosshair_size / 2);
+
+    painter.end();
+
+    // Update preview label
+    ui->cameraPreviewLabel->setPixmap(scaled);
 }
 
 } // namespace gui

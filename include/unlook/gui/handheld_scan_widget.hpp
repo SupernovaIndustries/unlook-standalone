@@ -4,15 +4,19 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QVBoxLayout>
-#include <QHBoxLayout>
 #include <QTimer>
 #include <QFuture>
 #include <QFutureWatcher>
+#include <QPixmap>
 #include <memory>
 #include <chrono>
 
 #include "unlook/camera/CameraSystemGUI.hpp"
+#include "unlook/core/types.hpp"
+
+QT_BEGIN_NAMESPACE
+namespace Ui { class HandheldScanWidget; }
+QT_END_NAMESPACE
 
 namespace unlook {
 
@@ -110,14 +114,25 @@ private slots:
 
 private:
     /**
-     * @brief Setup UI components and layout
+     * @brief Setup UI components from .ui file
      */
     void setupUI();
 
     /**
-     * @brief Apply Supernova styling to all components
+     * @brief Start camera preview
      */
-    void applySupernovanStyling();
+    void startCameraPreview();
+
+    /**
+     * @brief Stop camera preview
+     */
+    void stopCameraPreview();
+
+    /**
+     * @brief Handle camera preview frame
+     * @param frame Stereo frame pair from camera
+     */
+    void onPreviewFrame(const core::StereoFramePair& frame);
 
     /**
      * @brief Update stability indicator with current score
@@ -162,30 +177,8 @@ private:
      */
     void startScanThread();
 
-    // UI Components
-    QLabel* title_label_;                  // "Handheld Scan" title
-
-    // Stability Section
-    QLabel* stability_title_label_;        // "Stability" section label
-    QProgressBar* stability_bar_;          // 0-100% stability indicator
-    QLabel* stability_text_label_;         // "Hold steady..." / "Stable!"
-
-    // Capture Progress Section
-    QLabel* capture_title_label_;          // "Capture Progress" section label
-    QProgressBar* capture_progress_bar_;   // Multi-frame progress (0-10)
-    QLabel* capture_count_label_;          // "Frame X/10"
-
-    // Metrics Section
-    QLabel* metrics_title_label_;          // "Metrics" section label
-    QLabel* fps_label_;                    // "FPS: X.X"
-    QLabel* precision_label_;              // "Precision: X.XXmm"
-
-    // Control Buttons
-    QPushButton* scan_button_;             // "START HANDHELD SCAN"
-    QPushButton* stop_button_;             // "STOP SCAN"
-
-    // Status Section
-    QLabel* status_label_;                 // Current pipeline status
+    // UI from .ui file
+    Ui::HandheldScanWidget* ui;
 
     // Backend Integration
     std::shared_ptr<camera::gui::CameraSystem> camera_system_;  // Shared GUI camera system
