@@ -86,7 +86,7 @@ struct CameraSystem::CameraImpl {
     bool initialized = false;
     bool hardware_sync_enabled = false;
     bool gpio_initialized = false;
-    
+
     // Synchronization statistics
     std::atomic<uint64_t> left_frame_count{0};
     std::atomic<uint64_t> right_frame_count{0};
@@ -157,7 +157,7 @@ struct CameraSystem::CameraImpl {
                 UNLOOK_LOG_ERROR("Camera") << "Failed to start camera manager: " << std::strerror(-ret);
                 return false;
             }
-            
+
             // Get available cameras
             auto cameras = camera_manager->cameras();
             UNLOOK_LOG_INFO("Camera") << "Found " << cameras.size() << " cameras";
@@ -437,10 +437,10 @@ struct CameraSystem::CameraImpl {
             capture_running = false;
             return;
         }
-        
+
         // Wait for master to stabilize
         std::this_thread::sleep_for(std::chrono::milliseconds(MASTER_SLAVE_DELAY_MS));
-        
+
         // Start SLAVE camera (Camera 0 = RIGHT)
         UNLOOK_LOG_INFO("Camera") << "Starting RIGHT/SLAVE camera...";
         ret = right_camera->start();
@@ -640,27 +640,27 @@ struct CameraSystem::CameraImpl {
         if (capture_running) {
             stopCapture();
         }
-        
+
         // Clean up libcamera resources
         unmapFrameBuffers();
-        
+
         left_requests.clear();
         right_requests.clear();
-        
+
         if (left_allocator) {
             left_allocator.reset();
         }
         if (right_allocator) {
             right_allocator.reset();
         }
-        
+
         if (left_camera) {
             left_camera->release();
         }
         if (right_camera) {
             right_camera->release();
         }
-        
+
         if (camera_manager) {
             camera_manager->stop();
         }
