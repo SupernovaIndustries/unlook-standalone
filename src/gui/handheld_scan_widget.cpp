@@ -12,6 +12,10 @@
 #include <algorithm>
 #include <numeric>
 #include <cmath>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <vector>
 
 namespace unlook {
 namespace gui {
@@ -470,32 +474,74 @@ void HandheldScanWidget::resetUI() {
 void HandheldScanWidget::startScanThread() {
     // Create background scan thread using QtConcurrent
     QFuture<bool> future = QtConcurrent::run([this]() -> bool {
-        qDebug() << "[HandheldScanWidget::ScanThread] Starting frame capture with GUI camera system...";
+        qDebug() << "[HandheldScanWidget::ScanThread] Starting frame capture with continuous callback...";
 
         try {
-            // Capture TARGET_FRAMES frames using GUI camera system
-            for (int i = 0; i < TARGET_FRAMES; ++i) {
-                // Check if cancelled
-                if (QThread::currentThread()->isInterruptionRequested()) {
-                    qDebug() << "[HandheldScanWidget::ScanThread] Scan cancelled by user";
-                    return false;
+            // Atomic counter and mutex for thread-safe frame collection
+            std::atomic<int> frames_received{0};
+            std::mutex frames_mutex;
+            std::condition_variable frames_cv;
+            std::vector<core::StereoFramePair> captured_frames;
+            captured_frames.reserve(TARGET_FRAMES);
+
+            // Frame callback to collect frames
+            auto frame_callback = [&](const core::StereoFramePair& frame) {
+                std::lock_guard<std::mutex> lock(frames_mutex);
+
+                if (captured_frames.size() < TARGET_FRAMES) {
+                    captured_frames.push_back(frame);
+                    int count = captured_frames.size();
+                    frames_received = count;
+
+                    qDebug() << "[HandheldScanWidget::ScanThread] Received frame" << count << "/" << TARGET_FRAMES;
+
+                    // Update UI progress
+                    frames_captured_ = count;
+
+                    // Notify if we have enough frames
+                    if (count >= TARGET_FRAMES) {
+                        frames_cv.notify_one();
+                    }
                 }
+            };
 
-                // Capture single stereo frame
-                core::StereoFramePair frame = camera_system_->captureSingle();
+            // Start continuous capture
+            if (!camera_system_->startCapture(frame_callback)) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Failed to start continuous capture";
+                return false;
+            }
 
-                if (!frame.synchronized) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Frame" << i << "not synchronized";
-                    continue;
+            qDebug() << "[HandheldScanWidget::ScanThread] Continuous capture started, waiting for" << TARGET_FRAMES << "frames...";
+
+            // Wait for TARGET_FRAMES frames (with timeout)
+            {
+                std::unique_lock<std::mutex> lock(frames_mutex);
+                bool success = frames_cv.wait_for(lock, std::chrono::seconds(10), [&]() {
+                    return captured_frames.size() >= TARGET_FRAMES ||
+                           QThread::currentThread()->isInterruptionRequested();
+                });
+
+                if (!success) {
+                    qWarning() << "[HandheldScanWidget::ScanThread] Timeout waiting for frames, got"
+                              << captured_frames.size() << "/" << TARGET_FRAMES;
                 }
+            }
 
-                qDebug() << "[HandheldScanWidget::ScanThread] Captured frame" << (i+1) << "/" << TARGET_FRAMES;
+            // Stop capture
+            camera_system_->stopCapture();
+            qDebug() << "[HandheldScanWidget::ScanThread] Capture stopped";
 
-                // Update progress
-                frames_captured_ = i + 1;
+            // Check if cancelled
+            if (QThread::currentThread()->isInterruptionRequested()) {
+                qDebug() << "[HandheldScanWidget::ScanThread] Scan cancelled by user";
+                return false;
+            }
 
-                // Small delay between frames
-                QThread::msleep(100);
+            // Check if we got enough frames
+            if (captured_frames.size() < TARGET_FRAMES) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Insufficient frames captured:"
+                           << captured_frames.size() << "/" << TARGET_FRAMES;
+                return false;
             }
 
             // For now, set dummy results
@@ -503,12 +549,13 @@ void HandheldScanWidget::startScanThread() {
             point_count_ = 10000;
 
             qDebug() << "[HandheldScanWidget::ScanThread] Frame capture completed successfully";
-            qDebug() << "  Frames captured:" << frames_captured_;
+            qDebug() << "  Frames captured:" << captured_frames.size();
 
             return true;
 
         } catch (const std::exception& e) {
             qCritical() << "[HandheldScanWidget::ScanThread] Scan failed with exception:" << e.what();
+            camera_system_->stopCapture();  // Ensure capture is stopped
             return false;
         }
     });
