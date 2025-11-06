@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 #include "unlook/calibration/PatternDetector.hpp"
 #include "unlook/core/types.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class DatasetCaptureWidget; }

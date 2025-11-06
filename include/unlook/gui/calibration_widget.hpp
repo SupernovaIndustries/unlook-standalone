@@ -3,12 +3,9 @@
 #include <QWidget>
 #include <QTabWidget>
 #include <memory>
+#include "unlook/camera/CameraSystemGUI.hpp"
 
 namespace unlook {
-
-// Forward declarations
-namespace camera { class CameraSystem; }
-
 namespace gui {
 
 // Forward declarations

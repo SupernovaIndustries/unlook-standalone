@@ -15,10 +15,9 @@
 namespace unlook {
 namespace gui {
 
-HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
-                                       QWidget* parent)
+HandheldScanWidget::HandheldScanWidget(QWidget* parent)
     : QWidget(parent)
-    , camera_system_(camera_system)
+    , camera_system_(camera::CameraSystem::getInstance())
     , update_timer_(nullptr)
     , scan_state_(ScanState::IDLE)
     , frames_captured_(0)
@@ -44,6 +43,13 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
 
     qDebug() << "[HandheldScanWidget] Logger configured with file output: /unlook_logs/handheld_scan.log";
     qDebug() << "[HandheldScanWidget] Debug directories created: /unlook_logs, /unlook_debug";
+
+    // Initialize camera system
+    if (!camera_system_->initialize()) {
+        qCritical() << "[HandheldScanWidget] CRITICAL: Failed to initialize camera system";
+    } else {
+        qDebug() << "[HandheldScanWidget] Camera system initialized successfully";
+    }
 
     setupUI();
     applySupernovanStyling();

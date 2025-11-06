@@ -348,7 +348,7 @@ void UnlookMainWindow::applySupernovanStyling() {
 
 void UnlookMainWindow::initializeCameraSystem() {
     try {
-        camera_system_ = camera::CameraSystem::getInstance();
+        camera_system_ = camera::gui::CameraSystem::getInstance();
         
         // Set error callback
         camera_system_->setErrorCallback([this](const std::string& error) {
@@ -419,7 +419,7 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             
         case Screen::HANDHELD_SCAN:
             if (!handheld_scan_widget_) {
-                handheld_scan_widget_ = std::make_unique<HandheldScanWidget>(camera_system_);
+                handheld_scan_widget_ = std::make_unique<HandheldScanWidget>();
                 ui->screen_stack->addWidget(handheld_scan_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(handheld_scan_widget_.get());
