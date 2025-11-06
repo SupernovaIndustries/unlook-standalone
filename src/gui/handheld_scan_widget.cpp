@@ -92,8 +92,28 @@ void HandheldScanWidget::showEvent(QShowEvent* event) {
 void HandheldScanWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
 
-    qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden";
-    // Camera cleanup happens in onStopScan() or destructor
+    qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden - restoring GUI camera system";
+
+    // If API camera system is active, shut it down
+    if (camera_system_ && camera_system_->isInitialized()) {
+        qDebug() << "[HandheldScanWidget::hideEvent] Shutting down API camera system...";
+        camera_system_->shutdown();
+        qDebug() << "[HandheldScanWidget::hideEvent] API camera system shutdown complete";
+
+        // Give hardware time to release
+        QThread::msleep(500);
+    }
+
+    // Re-initialize GUI camera system for other tabs
+    auto gui_camera_system = camera::gui::CameraSystem::getInstance();
+    if (gui_camera_system && !gui_camera_system->isReady()) {
+        qDebug() << "[HandheldScanWidget::hideEvent] Re-initializing GUI camera system...";
+        if (gui_camera_system->initialize()) {
+            qDebug() << "[HandheldScanWidget::hideEvent] GUI camera system re-initialized successfully";
+        } else {
+            qWarning() << "[HandheldScanWidget::hideEvent] Failed to re-initialize GUI camera system";
+        }
+    }
 }
 
 void HandheldScanWidget::setupUI() {
@@ -264,13 +284,17 @@ void HandheldScanWidget::applySupernovanStyling() {
 void HandheldScanWidget::onStartScan() {
     qDebug() << "[HandheldScanWidget] Starting handheld scan...";
 
-    // CRITICAL: Shutdown GUI camera system and initialize API camera system
+    // CRITICAL: FULL SHUTDOWN of GUI camera system to release hardware
     // This is done HERE (when user clicks scan) instead of showEvent to avoid premature conflicts
     auto gui_camera_system = camera::gui::CameraSystem::getInstance();
     if (gui_camera_system && gui_camera_system->isReady()) {
-        qDebug() << "[HandheldScanWidget] Stopping GUI camera capture...";
+        qDebug() << "[HandheldScanWidget] Shutting down GUI camera system to release hardware...";
         gui_camera_system->stopCapture();
-        qDebug() << "[HandheldScanWidget] GUI camera capture stopped";
+        gui_camera_system->shutdown();  // FULL shutdown to release camera devices
+        qDebug() << "[HandheldScanWidget] GUI camera system shutdown complete";
+
+        // Give hardware time to release
+        QThread::msleep(500);
     }
 
     // Initialize API camera system if not already done
@@ -280,6 +304,13 @@ void HandheldScanWidget::onStartScan() {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to initialize camera system!";
             status_label_->setText("ERROR: Camera initialization failed");
             status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+
+            // Re-initialize GUI system for recovery
+            qDebug() << "[HandheldScanWidget] Re-initializing GUI camera system for recovery...";
+            if (gui_camera_system) {
+                gui_camera_system->initialize();
+            }
+
             return;  // Abort scan
         }
         qDebug() << "[HandheldScanWidget] API camera system initialized successfully";

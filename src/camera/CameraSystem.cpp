@@ -236,17 +236,13 @@ bool CameraSystem::configureSynchronization() {
 }
 
 void CameraSystem::shutdown() {
-    // Make shutdown idempotent - use atomic flag for thread safety
-    static std::atomic<bool> shutdownCompleted{false};
-    
-    bool expected = false;
-    if (!shutdownCompleted.compare_exchange_strong(expected, true)) {
-        // Shutdown already completed
-        LOG_DEBUG("CameraSystem shutdown already completed, skipping");
+    LOG_INFO("Shutting down CameraSystem");
+
+    // Check if already shutdown
+    if (!status_.isInitialized) {
+        LOG_DEBUG("CameraSystem already shutdown, skipping");
         return;
     }
-    
-    LOG_INFO("Shutting down CameraSystem");
     
     // Stop capture if running
     if (captureRunning_) {
