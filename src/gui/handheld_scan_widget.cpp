@@ -1,6 +1,8 @@
 #include "unlook/gui/handheld_scan_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
 #include "unlook/hardware/AS1170Controller.hpp"
+#include "unlook/api/HandheldScanPipeline.hpp"
+#include "unlook/camera/CameraSystem.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -631,14 +633,86 @@ void HandheldScanWidget::startScanThread() {
                 return false;
             }
 
-            // For now, set dummy results
-            achieved_precision_mm_ = 0.1f;
-            point_count_ = 10000;
-
-            qDebug() << "[HandheldScanWidget::ScanThread] Frame capture completed successfully";
+            // Process frames with HandheldScanPipeline
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting processing with AD-Census pipeline...";
             qDebug() << "  Frames captured:" << captured_frames.size();
 
-            return true;
+            try {
+                // Create HandheldScanPipeline with real camera system singleton
+                auto api_camera_system = camera::CameraSystem::getInstance();
+                auto pipeline = std::make_unique<api::HandheldScanPipeline>(api_camera_system);
+
+                if (!pipeline->initialize()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Failed to initialize pipeline";
+                    return false;
+                }
+
+                // Convert gui frames to api format
+                std::vector<api::HandheldScanPipeline::StereoFrame> api_frames;
+                api_frames.reserve(captured_frames.size());
+
+                for (const auto& gui_frame : captured_frames) {
+                    api::HandheldScanPipeline::StereoFrame api_frame;
+                    api_frame.leftImage = gui_frame.left_frame.image.clone();
+                    api_frame.rightImage = gui_frame.right_frame.image.clone();
+                    api_frame.timestampUs = gui_frame.left_frame.timestamp_ns / 1000;
+                    api_frame.leftVCSEL = api_frame.leftImage;   // VCSEL is same as main image
+                    api_frame.rightVCSEL = api_frame.rightImage;
+                    api_frame.stabilityScore = 1.0f;  // Assumed stable since frames were captured
+
+                    api_frames.push_back(api_frame);
+                }
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Processing" << api_frames.size() << "frames with VCSELStereoMatcher...";
+
+                // Get stereo parameters
+                auto stereo_params = pipeline->getStereoParams();
+
+                // Process frames to depth maps using AD-Census
+                auto depth_maps = pipeline->processFrames(api_frames, stereo_params);
+
+                if (depth_maps.empty()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] No depth maps generated";
+                    return false;
+                }
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Generated" << depth_maps.size() << "depth maps, fusing...";
+
+                // Fuse depth maps with outlier rejection
+                cv::Mat fused_depth = pipeline->fuseDepthMaps(depth_maps, 2.5f);
+
+                if (fused_depth.empty()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Depth map fusion failed";
+                    return false;
+                }
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Depth fusion complete, generating point cloud...";
+
+                // Generate point cloud
+                cv::Mat point_cloud = pipeline->generatePointCloud(fused_depth, api_frames[0].leftImage);
+
+                if (point_cloud.empty()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Point cloud generation failed";
+                    return false;
+                }
+
+                // Calculate achieved precision
+                achieved_precision_mm_ = pipeline->calculatePrecision(depth_maps);
+                point_count_ = point_cloud.rows;  // Number of points
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Scan completed successfully!";
+                qDebug() << "  Point count:" << point_count_;
+                qDebug() << "  Achieved precision:" << achieved_precision_mm_ << "mm";
+
+                // Shutdown pipeline
+                pipeline->shutdown();
+
+                return true;
+
+            } catch (const std::exception& e) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Processing exception:" << e.what();
+                return false;
+            }
 
         } catch (const std::exception& e) {
             qCritical() << "[HandheldScanWidget::ScanThread] Scan failed with exception:" << e.what();

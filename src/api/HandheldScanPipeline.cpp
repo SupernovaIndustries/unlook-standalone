@@ -2,8 +2,9 @@
 #include <unlook/api/camera_system.h>
 #include <unlook/core/Logger.hpp>
 #include <unlook/core/exception.h>
-#include <unlook/stereo/SGBMStereoMatcher.hpp>
-#include <unlook/stereo/TemporalStereoProcessor.hpp>
+#include <unlook/stereo/VCSELStereoMatcher.hpp>
+#include <unlook/hardware/BMI270Driver.hpp>
+#include <unlook/hardware/StabilityDetector.hpp>
 #include <unlook/calibration/CalibrationManager.hpp>
 #include <unlook/hardware/AS1170DualVCSELController.hpp>
 
@@ -26,51 +27,6 @@ namespace unlook {
 namespace api {
 
 /**
- * @brief Stub IMU stability detector (will be replaced by hardware-interface-controller)
- */
-class StabilityDetector {
-public:
-    StabilityDetector() : stabilityScore_(0.0f), isStable_(false) {}
-
-    /**
-     * @brief Wait for stability with callback
-     * @param callback Callback for stability updates
-     * @param timeoutMs Timeout in milliseconds
-     * @return true if stable achieved, false if timeout
-     */
-    bool waitForStability(std::function<void(float)> callback, int timeoutMs) {
-        auto start = std::chrono::steady_clock::now();
-
-        // Simulate gradual stability achievement
-        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
-            // Simulate IMU readings gradually stabilizing
-            stabilityScore_.store(stabilityScore_.load() + 0.1f);
-            if (stabilityScore_ > 1.0f) stabilityScore_ = 1.0f;
-
-            if (callback) {
-                callback(stabilityScore_);
-            }
-
-            if (stabilityScore_ >= 0.95f) {
-                isStable_ = true;
-                return true;
-            }
-
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        return false;
-    }
-
-    float getStabilityScore() const { return stabilityScore_; }
-    bool isStable() const { return isStable_; }
-
-private:
-    std::atomic<float> stabilityScore_;
-    std::atomic<bool> isStable_;
-};
-
-/**
  * @brief Private implementation class
  */
 class HandheldScanPipeline::Impl {
@@ -78,15 +34,15 @@ public:
     // Camera system
     std::shared_ptr<camera::CameraSystem> cameraSystem_;
 
-    // Stereo processor
-    std::unique_ptr<stereo::TemporalStereoProcessor> temporalProcessor_;
-    std::unique_ptr<stereo::SGBMStereoMatcher> sgbmMatcher_;
+    // AD-Census stereo matcher (VCSEL-optimized)
+    std::unique_ptr<stereo::VCSELStereoMatcher> vcselMatcher_;
 
     // VCSEL controller
     std::unique_ptr<hardware::AS1170DualVCSELController> vcselController_;
 
-    // IMU stability detector
-    std::unique_ptr<StabilityDetector> stabilityDetector_;
+    // Real IMU hardware + stability detector
+    std::shared_ptr<hardware::BMI270Driver> bmi270Driver_;
+    std::unique_ptr<hardware::StabilityDetector> stabilityDetector_;
 
     // Calibration
     std::shared_ptr<calibration::CalibrationManager> calibrationManager_;
@@ -116,23 +72,58 @@ public:
     Impl(std::shared_ptr<camera::CameraSystem> cameraSystem)
         : cameraSystem_(cameraSystem) {
 
-        // Initialize stereo parameters for VCSEL
+        // Initialize stereo parameters for AD-Census (VCSEL-optimized)
         stereoParams_.blockSize = 5;
-        stereoParams_.numDisparities = 160;
-        stereoParams_.minDisparity = 0;
-        stereoParams_.P1 = 8 * 3 * 5 * 5;
-        stereoParams_.P2 = 32 * 3 * 5 * 5;
-        stereoParams_.uniquenessRatio = 15;
+        stereoParams_.numDisparities = 256;  // Wider range for AD-Census
+        stereoParams_.minDisparity = 48;     // Optimized for 70mm baseline
+        stereoParams_.P1 = 4;                // Small penalty for AD-Census
+        stereoParams_.P2 = 24;               // Moderate smoothing
+        stereoParams_.uniquenessRatio = 25;  // Strict matching for precision
         stereoParams_.speckleWindowSize = 50;
         stereoParams_.speckleRange = 16;
         stereoParams_.disp12MaxDiff = 1;
         stereoParams_.preFilterCap = 31;
         stereoParams_.mode = 3;  // MODE_HH4
 
-        // Initialize components
-        stabilityDetector_ = std::make_unique<StabilityDetector>();
-        temporalProcessor_ = std::make_unique<stereo::TemporalStereoProcessor>();
-        sgbmMatcher_ = std::make_unique<stereo::SGBMStereoMatcher>();
+        // Initialize VCSELStereoMatcher (AD-Census algorithm)
+        logger_.info("Initializing VCSELStereoMatcher (AD-Census)...");
+        vcselMatcher_ = std::make_unique<stereo::VCSELStereoMatcher>();
+        vcselMatcher_->setParameters(stereoParams_);
+
+        // Initialize real BMI270 IMU driver
+        logger_.info("Initializing BMI270 IMU driver...");
+        bmi270Driver_ = hardware::BMI270Driver::getInstance();
+
+        hardware::BMI270Driver::BMI270Config imuConfig;
+        imuConfig.i2c_bus = 1;
+        imuConfig.i2c_address = 0x69;
+        imuConfig.gyro_range_dps = 500;
+        imuConfig.accel_range_g = 2;
+        imuConfig.sample_rate_hz = 100;
+
+        if (!bmi270Driver_->initialize(imuConfig)) {
+            logger_.warning("Failed to initialize BMI270, continuing without IMU stability detection");
+            bmi270Driver_.reset();
+        } else {
+            logger_.info("BMI270 initialized successfully");
+
+            // Initialize real StabilityDetector with BMI270
+            logger_.info("Initializing StabilityDetector with BMI270...");
+            stabilityDetector_ = std::make_unique<hardware::StabilityDetector>(bmi270Driver_);
+
+            hardware::StabilityDetector::StabilityParams stabilityParams;
+            stabilityParams.gyro_threshold_dps = 0.5f;
+            stabilityParams.accel_variance_threshold = 0.1f;
+            stabilityParams.stable_duration_ms = 500;
+            stabilityParams.history_window_ms = 1000;
+
+            if (!stabilityDetector_->initialize(stabilityParams)) {
+                logger_.warning("Failed to initialize StabilityDetector");
+                stabilityDetector_.reset();
+            } else {
+                logger_.info("StabilityDetector initialized successfully");
+            }
+        }
 
         // Initialize VCSEL controller if available
         try {
@@ -180,18 +171,20 @@ public:
     }
 
     /**
-     * @brief Process single frame to depth map
+     * @brief Process single frame to depth map using AD-Census
      */
     cv::Mat processFrame(const StereoFrame& frame, const stereo::StereoMatchingParams& params) {
         cv::Mat disparity, depth;
 
-        // For now, always use regular SGBM (temporal processor requires proper TripleFrameCapture)
-        // TODO: Implement proper temporal processing with vcselController_->captureTemporalSequence()
+        if (!vcselMatcher_) {
+            logger_.error("VCSELStereoMatcher not initialized");
+            return cv::Mat();
+        }
 
-        // Use regular SGBM
-        sgbmMatcher_->setParameters(params);
-        if (!sgbmMatcher_->computeDisparity(frame.leftImage, frame.rightImage, disparity)) {
-            logger_.error("Failed to compute disparity");
+        // Use AD-Census stereo matcher optimized for VCSEL patterns
+        vcselMatcher_->setParameters(params);
+        if (!vcselMatcher_->computeDisparity(frame.leftImage, frame.rightImage, disparity)) {
+            logger_.error("VCSELStereoMatcher failed to compute disparity");
             return cv::Mat();
         }
 
@@ -241,16 +234,20 @@ bool HandheldScanPipeline::initialize() {
         return false;
     }
 
-    // Initialize stereo matcher
-    if (pImpl->sgbmMatcher_) {
-        pImpl->sgbmMatcher_->setParameters(pImpl->stereoParams_);
+    // Initialize VCSELStereoMatcher with parameters
+    if (pImpl->vcselMatcher_) {
+        pImpl->vcselMatcher_->setParameters(pImpl->stereoParams_);
+        pImpl->logger_.info("VCSELStereoMatcher configured with AD-Census parameters");
+    } else {
+        pImpl->logger_.error("VCSELStereoMatcher not available");
+        return false;
     }
 
-    // Initialize temporal processor
-    if (pImpl->temporalProcessor_) {
-        auto config = stereo::TemporalStereoProcessor::TemporalStereoConfig::getVCSELOptimized();
-        config.sgbmParams = pImpl->stereoParams_;
-        // Temporal processor initialized with config
+    // Start stability detector update loop if available
+    if (pImpl->stabilityDetector_) {
+        pImpl->logger_.info("StabilityDetector ready for use");
+    } else {
+        pImpl->logger_.warning("StabilityDetector not available, proceeding without stability checks");
     }
 
     pImpl->initialized_ = true;
@@ -476,10 +473,41 @@ HandheldScanPipeline::ScanResult HandheldScanPipeline::scanWithStability(
 bool HandheldScanPipeline::waitForStability(StabilityCallback callback, int timeoutMs) {
     if (!pImpl->stabilityDetector_) {
         pImpl->logger_.warning("No stability detector available, proceeding without stability check");
+        if (callback) {
+            callback(1.0f);  // Report full stability if no detector
+        }
         return true;
     }
 
-    return pImpl->stabilityDetector_->waitForStability(callback, timeoutMs);
+    auto startTime = std::chrono::steady_clock::now();
+    pImpl->logger_.info("Waiting for IMU stability...");
+
+    // Update stability detector and check status
+    while (std::chrono::steady_clock::now() - startTime < std::chrono::milliseconds(timeoutMs)) {
+        // Update stability detector with latest IMU data
+        pImpl->stabilityDetector_->update();
+
+        // Get current stability status
+        float stabilityScore = pImpl->stabilityDetector_->getStabilityScore();
+
+        // Report to callback
+        if (callback) {
+            callback(stabilityScore);
+        }
+
+        // Check if stable for required duration
+        if (pImpl->stabilityDetector_->isStable() &&
+            pImpl->stabilityDetector_->getStableDuration() >= 500) {  // 500ms minimum stable
+            pImpl->logger_.info("Stability achieved (score: " + std::to_string(stabilityScore) + ")");
+            return true;
+        }
+
+        // Wait 50ms before next check
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    pImpl->logger_.warning("Stability timeout after " + std::to_string(timeoutMs) + "ms");
+    return false;
 }
 
 // Capture multiple frames
@@ -900,12 +928,13 @@ stereo::StereoMatchingParams HandheldScanPipeline::getStereoParams() const {
 void HandheldScanPipeline::setStereoParams(const stereo::StereoMatchingParams& params) {
     pImpl->stereoParams_ = params;
 
-    // Update matcher parameters
-    if (pImpl->sgbmMatcher_) {
-        pImpl->sgbmMatcher_->setParameters(params);
+    // Update VCSELStereoMatcher parameters
+    if (pImpl->vcselMatcher_) {
+        pImpl->vcselMatcher_->setParameters(params);
+        pImpl->logger_.info("VCSELStereoMatcher parameters updated");
+    } else {
+        pImpl->logger_.warning("VCSELStereoMatcher not available, parameters not applied");
     }
-
-    pImpl->logger_.info("Stereo parameters updated");
 }
 
 // Enable/disable VCSEL
