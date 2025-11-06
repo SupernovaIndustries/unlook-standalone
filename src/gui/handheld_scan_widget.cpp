@@ -302,22 +302,28 @@ void HandheldScanWidget::onStartScan() {
             led_controller_->forceResetHardware();
         }
 
-        // CRITICAL: Disable ALL LEDs before starting scan
-        // For handheld scan: We want ambient lighting only (no VCSEL, no flood)
-        // This matches calibration widget behavior
-        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
-        bool led2_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+        // CRITICAL: ENABLE VCSEL for AD-CENSUS stereo matching!
+        // AD-CENSUS requires structured light pattern from VCSEL for texture on smooth surfaces
+        // LED1 (VCSEL): ENABLED at 280mA for structured light projection
+        // LED2 (Flood): DISABLED (not needed for structured light)
 
-        if (led1_success) {
-            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) disabled for handheld scan";
+        // Disable flood LED first
+        bool led2_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+        if (led2_success) {
+            qDebug() << "[HandheldScanWidget] LED2 (Flood) disabled";
         } else {
-            qWarning() << "[HandheldScanWidget] Failed to disable LED1 (VCSEL)";
+            qWarning() << "[HandheldScanWidget] Failed to disable LED2 (Flood)";
         }
 
-        if (led2_success) {
-            qDebug() << "[HandheldScanWidget] LED2 (Flood) disabled - using ambient lighting";
+        // ENABLE VCSEL at 280mA for structured light
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);
+        if (led1_success) {
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 280mA for AD-CENSUS structured light";
         } else {
-            qWarning() << "[HandheldScanWidget] Failed to disable LED2";
+            qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
+            status_label_->setText("ERROR: Failed to enable VCSEL");
+            status_label_->setStyleSheet("font-size: 14pt; color: #FF4444;");
+            return;  // Abort scan if VCSEL fails
         }
     } else {
         qWarning() << "[HandheldScanWidget] LED controller not available - proceeding without LED control";
