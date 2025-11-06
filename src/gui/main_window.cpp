@@ -419,7 +419,7 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
             
         case Screen::HANDHELD_SCAN:
             if (!handheld_scan_widget_) {
-                handheld_scan_widget_ = std::make_unique<HandheldScanWidget>();
+                handheld_scan_widget_ = std::make_unique<HandheldScanWidget>(camera_system_);
                 ui->screen_stack->addWidget(handheld_scan_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(handheld_scan_widget_.get());
