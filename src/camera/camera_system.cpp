@@ -393,16 +393,20 @@ struct CameraSystem::CameraImpl {
     // Signal handler wrapper class for libcamera signals
     class SignalHandler : public libcamera::Object {
     public:
-        SignalHandler(CameraImpl* impl) : impl_(impl) {}
-        
+        SignalHandler(CameraImpl* impl) : impl_(impl) {
+            UNLOOK_LOG_DEBUG("Camera") << "SignalHandler created";
+        }
+
         void handleLeftRequest(libcamera::Request* request) {
+            UNLOOK_LOG_DEBUG("Camera") << "SignalHandler::handleLeftRequest called";
             impl_->handleRequestCompleted(request, true);
         }
-        
+
         void handleRightRequest(libcamera::Request* request) {
+            UNLOOK_LOG_DEBUG("Camera") << "SignalHandler::handleRightRequest called";
             impl_->handleRequestCompleted(request, false);
         }
-        
+
     private:
         CameraImpl* impl_;
     };
@@ -416,12 +420,14 @@ struct CameraSystem::CameraImpl {
         
         // Create signal handler
         signal_handler = std::make_unique<SignalHandler>(this);
-        
+
         // Connect request completed signals using the handler
-        left_camera->requestCompleted.connect(signal_handler.get(), 
+        UNLOOK_LOG_DEBUG("Camera") << "Connecting requestCompleted signals...";
+        left_camera->requestCompleted.connect(signal_handler.get(),
             &SignalHandler::handleLeftRequest);
         right_camera->requestCompleted.connect(signal_handler.get(),
             &SignalHandler::handleRightRequest);
+        UNLOOK_LOG_DEBUG("Camera") << "Signals connected successfully";
         
         // CRITICAL: Start MASTER camera first (Camera 1 = LEFT)
         UNLOOK_LOG_INFO("Camera") << "Starting LEFT/MASTER camera...";
@@ -450,19 +456,30 @@ struct CameraSystem::CameraImpl {
         
         // Queue initial requests AFTER cameras are running
         UNLOOK_LOG_INFO("Camera") << "Queueing initial requests...";
+        UNLOOK_LOG_DEBUG("Camera") << "Left requests available: " << left_requests.size();
+        UNLOOK_LOG_DEBUG("Camera") << "Right requests available: " << right_requests.size();
+
+        int left_queued = 0;
         for (auto& request : left_requests) {
             ret = left_camera->queueRequest(request.get());
             if (ret < 0) {
                 UNLOOK_LOG_ERROR("Camera") << "Failed to queue left request: " << std::strerror(-ret);
+            } else {
+                left_queued++;
             }
         }
-        
+        UNLOOK_LOG_DEBUG("Camera") << "Left requests queued successfully: " << left_queued;
+
+        int right_queued = 0;
         for (auto& request : right_requests) {
             ret = right_camera->queueRequest(request.get());
             if (ret < 0) {
                 UNLOOK_LOG_ERROR("Camera") << "Failed to queue right request: " << std::strerror(-ret);
+            } else {
+                right_queued++;
             }
         }
+        UNLOOK_LOG_DEBUG("Camera") << "Right requests queued successfully: " << right_queued;
         
         // Start processing thread
         processing_thread = std::thread([this]() { processFramePairs(); });
@@ -510,16 +527,23 @@ struct CameraSystem::CameraImpl {
     
     // Process synchronized frame pairs
     void processFramePairs() {
+        UNLOOK_LOG_DEBUG("Camera") << "Processing thread started, waiting for frames...";
         while (capture_running) {
             std::unique_lock<std::mutex> lock(request_mutex);
-            
+
             // Wait for frames from both cameras
             frame_ready_cv.wait(lock, [this] {
-                return !capture_running || 
+                return !capture_running ||
                        (!left_completed_requests.empty() && !right_completed_requests.empty());
             });
-            
-            if (!capture_running) break;
+
+            if (!capture_running) {
+                UNLOOK_LOG_DEBUG("Camera") << "Processing thread stopping";
+                break;
+            }
+
+            UNLOOK_LOG_DEBUG("Camera") << "Processing thread received frames";
+
             
             // Get synchronized frames
             libcamera::Request* left_req = left_completed_requests.front();
