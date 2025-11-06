@@ -123,10 +123,20 @@ private:
      */
     void setupUI();
 
-    // REMOVED: Camera preview functions (interfered with camera system)
-    // void startCameraPreview();
-    // void stopCameraPreview();
-    // void onPreviewFrame(const core::StereoFramePair& frame);
+    /**
+     * @brief Start camera preview in background
+     */
+    void startCameraPreview();
+
+    /**
+     * @brief Stop camera preview
+     */
+    void stopCameraPreview();
+
+    /**
+     * @brief Handle preview frame from camera callback
+     */
+    void onPreviewFrame(const core::StereoFramePair& frame);
 
     /**
      * @brief Update stability indicator with current score

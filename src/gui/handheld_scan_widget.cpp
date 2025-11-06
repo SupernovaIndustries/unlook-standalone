@@ -100,17 +100,16 @@ void HandheldScanWidget::showEvent(QShowEvent* event) {
 
     qDebug() << "[HandheldScanWidget::showEvent] Widget now visible";
 
-    // DISABLED: Camera preview was monopolizing cameras and breaking other widgets
-    // TODO: Re-implement preview without blocking camera access
-    // startCameraPreview();
+    // Start camera preview (now working with HardwareSyncCapture!)
+    startCameraPreview();
 }
 
 void HandheldScanWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden";
 
-    // DISABLED: Camera preview disabled to avoid monopolizing cameras
-    // stopCameraPreview();
+    // Stop camera preview when widget hidden
+    stopCameraPreview();
 
     // CRITICAL: Disable all LEDs when hiding widget (user switched tab)
     if (led_controller_) {
@@ -814,8 +813,86 @@ void HandheldScanWidget::onScanFailed(const QString& error) {
     emit scanFailed(error);
 }
 
-// REMOVED: Camera preview functions (startCameraPreview, stopCameraPreview, onPreviewFrame)
-// These were interfering with camera system - cameras should work correctly now
+// Camera preview functions
+void HandheldScanWidget::startCameraPreview() {
+    if (!camera_system_) {
+        qWarning() << "[HandheldScanWidget] Cannot start preview: camera system not available";
+        return;
+    }
+
+    qDebug() << "[HandheldScanWidget] Starting camera preview...";
+
+    // Register callback with camera system
+    bool success = camera_system_->startCapture([this](const core::StereoFramePair& frame) {
+        // Use QMetaObject::invokeMethod to safely call from camera thread to GUI thread
+        QMetaObject::invokeMethod(this, [this, frame]() {
+            onPreviewFrame(frame);
+        }, Qt::QueuedConnection);
+    });
+
+    if (success) {
+        qDebug() << "[HandheldScanWidget] Camera preview started successfully";
+    } else {
+        qWarning() << "[HandheldScanWidget] Failed to start camera preview";
+    }
+}
+
+void HandheldScanWidget::stopCameraPreview() {
+    // Camera system is shared - don't stop it, just disconnect our callback
+    // The callback will be replaced by the next widget that calls startCapture
+    qDebug() << "[HandheldScanWidget] Camera preview stopped (callback will be replaced)";
+}
+
+void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
+    if (!frame.left_frame.valid || frame.left_frame.image.empty()) {
+        return;
+    }
+
+    // Convert left frame to QImage for display
+    cv::Mat rgb_frame;
+    if (frame.left_frame.image.channels() == 1) {
+        cv::cvtColor(frame.left_frame.image, rgb_frame, cv::COLOR_GRAY2RGB);
+    } else {
+        cv::cvtColor(frame.left_frame.image, rgb_frame, cv::COLOR_YUV2RGB_I420);
+    }
+
+    // Draw crosshair at center
+    int center_x = rgb_frame.cols / 2;
+    int center_y = rgb_frame.rows / 2;
+    int crosshair_size = 40;
+
+    // Green crosshair for better visibility
+    cv::Scalar color(0, 255, 0);  // RGB green
+    int thickness = 2;
+
+    // Horizontal line
+    cv::line(rgb_frame,
+             cv::Point(center_x - crosshair_size, center_y),
+             cv::Point(center_x + crosshair_size, center_y),
+             color, thickness);
+
+    // Vertical line
+    cv::line(rgb_frame,
+             cv::Point(center_x, center_y - crosshair_size),
+             cv::Point(center_x, center_y + crosshair_size),
+             color, thickness);
+
+    // Center dot
+    cv::circle(rgb_frame, cv::Point(center_x, center_y), 3, color, -1);
+
+    // Convert to QPixmap and display
+    QImage qimg(rgb_frame.data, rgb_frame.cols, rgb_frame.rows,
+                rgb_frame.step, QImage::Format_RGB888);
+
+    QPixmap pixmap = QPixmap::fromImage(qimg);
+
+    // Scale to fit label while maintaining aspect ratio
+    ui->cameraPreviewLabel->setPixmap(pixmap.scaled(
+        ui->cameraPreviewLabel->size(),
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation
+    ));
+}
 
 } // namespace gui
 } // namespace unlook
