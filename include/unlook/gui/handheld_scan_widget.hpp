@@ -98,6 +98,11 @@ private slots:
     void onStopScan();
 
     /**
+     * @brief Handle info button click - show statistics popup
+     */
+    void onShowInfo();
+
+    /**
      * @brief Update UI components (called at 30 Hz)
      */
     void updateUI();

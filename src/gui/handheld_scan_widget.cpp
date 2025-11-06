@@ -11,6 +11,11 @@
 #include <QImage>
 #include <QPixmap>
 #include <QPainter>
+#include <QDialog>
+#include <QVBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QFrame>
 #include <opencv2/imgproc.hpp>
 #include <algorithm>
 #include <numeric>
@@ -72,8 +77,8 @@ HandheldScanWidget::~HandheldScanWidget() {
         scan_watcher_->waitForFinished();
     }
 
-    // Stop camera preview
-    stopCameraPreview();
+    // DISABLED: Camera preview disabled to avoid monopolizing cameras
+    // stopCameraPreview();
 
     // CRITICAL: Disable all LEDs before destroying widget (prevent stuck LED state)
     if (led_controller_) {
@@ -93,18 +98,19 @@ HandheldScanWidget::~HandheldScanWidget() {
 void HandheldScanWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
 
-    qDebug() << "[HandheldScanWidget::showEvent] Widget now visible - starting camera preview";
+    qDebug() << "[HandheldScanWidget::showEvent] Widget now visible";
 
-    // Start camera preview for real-time feedback
-    startCameraPreview();
+    // DISABLED: Camera preview was monopolizing cameras and breaking other widgets
+    // TODO: Re-implement preview without blocking camera access
+    // startCameraPreview();
 }
 
 void HandheldScanWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden";
 
-    // Stop camera preview
-    stopCameraPreview();
+    // DISABLED: Camera preview disabled to avoid monopolizing cameras
+    // stopCameraPreview();
 
     // CRITICAL: Disable all LEDs when hiding widget (user switched tab)
     if (led_controller_) {
@@ -123,19 +129,21 @@ void HandheldScanWidget::setupUI() {
     // Connect button signals
     connect(ui->scanButton, &QPushButton::clicked, this, &HandheldScanWidget::onStartScan);
     connect(ui->stopButton, &QPushButton::clicked, this, &HandheldScanWidget::onStopScan);
+    connect(ui->infoButton, &QPushButton::clicked, this, &HandheldScanWidget::onShowInfo);
 
-    // Initialize progress bars
-    ui->stabilityProgressBar->setMinimum(0);
-    ui->stabilityProgressBar->setMaximum(100);
-    ui->stabilityProgressBar->setValue(0);
+    // All statistics hidden (shown in INFO popup)
+    // Initialize progress bars (HIDDEN)
+    // HIDDEN:     ui->stabilityProgressBar->setMinimum(0);
+    // HIDDEN:     ui->stabilityProgressBar->setMaximum(100);
+    // HIDDEN:     ui->stabilityProgressBar->setValue(0);
 
-    ui->captureProgressBar->setMinimum(0);
-    ui->captureProgressBar->setMaximum(TARGET_FRAMES);
-    ui->captureProgressBar->setValue(0);
+    // HIDDEN:     ui->captureProgressBar->setMinimum(0);
+    // HIDDEN:     ui->captureProgressBar->setMaximum(TARGET_FRAMES);
+    // HIDDEN:     ui->captureProgressBar->setValue(0);
 
     // Set initial state
     ui->stopButton->setEnabled(false);
-    ui->captureProgressBar->setVisible(true);  // Keep visible but at 0
+    // HIDDEN:     ui->captureProgressBar->setVisible(true);  // Keep visible but at 0
 
     qDebug() << "[HandheldScanWidget::setupUI] UI initialized from .ui file with camera preview";
 }
@@ -146,8 +154,8 @@ void HandheldScanWidget::onStartScan() {
     // Check camera system is ready
     if (!camera_system_ || !camera_system_->isReady()) {
         qCritical() << "[HandheldScanWidget] Camera system not ready!";
-        ui->statusLabel->setText("ERROR: Camera system not ready");
-        ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    // HIDDEN:         ui->statusLabel->setText("ERROR: Camera system not ready");
+    // HIDDEN:         ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
         return;  // Abort scan
     }
 
@@ -194,8 +202,8 @@ void HandheldScanWidget::onStartScan() {
             qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 280mA for AD-CENSUS structured light";
         } else {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
-            ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
-            ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    // HIDDEN:             ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
+    // HIDDEN:             ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
             return;  // Abort scan if VCSEL fails
         }
     } else {
@@ -216,13 +224,13 @@ void HandheldScanWidget::onStartScan() {
     // Update UI
     ui->scanButton->setVisible(false);
     ui->stopButton->setVisible(true);
-    ui->captureProgressBar->setVisible(true);
+    // HIDDEN:     ui->captureProgressBar->setVisible(true);
     // removed capture_count_label(true);
-    ui->captureProgressBar->setValue(0);
+    // HIDDEN:     ui->captureProgressBar->setValue(0);
     // ui->statusLabel->setText("0/" + QString::number(TARGET_FRAMES) + " frames");
 
-    ui->statusLabel->setText("Waiting for stability...");
-    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FFA500;");
+    // HIDDEN:     ui->statusLabel->setText("Waiting for stability...");
+    // HIDDEN:     ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FFA500;");
 
     // Start background scan thread
     startScanThread();
@@ -246,8 +254,137 @@ void HandheldScanWidget::onStopScan() {
     // Reset UI
     resetUI();
 
-    ui->statusLabel->setText("Scan cancelled");
-    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    // HIDDEN:     ui->statusLabel->setText("Scan cancelled");
+    // HIDDEN:     ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+}
+
+void HandheldScanWidget::onShowInfo() {
+    qDebug() << "[HandheldScanWidget] Showing info popup";
+
+    // Create modal dialog for statistics
+    QDialog* infoDialog = new QDialog(this);
+    infoDialog->setWindowTitle("Scan Information");
+    infoDialog->setModal(true);
+    infoDialog->setMinimumSize(400, 350);
+    infoDialog->setStyleSheet(
+        "QDialog {"
+        "  background-color: #1a1a1a;"
+        "  color: #FFFFFF;"
+        "}"
+        "QLabel {"
+        "  padding: 8px;"
+        "  font-size: 14pt;"
+        "}"
+    );
+
+    // Create layout
+    QVBoxLayout* layout = new QVBoxLayout(infoDialog);
+    layout->setSpacing(15);
+    layout->setContentsMargins(20, 20, 20, 20);
+
+    // Title
+    QLabel* titleLabel = new QLabel("SCAN STATISTICS", infoDialog);
+    titleLabel->setStyleSheet("font-size: 20pt; font-weight: bold; color: #00D9FF;");
+    titleLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(titleLabel);
+
+    // Separator
+    QFrame* separator = new QFrame(infoDialog);
+    separator->setFrameShape(QFrame::HLine);
+    separator->setFrameShadow(QFrame::Sunken);
+    separator->setStyleSheet("background-color: #333333;");
+    layout->addWidget(separator);
+
+    // Stability
+    QLabel* stabilityLabel = new QLabel(
+        QString("Stability: %1%").arg(qRound(current_stability_ * 100)), infoDialog);
+    stabilityLabel->setStyleSheet("color: #FFA500;");
+    layout->addWidget(stabilityLabel);
+
+    // Capture progress
+    QLabel* captureLabel = new QLabel(
+        QString("Frames Captured: %1/%2").arg(frames_captured_).arg(total_frames_), infoDialog);
+    captureLabel->setStyleSheet("color: #00D9FF;");
+    layout->addWidget(captureLabel);
+
+    // FPS
+    float fps = calculateFPS();
+    QLabel* fpsLabel = new QLabel(QString("FPS: %1").arg(fps, 0, 'f', 1), infoDialog);
+    fpsLabel->setStyleSheet("color: #00FF88;");
+    layout->addWidget(fpsLabel);
+
+    // Precision
+    QLabel* precisionLabel = new QLabel(
+        QString("Target Precision: 0.10 mm"), infoDialog);
+    if (achieved_precision_mm_ > 0) {
+        precisionLabel->setText(QString("Achieved Precision: %1 mm")
+            .arg(achieved_precision_mm_, 0, 'f', 3));
+    }
+    precisionLabel->setStyleSheet("color: #FFD700;");
+    layout->addWidget(precisionLabel);
+
+    // Point count
+    if (point_count_ > 0) {
+        QLabel* pointsLabel = new QLabel(
+            QString("Point Cloud: %1 points").arg(point_count_), infoDialog);
+        pointsLabel->setStyleSheet("color: #FF88FF;");
+        layout->addWidget(pointsLabel);
+    }
+
+    // Scan state
+    QString stateText;
+    switch (scan_state_) {
+        case ScanState::IDLE:
+            stateText = "State: Ready";
+            break;
+        case ScanState::WAITING_STABILITY:
+            stateText = "State: Waiting for stability...";
+            break;
+        case ScanState::CAPTURING:
+            stateText = "State: Capturing frames...";
+            break;
+        case ScanState::PROCESSING:
+            stateText = "State: Processing depth maps...";
+            break;
+        case ScanState::COMPLETED:
+            stateText = "State: Scan completed!";
+            break;
+        case ScanState::FAILED:
+            stateText = "State: Scan failed";
+            break;
+    }
+    QLabel* stateLabel = new QLabel(stateText, infoDialog);
+    stateLabel->setStyleSheet("color: #AAAAAA; font-size: 12pt;");
+    layout->addWidget(stateLabel);
+
+    // Add stretch to push everything to top
+    layout->addStretch();
+
+    // Close button
+    QPushButton* closeButton = new QPushButton("CLOSE", infoDialog);
+    closeButton->setMinimumHeight(50);
+    closeButton->setStyleSheet(
+        "QPushButton {"
+        "  font-size: 16pt;"
+        "  font-weight: bold;"
+        "  background-color: #0066AA;"
+        "  border: 2px solid #0099FF;"
+        "  border-radius: 8px;"
+        "  padding: 10px;"
+        "}"
+        "QPushButton:hover {"
+        "  background-color: #0088CC;"
+        "}"
+        "QPushButton:pressed {"
+        "  background-color: #004488;"
+        "}"
+    );
+    connect(closeButton, &QPushButton::clicked, infoDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    // Show dialog (modal, does not interrupt scan)
+    infoDialog->exec();
+    delete infoDialog;
 }
 
 void HandheldScanWidget::updateUI() {
@@ -272,8 +409,8 @@ void HandheldScanWidget::updateUI() {
         // Auto-transition to CAPTURING when stable
         if (current_stability_ >= STABILITY_THRESHOLD) {
             scan_state_ = ScanState::CAPTURING;
-            ui->statusLabel->setText("Stable! Capturing frames...");
-            ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
+    // HIDDEN:             ui->statusLabel->setText("Stable! Capturing frames...");
+    // HIDDEN:             ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
             qDebug() << "[HandheldScanWidget] Stability threshold reached, starting capture";
         }
     } else if (scan_state_ == ScanState::CAPTURING) {
@@ -298,14 +435,14 @@ void HandheldScanWidget::updateUI() {
             }
 
             float avg_fps = calculateFPS();
-            ui->fpsLabel->setText("FPS: " + QString::number(avg_fps, 'f', 1));
+    // HIDDEN:             ui->fpsLabel->setText("FPS: " + QString::number(avg_fps, 'f', 1));
 
             qDebug() << "[HandheldScanWidget] Frame" << frames_captured_ << "captured, FPS:" << avg_fps;
 
             if (frames_captured_ >= TARGET_FRAMES) {
                 scan_state_ = ScanState::PROCESSING;
-                ui->statusLabel->setText("Processing depth maps...");
-                ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
+    // HIDDEN:                 ui->statusLabel->setText("Processing depth maps...");
+    // HIDDEN:                 ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
                 qDebug() << "[HandheldScanWidget] All frames captured, processing...";
             }
         }
@@ -315,15 +452,19 @@ void HandheldScanWidget::updateUI() {
         static int dots = 0;
         dots = (dots + 1) % 4;
         QString dot_string = QString(".").repeated(dots);
-        ui->statusLabel->setText("Processing" + dot_string);
+    // HIDDEN:         ui->statusLabel->setText("Processing" + dot_string);
     }
 }
 
 void HandheldScanWidget::updateStabilityIndicator(float score) {
+    // All UI updates hidden - data stored internally for INFO popup
+    current_stability_ = score;
+
+    // HIDDEN: Update progress bar color and text
+    /*
     int percentage = static_cast<int>(score * 100.0f);
     ui->stabilityProgressBar->setValue(percentage);
 
-    // Update color based on score
     QColor color = getStabilityColor(score);
     QString color_str = color.name();
 
@@ -342,25 +483,29 @@ void HandheldScanWidget::updateStabilityIndicator(float score) {
         "}"
     );
 
-    // Update text label
     QString text = getStabilityText(score);
     ui->stabilityTextLabel->setText(text);
     ui->stabilityTextLabel->setStyleSheet("font-size: 18pt; font-weight: bold; color: " + color_str + ";");
+    */
 }
 
 void HandheldScanWidget::updateCaptureProgress(int current, int total) {
-    ui->captureProgressBar->setValue(current);
-    // ui->statusLabel->setText(QString::number(current) + "/" + QString::number(total) + " frames");
+    // All UI updates hidden - data stored internally for INFO popup
+    frames_captured_ = current;
+    total_frames_ = total;
 
-    // Calculate percentage for styling
+    // HIDDEN: Update progress bar
+    /*
+    ui->captureProgressBar->setValue(current);
+
     float percentage = static_cast<float>(current) / static_cast<float>(total);
     QColor color;
     if (percentage < 0.5f) {
-        color = QColor("#FFA500");  // Orange
+        color = QColor("#FFA500");
     } else if (percentage < 1.0f) {
-        color = QColor("#00E5CC");  // Cyan
+        color = QColor("#00E5CC");
     } else {
-        color = QColor("#00FF00");  // Green
+        color = QColor("#00FF00");
     }
 
     ui->captureProgressBar->setStyleSheet(
@@ -376,6 +521,7 @@ void HandheldScanWidget::updateCaptureProgress(int current, int total) {
         "    border-radius: 3px;"
         "}"
     );
+    */
 }
 
 float HandheldScanWidget::calculateFPS() {
@@ -412,16 +558,16 @@ void HandheldScanWidget::resetUI() {
     scan_state_ = ScanState::IDLE;
     ui->scanButton->setVisible(true);
     ui->stopButton->setVisible(false);
-    ui->captureProgressBar->setVisible(false);
+    // HIDDEN:     ui->captureProgressBar->setVisible(false);
     // removed capture_count_label(false);
 
-    ui->stabilityProgressBar->setValue(0);
-    ui->stabilityTextLabel->setText("Hold steady...");
-    ui->fpsLabel->setText("FPS: --");
-    ui->precisionLabel->setText("Precision: 0.10mm target");
+    // HIDDEN:     ui->stabilityProgressBar->setValue(0);
+    // HIDDEN:     ui->stabilityTextLabel->setText("Hold steady...");
+    // HIDDEN:     ui->fpsLabel->setText("FPS: --");
+    // HIDDEN:     ui->precisionLabel->setText("Precision: 0.10mm target");
 
-    ui->statusLabel->setText("Ready to scan");
-    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
+    // HIDDEN:     ui->statusLabel->setText("Ready to scan");
+    // HIDDEN:     ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00E5CC;");
 }
 
 void HandheldScanWidget::startScanThread() {
@@ -628,14 +774,11 @@ void HandheldScanWidget::onScanCompleted() {
     auto scan_duration = std::chrono::steady_clock::now() - scan_start_time_;
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(scan_duration).count();
 
-    ui->precisionLabel->setText("Precision: " + QString::number(achieved_precision_mm_, 'f', 2) + " mm");
-    ui->precisionLabel->setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;");
-
-    ui->statusLabel->setText(
-        "Scan complete! Duration: " + QString::number(duration_ms) + " ms | Points: " +
-        QString::number(point_count_)
-    );
-    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
+    // HIDDEN: Update UI with results
+    // ui->precisionLabel->setText("Precision: " + QString::number(achieved_precision_mm_, 'f', 2) + " mm");
+    // ui->precisionLabel->setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;");
+    // ui->statusLabel->setText("Scan complete! Duration: " + QString::number(duration_ms) + " ms | Points: " + QString::number(point_count_));
+    // ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
 
     // Hide stop button, show scan button
     ui->stopButton->setVisible(false);
@@ -659,8 +802,8 @@ void HandheldScanWidget::onScanFailed(const QString& error) {
 
     scan_state_ = ScanState::FAILED;
 
-    ui->statusLabel->setText("Scan failed: " + error);
-    ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    // HIDDEN:     ui->statusLabel->setText("Scan failed: " + error);
+    // HIDDEN:     ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
 
     // Reset UI after delay
     QTimer::singleShot(3000, this, [this]() {

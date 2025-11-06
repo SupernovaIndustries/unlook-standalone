@@ -15,403 +15,203 @@
   </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <property name="spacing">
-    <number>8</number>
+    <number>0</number>
    </property>
    <property name="leftMargin">
-    <number>8</number>
+    <number>0</number>
    </property>
    <property name="topMargin">
-    <number>8</number>
+    <number>0</number>
    </property>
    <property name="rightMargin">
-    <number>8</number>
+    <number>0</number>
    </property>
    <property name="bottomMargin">
-    <number>8</number>
+    <number>0</number>
    </property>
 
-   <!-- CAMERA PREVIEW (MAXIMIZED) -->
+   <!-- CAMERA PREVIEW - FULLSCREEN -->
    <item>
-    <widget class="QFrame" name="previewFrame">
-     <property name="frameShape">
-      <enum>QFrame::Box</enum>
+    <widget class="QLabel" name="cameraPreviewLabel">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+       <horstretch>0</horstretch>
+       <verstretch>1</verstretch>
+      </sizepolicy>
      </property>
-     <property name="frameShadow">
-      <enum>QFrame::Raised</enum>
-     </property>
-     <property name="lineWidth">
-      <number>2</number>
-     </property>
-     <property name="styleSheet">
-      <string>
-       QFrame {
-         background-color: #1a1a1a;
-         border: 2px solid #00D9FF;
-         border-radius: 8px;
-       }
-      </string>
-     </property>
-     <layout class="QVBoxLayout" name="previewLayout">
-      <property name="spacing">
-       <number>0</number>
-      </property>
-      <property name="leftMargin">
-       <number>0</number>
-      </property>
-      <property name="topMargin">
-       <number>0</number>
-      </property>
-      <property name="rightMargin">
-       <number>0</number>
-      </property>
-      <property name="bottomMargin">
-       <number>0</number>
-      </property>
-      <item>
-       <widget class="QLabel" name="cameraPreviewLabel">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>420</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>Camera Preview
-(Initializing...)</string>
-        </property>
-        <property name="alignment">
-         <set>Qt::AlignCenter</set>
-        </property>
-        <property name="styleSheet">
-         <string>
-          font-size: 18pt;
-          color: #666666;
-          background-color: #0a0a0a;
-         </string>
-        </property>
-        <property name="scaledContents">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-
-   <!-- STABILITY SECTION -->
-   <item>
-    <layout class="QVBoxLayout" name="stabilityLayout">
-     <property name="spacing">
-      <number>4</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="stabilityTitleLabel">
-       <property name="text">
-        <string>STABILITY</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 11pt;
-         font-weight: bold;
-         color: #FFFFFF;
-        </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QProgressBar" name="stabilityProgressBar">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>24</height>
-        </size>
-       </property>
-       <property name="value">
-        <number>0</number>
-       </property>
-       <property name="textVisible">
-        <bool>true</bool>
-       </property>
-       <property name="format">
-        <string>%p%</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         QProgressBar {
-           border: 2px solid #333333;
-           border-radius: 8px;
-           background-color: #1a1a1a;
-           text-align: center;
-           font-size: 11pt;
-           font-weight: bold;
-           color: #FFFFFF;
-         }
-         QProgressBar::chunk {
-           border-radius: 6px;
-           background-color: #FF4444;
-         }
-        </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="stabilityTextLabel">
-       <property name="text">
-        <string>Hold device steady...</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 10pt;
-         color: #AAAAAA;
-        </string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- CAPTURE PROGRESS SECTION -->
-   <item>
-    <layout class="QVBoxLayout" name="captureLayout">
-     <property name="spacing">
-      <number>4</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="captureTitleLabel">
-       <property name="text">
-        <string>CAPTURE PROGRESS</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 11pt;
-         font-weight: bold;
-         color: #FFFFFF;
-        </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QProgressBar" name="captureProgressBar">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>22</height>
-        </size>
-       </property>
-       <property name="value">
-        <number>0</number>
-       </property>
-       <property name="maximum">
-        <number>10</number>
-       </property>
-       <property name="textVisible">
-        <bool>true</bool>
-       </property>
-       <property name="format">
-        <string>Frame %v/10</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         QProgressBar {
-           border: 2px solid #333333;
-           border-radius: 8px;
-           background-color: #1a1a1a;
-           text-align: center;
-           font-size: 10pt;
-           font-weight: bold;
-           color: #FFFFFF;
-         }
-         QProgressBar::chunk {
-           border-radius: 6px;
-           background-color: #00D9FF;
-         }
-        </string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- METRICS ROW -->
-   <item>
-    <layout class="QHBoxLayout" name="metricsLayout">
-     <property name="spacing">
-      <number>8</number>
-     </property>
-     <item>
-      <widget class="QLabel" name="fpsLabel">
-       <property name="text">
-        <string>FPS: --</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 10pt;
-         font-weight: bold;
-         color: #00FF88;
-         padding: 4px;
-         background-color: #1a1a1a;
-         border: 1px solid #333333;
-         border-radius: 6px;
-        </string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="precisionLabel">
-       <property name="text">
-        <string>Precision: --</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 10pt;
-         font-weight: bold;
-         color: #FFD700;
-         padding: 4px;
-         background-color: #1a1a1a;
-         border: 1px solid #333333;
-         border-radius: 6px;
-        </string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="pointCountLabel">
-       <property name="text">
-        <string>Points: --</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         font-size: 10pt;
-         font-weight: bold;
-         color: #FF88FF;
-         padding: 4px;
-         background-color: #1a1a1a;
-         border: 1px solid #333333;
-         border-radius: 6px;
-        </string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignCenter</set>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- CONTROL BUTTONS -->
-   <item>
-    <layout class="QHBoxLayout" name="buttonLayout">
-     <property name="spacing">
-      <number>12</number>
-     </property>
-     <item>
-      <widget class="QPushButton" name="scanButton">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>60</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>▶ START SCAN</string>
-       </property>
-       <property name="styleSheet">
-        <string>
-         QPushButton {
-           font-size: 18pt;
-           font-weight: bold;
-           color: #FFFFFF;
-           background-color: #00AA44;
-           border: 2px solid #00FF88;
-           border-radius: 12px;
-           padding: 12px;
-         }
-         QPushButton:hover {
-           background-color: #00CC55;
-         }
-         QPushButton:pressed {
-           background-color: #008833;
-         }
-         QPushButton:disabled {
-           background-color: #333333;
-           color: #666666;
-           border: 2px solid #444444;
-         }
-        </string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="stopButton">
-       <property name="minimumSize">
-        <size>
-         <width>0</width>
-         <height>60</height>
-        </size>
-       </property>
-       <property name="text">
-        <string>■ STOP</string>
-       </property>
-       <property name="enabled">
-        <bool>false</bool>
-       </property>
-       <property name="styleSheet">
-        <string>
-         QPushButton {
-           font-size: 18pt;
-           font-weight: bold;
-           color: #FFFFFF;
-           background-color: #AA0000;
-           border: 2px solid #FF4444;
-           border-radius: 12px;
-           padding: 12px;
-         }
-         QPushButton:hover {
-           background-color: #CC0000;
-         }
-         QPushButton:pressed {
-           background-color: #880000;
-         }
-         QPushButton:disabled {
-           background-color: #333333;
-           color: #666666;
-           border: 2px solid #444444;
-         }
-        </string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-
-   <!-- STATUS LABEL -->
-   <item>
-    <widget class="QLabel" name="statusLabel">
      <property name="text">
-      <string>Ready to scan</string>
+      <string>Camera Preview
+(Ready to scan)</string>
      </property>
      <property name="alignment">
       <set>Qt::AlignCenter</set>
      </property>
      <property name="styleSheet">
       <string>
-       font-size: 13pt;
-       color: #AAAAAA;
-       padding: 8px;
-       background-color: #1a1a1a;
-       border: 1px solid #333333;
-       border-radius: 6px;
+       font-size: 24pt;
+       color: #666666;
+       background-color: #0a0a0a;
       </string>
      </property>
+     <property name="scaledContents">
+      <bool>false</bool>
+     </property>
+    </widget>
+   </item>
+
+   <!-- CONTROL BUTTONS - 3 BUTTONS: START, STOP, INFO -->
+   <item>
+    <widget class="QFrame" name="controlFrame">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>100</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>100</height>
+      </size>
+     </property>
+     <property name="styleSheet">
+      <string>
+       QFrame {
+         background-color: #1a1a1a;
+         border-top: 2px solid #333333;
+       }
+      </string>
+     </property>
+     <layout class="QHBoxLayout" name="buttonLayout">
+      <property name="spacing">
+       <number>12</number>
+      </property>
+      <property name="leftMargin">
+       <number>12</number>
+      </property>
+      <property name="topMargin">
+       <number>12</number>
+      </property>
+      <property name="rightMargin">
+       <number>12</number>
+      </property>
+      <property name="bottomMargin">
+       <number>12</number>
+      </property>
+
+      <!-- START SCAN BUTTON -->
+      <item>
+       <widget class="QPushButton" name="scanButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>▶ START</string>
+        </property>
+        <property name="styleSheet">
+         <string>
+          QPushButton {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #FFFFFF;
+            background-color: #00AA44;
+            border: 2px solid #00FF88;
+            border-radius: 12px;
+          }
+          QPushButton:hover {
+            background-color: #00CC55;
+          }
+          QPushButton:pressed {
+            background-color: #008833;
+          }
+          QPushButton:disabled {
+            background-color: #333333;
+            color: #666666;
+            border: 2px solid #444444;
+          }
+         </string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- STOP BUTTON -->
+      <item>
+       <widget class="QPushButton" name="stopButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>■ STOP</string>
+        </property>
+        <property name="styleSheet">
+         <string>
+          QPushButton {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #FFFFFF;
+            background-color: #AA0000;
+            border: 2px solid #FF4444;
+            border-radius: 12px;
+          }
+          QPushButton:hover {
+            background-color: #CC0000;
+          }
+          QPushButton:pressed {
+            background-color: #880000;
+          }
+          QPushButton:disabled {
+            background-color: #333333;
+            color: #666666;
+            border: 2px solid #444444;
+          }
+         </string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- INFO BUTTON -->
+      <item>
+       <widget class="QPushButton" name="infoButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>ℹ INFO</string>
+        </property>
+        <property name="styleSheet">
+         <string>
+          QPushButton {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #FFFFFF;
+            background-color: #0066AA;
+            border: 2px solid #0099FF;
+            border-radius: 12px;
+          }
+          QPushButton:hover {
+            background-color: #0088CC;
+          }
+          QPushButton:pressed {
+            background-color: #004488;
+          }
+         </string>
+        </property>
+       </widget>
+      </item>
+
+     </layout>
     </widget>
    </item>
 
