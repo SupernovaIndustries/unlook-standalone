@@ -74,19 +74,32 @@ bool PatternDetector::detectCheckerboard(const cv::Mat& image,
     // Board size for checkerboard is inner corners
     cv::Size boardSize(config_.cols - 1, config_.rows - 1);
 
-    // Find checkerboard corners
+    core::Logger::getInstance().debug("Detecting checkerboard: " +
+        std::to_string(boardSize.width) + "x" + std::to_string(boardSize.height) +
+        " inner corners (" + std::to_string(config_.cols) + "x" + std::to_string(config_.rows) + " pattern)");
+
+    // Find checkerboard corners with multiple attempts for robustness
     bool found = cv::findChessboardCorners(
         gray, boardSize, corners,
         cv::CALIB_CB_ADAPTIVE_THRESH |
-        cv::CALIB_CB_NORMALIZE_IMAGE |
-        cv::CALIB_CB_FAST_CHECK
+        cv::CALIB_CB_NORMALIZE_IMAGE
+        // Note: CALIB_CB_FAST_CHECK removed - can miss valid patterns
     );
 
+    // If not found, try again without normalization
+    if (!found) {
+        core::Logger::getInstance().debug("First attempt failed, trying without normalization...");
+        found = cv::findChessboardCorners(
+            gray, boardSize, corners,
+            cv::CALIB_CB_ADAPTIVE_THRESH
+        );
+    }
+
     if (found) {
-        // Refine corner positions
+        // Refine corner positions with high precision (like MATLAB)
         cv::TermCriteria criteria(
             cv::TermCriteria::EPS + cv::TermCriteria::COUNT,
-            30, 0.1
+            100, 0.001  // More iterations and tighter epsilon for MATLAB-like precision
         );
         cv::cornerSubPix(gray, corners, cv::Size(11, 11),
                         cv::Size(-1, -1), criteria);

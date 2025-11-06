@@ -29,6 +29,8 @@ set(GUI_SOURCES
     dataset_processing_widget.cpp
     options_widget.cpp
     as1170_debug_dialog.cpp
+    board_options_dialog.cpp
+    swipe_gesture_detector.cpp
     widgets/parameter_slider.cpp
     widgets/status_display.cpp
     widgets/touch_button.cpp
@@ -46,6 +48,8 @@ set(GUI_HEADERS
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/dataset_processing_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/options_widget.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/as1170_debug_dialog.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/board_options_dialog.hpp
+    ${CMAKE_SOURCE_DIR}/include/unlook/gui/swipe_gesture_detector.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/parameter_slider.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/status_display.hpp
     ${CMAKE_SOURCE_DIR}/include/unlook/gui/widgets/touch_button.hpp
@@ -59,6 +63,8 @@ set(GUI_UI_FILES
     ui/handheld_scan_widget.ui
     ui/options_widget.ui
     ui/as1170_debug_dialog.ui
+    ui/dataset_capture_widget.ui
+    ui/board_options_dialog.ui
 )
 
 # Resource files

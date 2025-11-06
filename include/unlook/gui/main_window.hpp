@@ -12,6 +12,7 @@
 #include "unlook/camera/camera_system.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
+#include "unlook/gui/swipe_gesture_detector.hpp"
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class UnlookMainWindow; }
@@ -189,6 +190,9 @@ private:
     bool is_fullscreen_;
     bool camera_system_initialized_;
     QTimer* status_update_timer_;
+
+    // Touch gesture navigation
+    std::unique_ptr<SwipeGestureDetector> swipe_detector_;
 };
 
 } // namespace gui

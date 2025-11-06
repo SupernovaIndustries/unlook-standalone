@@ -143,10 +143,17 @@ public:
             vcselEnabled_ = false;
         }
 
-        // Load calibration
+        // Load system default calibration
         calibrationManager_ = std::make_shared<calibration::CalibrationManager>();
-        if (!calibrationManager_->loadCalibration("/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml")) {
-            logger_.warning("Failed to load calibration, using defaults");
+        std::string defaultCalibPath = "/unlook_calib/default.yaml";
+        if (!calibrationManager_->loadCalibration(defaultCalibPath)) {
+            logger_.warning("Failed to load system default calibration from " + defaultCalibPath + ", using fallback");
+            // Try fallback to old location
+            if (!calibrationManager_->loadCalibration("/home/alessandro/unlook-standalone/calibration/calib_boofcv_test3.yaml")) {
+                logger_.error("Failed to load any calibration - scan results will be incorrect!");
+            }
+        } else {
+            logger_.info("Loaded system default calibration: " + defaultCalibPath);
         }
     }
 

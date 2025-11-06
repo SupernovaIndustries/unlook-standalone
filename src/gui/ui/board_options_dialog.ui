@@ -1,0 +1,658 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>BoardOptionsDialog</class>
+ <widget class="QDialog" name="BoardOptionsDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>700</width>
+    <height>550</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Calibration Board Options</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Dialog Style */
+QDialog#BoardOptionsDialog {
+    background-color: #e0e5ec;
+}
+
+QGroupBox {
+    font-weight: bold;
+    color: #0e0e0e;
+    font-size: 14pt;
+    border: 2px solid #c0c6d1;
+    border-radius: 8px;
+    margin-top: 15px;
+    padding-top: 15px;
+    background-color: #f8fafc;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 8px 0 8px;
+}
+
+QLabel {
+    font-size: 12pt;
+    color: #000000;
+}
+
+QComboBox {
+    font-size: 11pt;
+    padding: 8px;
+    border: 2px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: white;
+    color: #000000;
+}
+
+QSpinBox, QDoubleSpinBox {
+    font-size: 12pt;
+    font-weight: bold;
+    border: 2px solid #cbd5e1;
+    border-radius: 4px;
+    background-color: white;
+    color: #000000;
+}
+
+QPushButton {
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 8px;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>15</number>
+   </property>
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+
+   <!-- Title -->
+   <item>
+    <widget class="QLabel" name="title_label">
+     <property name="text">
+      <string>Configure Calibration Board Pattern</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">font-size: 16pt; font-weight: bold; color: #000000;</string>
+     </property>
+    </widget>
+   </item>
+
+   <!-- Configuration Group -->
+   <item>
+    <widget class="QGroupBox" name="config_group">
+     <property name="title">
+      <string>Pattern Configuration</string>
+     </property>
+     <layout class="QGridLayout" name="config_grid_layout">
+      <property name="spacing">
+       <number>10</number>
+      </property>
+
+      <!-- Pattern Type Row -->
+      <item row="0" column="0">
+       <widget class="QLabel" name="pattern_type_label">
+        <property name="text">
+         <string>Pattern Type:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="pattern_prev_button">
+        <property name="text">
+         <string>◀</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 18pt; background-color: #3b82f6; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2" colspan="2">
+       <widget class="QComboBox" name="pattern_type_combo">
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>Checkerboard</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>ChArUco (Recommended)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Circle Grid</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="0" column="4">
+       <widget class="QPushButton" name="pattern_next_button">
+        <property name="text">
+         <string>▶</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 18pt; background-color: #3b82f6; color: white;</string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- ArUco Dictionary Row -->
+      <item row="1" column="0">
+       <widget class="QLabel" name="aruco_dict_label">
+        <property name="text">
+         <string>ArUco Dict:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QPushButton" name="dict_prev_button">
+        <property name="text">
+         <string>◀</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 18pt; background-color: #8b5cf6; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2" colspan="2">
+       <widget class="QComboBox" name="aruco_dict_combo">
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <item>
+         <property name="text">
+          <string>DICT_4X4_50</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_4X4_100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_4X4_250</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_4X4_1000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_5X5_50</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_5X5_100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_5X5_250</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_5X5_1000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_6X6_50</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_6X6_100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_6X6_250</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_6X6_1000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_7X7_50</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_7X7_100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_7X7_250</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_7X7_1000</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>DICT_ARUCO_ORIGINAL</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="1" column="4">
+       <widget class="QPushButton" name="dict_next_button">
+        <property name="text">
+         <string>▶</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 18pt; background-color: #8b5cf6; color: white;</string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- Rows -->
+      <item row="2" column="0">
+       <widget class="QLabel" name="rows_label">
+        <property name="text">
+         <string>Rows:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QPushButton" name="rows_minus_button">
+        <property name="text">
+         <string>-</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #ef4444; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="2" colspan="2">
+       <widget class="QSpinBox" name="rows_spinbox">
+        <property name="minimum">
+         <number>4</number>
+        </property>
+        <property name="maximum">
+         <number>20</number>
+        </property>
+        <property name="value">
+         <number>7</number>
+        </property>
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="buttonSymbols">
+         <enum>QAbstractSpinBox::NoButtons</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="4">
+       <widget class="QPushButton" name="rows_plus_button">
+        <property name="text">
+         <string>+</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #10b981; color: white;</string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- Columns -->
+      <item row="3" column="0">
+       <widget class="QLabel" name="cols_label">
+        <property name="text">
+         <string>Columns:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QPushButton" name="cols_minus_button">
+        <property name="text">
+         <string>-</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #ef4444; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="2" colspan="2">
+       <widget class="QSpinBox" name="cols_spinbox">
+        <property name="minimum">
+         <number>4</number>
+        </property>
+        <property name="maximum">
+         <number>20</number>
+        </property>
+        <property name="value">
+         <number>10</number>
+        </property>
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="buttonSymbols">
+         <enum>QAbstractSpinBox::NoButtons</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="4">
+       <widget class="QPushButton" name="cols_plus_button">
+        <property name="text">
+         <string>+</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #10b981; color: white;</string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- Square Size -->
+      <item row="4" column="0">
+       <widget class="QLabel" name="square_size_label">
+        <property name="text">
+         <string>Square Size:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QPushButton" name="square_minus_button">
+        <property name="text">
+         <string>-</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #ef4444; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="2" colspan="2">
+       <widget class="QDoubleSpinBox" name="square_size_spinbox">
+        <property name="minimum">
+         <double>5.0</double>
+        </property>
+        <property name="maximum">
+         <double>100.0</double>
+        </property>
+        <property name="singleStep">
+         <double>0.5</double>
+        </property>
+        <property name="value">
+         <double>24.0</double>
+        </property>
+        <property name="suffix">
+         <string> mm</string>
+        </property>
+        <property name="decimals">
+         <number>1</number>
+        </property>
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="buttonSymbols">
+         <enum>QAbstractSpinBox::NoButtons</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="4">
+       <widget class="QPushButton" name="square_plus_button">
+        <property name="text">
+         <string>+</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #10b981; color: white;</string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- ArUco Size -->
+      <item row="5" column="0">
+       <widget class="QLabel" name="aruco_size_label">
+        <property name="text">
+         <string>ArUco Size:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QPushButton" name="aruco_minus_button">
+        <property name="text">
+         <string>-</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #ef4444; color: white;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="2" colspan="2">
+       <widget class="QDoubleSpinBox" name="aruco_size_spinbox">
+        <property name="minimum">
+         <double>5.0</double>
+        </property>
+        <property name="maximum">
+         <double>50.0</double>
+        </property>
+        <property name="singleStep">
+         <double>0.5</double>
+        </property>
+        <property name="value">
+         <double>17.0</double>
+        </property>
+        <property name="suffix">
+         <string> mm</string>
+        </property>
+        <property name="decimals">
+         <number>1</number>
+        </property>
+        <property name="minimumHeight">
+         <number>45</number>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="buttonSymbols">
+         <enum>QAbstractSpinBox::NoButtons</enum>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="4">
+       <widget class="QPushButton" name="aruco_plus_button">
+        <property name="text">
+         <string>+</string>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>45</width>
+          <height>45</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 20pt; background-color: #10b981; color: white;</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+
+   <!-- Spacer -->
+   <item>
+    <spacer name="vertical_spacer">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+
+   <!-- Close Button -->
+   <item>
+    <layout class="QHBoxLayout" name="button_layout">
+     <item>
+      <spacer name="horizontal_spacer_left">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="close_button">
+       <property name="text">
+        <string>APPLY &amp; CLOSE</string>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>200</width>
+         <height>55</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-size: 14pt; background-color: #10b981; color: white;</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontal_spacer_right">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

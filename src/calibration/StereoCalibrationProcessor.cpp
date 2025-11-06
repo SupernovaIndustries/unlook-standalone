@@ -193,11 +193,14 @@ StereoCalibrationProcessor::~StereoCalibrationProcessor() {
 CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::string& datasetPath) {
     auto startTime = std::chrono::steady_clock::now();
 
+    reportProgress("Starting calibration...");
+
     CalibrationResult result;
     result.datasetPath = datasetPath;
     result.calibrationDate = getCurrentTimestamp();
 
     // 1. Load dataset info JSON
+    reportProgress("Step 1/9: Loading dataset info...");
     core::Logger::getInstance().info("Loading dataset from: " + datasetPath);
     auto datasetInfo = loadDatasetInfo(datasetPath);
 
@@ -205,10 +208,35 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
 
     // Parse pattern configuration
     auto& patternConfig = datasetInfo["pattern_config"];
-    result.patternConfig.type = parsePatternType(patternConfig["type"].get<std::string>());
+    std::string patternTypeStr = patternConfig["type"].get<std::string>();
+
+    core::Logger::getInstance().info("Pattern type from JSON: '" + patternTypeStr + "'");
+    result.patternConfig.type = parsePatternType(patternTypeStr);
+
+    // Log the parsed type
+    std::string parsedTypeName;
+    switch (result.patternConfig.type) {
+        case PatternType::CHECKERBOARD:
+            parsedTypeName = "CHECKERBOARD";
+            break;
+        case PatternType::CHARUCO:
+            parsedTypeName = "CHARUCO";
+            break;
+        case PatternType::CIRCLE_GRID:
+            parsedTypeName = "CIRCLE_GRID";
+            break;
+        default:
+            parsedTypeName = "UNKNOWN";
+    }
+    core::Logger::getInstance().info("Parsed pattern type: " + parsedTypeName);
+
     result.patternConfig.rows = patternConfig["rows"].get<int>();
     result.patternConfig.cols = patternConfig["cols"].get<int>();
     result.patternConfig.squareSizeMM = patternConfig["square_size_mm"].get<float>();
+
+    core::Logger::getInstance().info("Pattern config: " + std::to_string(result.patternConfig.rows) + "x" +
+                                    std::to_string(result.patternConfig.cols) + ", square=" +
+                                    std::to_string(result.patternConfig.squareSizeMM) + "mm");
 
     if (patternConfig.contains("aruco_marker_size_mm")) {
         result.patternConfig.arucoMarkerSizeMM = patternConfig["aruco_marker_size_mm"].get<float>();
@@ -219,6 +247,7 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     }
 
     // 2. Load all image pairs
+    reportProgress("Step 2/9: Loading image pairs...");
     core::Logger::getInstance().info("Loading image pairs...");
     std::vector<cv::Mat> leftImages, rightImages;
     if (!loadDatasetImages(datasetPath, leftImages, rightImages)) {
@@ -232,11 +261,14 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
         result.imageSize = leftImages[0].size();
     }
 
+    reportProgress("Loaded " + std::to_string(result.numImagePairs) + " image pairs (" +
+                  std::to_string(result.imageSize.width) + "x" + std::to_string(result.imageSize.height) + ")");
     core::Logger::getInstance().info("Loaded " + std::to_string(result.numImagePairs) +
                                     " image pairs at " + std::to_string(result.imageSize.width) +
                                     "x" + std::to_string(result.imageSize.height));
 
     // 3. Detect patterns in all images
+    reportProgress("Step 3/9: Detecting patterns (this may take a few minutes)...");
     core::Logger::getInstance().info("Detecting calibration patterns...");
     std::vector<std::vector<cv::Point2f>> leftImagePoints;
     std::vector<std::vector<cv::Point2f>> rightImagePoints;
@@ -244,37 +276,145 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
 
     PatternDetector detector(result.patternConfig);
     int validPairs = 0;
+    int skippedBlurLeft = 0, skippedBlurRight = 0;
+    int skippedCornerMismatch = 0, skippedDetectionFailed = 0;
+
+    // Expected corner count for perfect detection (ChArUco 7x10 = 6x9 inner corners = 54)
+    int expectedCorners = (result.patternConfig.rows - 1) * (result.patternConfig.cols - 1);
 
     for (size_t i = 0; i < leftImages.size(); ++i) {
+        // Report progress every 5 images
+        if (i % 5 == 0) {
+            reportProgress("Analyzing image " + std::to_string(i+1) + "/" + std::to_string(leftImages.size()) +
+                          " (valid: " + std::to_string(validPairs) + ")");
+        }
         std::vector<cv::Point2f> cornersLeft, cornersRight;
         cv::Mat overlayLeft, overlayRight;
 
+        // Convert to grayscale for blur detection
+        cv::Mat grayLeft, grayRight;
+        cv::cvtColor(leftImages[i], grayLeft, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(rightImages[i], grayRight, cv::COLOR_BGR2GRAY);
+
+        // Blur detection using Laplacian variance
+        cv::Mat laplacianLeft, laplacianRight;
+        cv::Laplacian(grayLeft, laplacianLeft, CV_64F);
+        cv::Laplacian(grayRight, laplacianRight, CV_64F);
+
+        cv::Scalar meanLeft, stddevLeft, meanRight, stddevRight;
+        cv::meanStdDev(laplacianLeft, meanLeft, stddevLeft);
+        cv::meanStdDev(laplacianRight, laplacianRight, stddevRight);
+
+        double blurLeft = stddevLeft[0] * stddevLeft[0];  // Variance
+        double blurRight = stddevRight[0] * stddevRight[0];
+
+        // Blur threshold (lower = more blurry)
+        // ADJUSTED for HD images: 100.0 was TOO HIGH, rejecting all images
+        // Typical Laplacian variance for HD: 20-100 (good), 10-20 (acceptable), <10 (blurry)
+        const double BLUR_THRESHOLD = 15.0;
+
+        // Check for blur
+        bool leftBlurry = (blurLeft < BLUR_THRESHOLD);
+        bool rightBlurry = (blurRight < BLUR_THRESHOLD);
+
+        if (leftBlurry || rightBlurry) {
+            std::string reason = "Blurry image - ";
+            if (leftBlurry && rightBlurry) {
+                reason += "BOTH cameras (L:" + std::to_string(int(blurLeft)) +
+                         " R:" + std::to_string(int(blurRight)) + ")";
+                skippedBlurLeft++;
+                skippedBlurRight++;
+            } else if (leftBlurry) {
+                reason += "LEFT camera (" + std::to_string(int(blurLeft)) + ")";
+                skippedBlurLeft++;
+            } else {
+                reason += "RIGHT camera (" + std::to_string(int(blurRight)) + ")";
+                skippedBlurRight++;
+            }
+            core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
+            result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
+            continue;
+        }
+
+        // Pattern detection
         bool leftDetected = detector.detect(leftImages[i], cornersLeft, overlayLeft);
         bool rightDetected = detector.detect(rightImages[i], cornersRight, overlayRight);
 
-        if (leftDetected && rightDetected &&
-            cornersLeft.size() == cornersRight.size() &&
-            cornersLeft.size() >= 4) {
+        // Quality validation
+        if (leftDetected && rightDetected) {
+            // Check corner count match
+            if (cornersLeft.size() != cornersRight.size()) {
+                std::string reason = "Corner count mismatch (L:" +
+                    std::to_string(cornersLeft.size()) + " vs R:" +
+                    std::to_string(cornersRight.size()) +
+                    " - expected: " + std::to_string(expectedCorners) + ")";
+                core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
+                result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
+                skippedCornerMismatch++;
+                continue;
+            }
 
+            // Check minimum corners
+            if (cornersLeft.size() < 4) {
+                std::string reason = "Too few corners (" + std::to_string(cornersLeft.size()) + ")";
+                core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
+                result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
+                skippedDetectionFailed++;
+                continue;
+            }
+
+            // Check if significantly fewer corners than expected (potential focus/angle issue)
+            double cornerRatio = (double)cornersLeft.size() / expectedCorners;
+            if (cornerRatio < 0.8) {  // Less than 80% of expected corners
+                std::string reason = "Incomplete pattern (" +
+                    std::to_string(cornersLeft.size()) + "/" +
+                    std::to_string(expectedCorners) + " corners = " +
+                    std::to_string(int(cornerRatio * 100)) + "%) - check focus/angle";
+                core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
+                result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
+                skippedDetectionFailed++;
+                continue;
+            }
+
+            // All checks passed - add to calibration set
             leftImagePoints.push_back(cornersLeft);
             rightImagePoints.push_back(cornersRight);
             objectPoints.push_back(generateObjectPoints(result.patternConfig));
 
             validPairs++;
-            core::Logger::getInstance().debug("Pair " + std::to_string(i) +
-                                            ": Pattern detected (" +
-                                            std::to_string(cornersLeft.size()) + " corners)");
-        } else {
-            std::string reason = "Unknown";
-            if (!leftDetected) reason = "Left pattern not detected";
-            else if (!rightDetected) reason = "Right pattern not detected";
-            else if (cornersLeft.size() != cornersRight.size()) reason = "Corner count mismatch";
-            else if (cornersLeft.size() < 4) reason = "Too few corners";
 
-            core::Logger::getInstance().warning("Pair " + std::to_string(i) + ": " + reason);
+            std::string qualityInfo = "VALID Pair " + std::to_string(i) +
+                ": " + std::to_string(cornersLeft.size()) + " corners " +
+                "(" + std::to_string(int(cornerRatio * 100)) + "% complete) " +
+                "blur(L:" + std::to_string(int(blurLeft)) + " R:" + std::to_string(int(blurRight)) + ")";
+            core::Logger::getInstance().debug(qualityInfo);
+
+        } else {
+            std::string reason = "Pattern detection failed - ";
+            if (!leftDetected && !rightDetected) {
+                reason += "BOTH cameras";
+            } else if (!leftDetected) {
+                reason += "LEFT camera";
+            } else {
+                reason += "RIGHT camera";
+            }
+            core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
             result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
+            skippedDetectionFailed++;
         }
     }
+
+    // Summary logging
+    reportProgress("Pattern detection complete: " + std::to_string(validPairs) + "/" +
+                  std::to_string(leftImages.size()) + " pairs valid");
+    core::Logger::getInstance().info("========== QUALITY FILTER SUMMARY ==========");
+    core::Logger::getInstance().info("Total image pairs: " + std::to_string(leftImages.size()));
+    core::Logger::getInstance().info("Valid pairs (PASSED): " + std::to_string(validPairs));
+    core::Logger::getInstance().info("Skipped - Blur LEFT: " + std::to_string(skippedBlurLeft));
+    core::Logger::getInstance().info("Skipped - Blur RIGHT: " + std::to_string(skippedBlurRight));
+    core::Logger::getInstance().info("Skipped - Corner mismatch: " + std::to_string(skippedCornerMismatch));
+    core::Logger::getInstance().info("Skipped - Detection failed: " + std::to_string(skippedDetectionFailed));
+    core::Logger::getInstance().info("===========================================");
 
     result.validImagePairs = validPairs;
 
@@ -293,33 +433,43 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
                                     "/" + std::to_string(result.numImagePairs));
 
     // 4. Calibrate left camera intrinsics
+    reportProgress("Step 4/9: Calibrating LEFT camera intrinsics...");
     core::Logger::getInstance().info("Calibrating left camera intrinsics...");
-    if (!calibrateIntrinsics(leftImagePoints, objectPoints, result.imageSize,
-                            result.cameraMatrixLeft, result.distCoeffsLeft)) {
-        result.errors.push_back("Left camera intrinsic calibration failed");
+    bool leftCalibSuccess = calibrateIntrinsics(leftImagePoints, objectPoints, result.imageSize,
+                                                result.cameraMatrixLeft, result.distCoeffsLeft);
+    if (!leftCalibSuccess) {
+        result.warnings.push_back("Left camera intrinsic calibration RMS is high - results may be less accurate");
         result.qualityPassed = false;
-        return result;
+        core::Logger::getInstance().warning("Left camera calibration RMS > 5.0 px - quality may be poor");
     }
+    reportProgress("LEFT camera calibrated successfully");
 
     // 5. Calibrate right camera intrinsics
+    reportProgress("Step 5/9: Calibrating RIGHT camera intrinsics...");
     core::Logger::getInstance().info("Calibrating right camera intrinsics...");
-    if (!calibrateIntrinsics(rightImagePoints, objectPoints, result.imageSize,
-                            result.cameraMatrixRight, result.distCoeffsRight)) {
-        result.errors.push_back("Right camera intrinsic calibration failed");
+    bool rightCalibSuccess = calibrateIntrinsics(rightImagePoints, objectPoints, result.imageSize,
+                                                 result.cameraMatrixRight, result.distCoeffsRight);
+    if (!rightCalibSuccess) {
+        result.warnings.push_back("Right camera intrinsic calibration RMS is high - results may be less accurate");
         result.qualityPassed = false;
-        return result;
+        core::Logger::getInstance().warning("Right camera calibration RMS > 5.0 px - quality may be poor");
     }
+    reportProgress("RIGHT camera calibrated successfully");
 
     // 6. Stereo calibration
+    reportProgress("Step 6/9: Performing STEREO calibration (computing baseline)...");
     core::Logger::getInstance().info("Performing stereo calibration...");
-    if (!calibrateStereo(leftImagePoints, rightImagePoints, objectPoints,
-                        result.imageSize, result)) {
-        result.errors.push_back("Stereo calibration failed");
+    bool stereoCalibSuccess = calibrateStereo(leftImagePoints, rightImagePoints, objectPoints,
+                                              result.imageSize, result);
+    if (!stereoCalibSuccess) {
+        result.warnings.push_back("Stereo calibration RMS is high - results may be less accurate");
         result.qualityPassed = false;
-        return result;
+        core::Logger::getInstance().warning("Stereo calibration RMS > 2.0 px - quality may be poor");
     }
+    reportProgress("Stereo calibration complete");
 
     // 7. Compute rectification
+    reportProgress("Step 7/9: Computing rectification transforms...");
     core::Logger::getInstance().info("Computing rectification transforms...");
     cv::stereoRectify(
         result.cameraMatrixLeft, result.distCoeffsLeft,
@@ -328,8 +478,10 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
         result.R1, result.R2, result.P1, result.P2, result.Q,
         cv::CALIB_ZERO_DISPARITY, -1, result.imageSize
     );
+    reportProgress("Rectification transforms computed");
 
     // 8. Compute rectification maps
+    reportProgress("Step 8/9: Computing rectification maps...");
     core::Logger::getInstance().info("Computing rectification maps...");
     cv::initUndistortRectifyMap(
         result.cameraMatrixLeft, result.distCoeffsLeft,
@@ -341,14 +493,36 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
         result.R2, result.P2, result.imageSize, CV_32FC1,
         result.map1Right, result.map2Right
     );
+    reportProgress("Rectification maps computed");
 
     // 9. Compute baseline
-    result.baselineMM = std::abs(result.T.at<double>(0, 0));
+    core::Logger::getInstance().debug("Computing baseline from T vector...");
+    core::Logger::getInstance().debug("T dimensions: " +
+        std::to_string(result.T.rows) + "x" + std::to_string(result.T.cols));
+
+    if (result.T.empty()) {
+        core::Logger::getInstance().error("ERROR: Translation vector T is EMPTY! Cannot compute baseline!");
+        result.errors.push_back("Translation vector T is empty - baseline cannot be computed");
+        result.baselineMM = 0.0;
+    } else {
+        double tx = result.T.at<double>(0, 0);
+        double ty = result.T.at<double>(1, 0);
+        double tz = result.T.at<double>(2, 0);
+
+        core::Logger::getInstance().debug("T = [" + std::to_string(tx) + ", " +
+            std::to_string(ty) + ", " + std::to_string(tz) + "]");
+
+        result.baselineMM = std::abs(tx);
+        core::Logger::getInstance().info("Computed baseline from T(X): " + std::to_string(result.baselineMM) + " mm");
+    }
+
     result.baselineExpectedMM = 70.0;  // Expected baseline for Unlook scanner
     result.baselineErrorMM = std::abs(result.baselineMM - result.baselineExpectedMM);
     result.baselineErrorPercent = (result.baselineErrorMM / result.baselineExpectedMM) * 100.0;
+    reportProgress("Baseline: " + std::to_string(result.baselineMM) + "mm (expected: 70mm)");
 
     // 10. Validate calibration and compute quality metrics
+    reportProgress("Step 9/9: Validating calibration quality...");
     core::Logger::getInstance().info("Validating calibration quality...");
     validateCalibration(result);
 
@@ -365,6 +539,13 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     auto endTime = std::chrono::steady_clock::now();
     result.calibrationDurationSeconds =
         std::chrono::duration<double>(endTime - startTime).count();
+
+    // Final report
+    std::string qualityStatus = result.qualityPassed ? "✓ PASSED" : "✗ FAILED";
+    reportProgress("Calibration complete in " + std::to_string(int(result.calibrationDurationSeconds)) +
+                  "s - Quality: " + qualityStatus);
+    reportProgress("RMS: " + std::to_string(result.rmsReprojectionError) + " px | Baseline: " +
+                  std::to_string(result.baselineMM) + "mm");
 
     core::Logger::getInstance().info("Calibration completed in " +
                                     std::to_string(result.calibrationDurationSeconds) + " seconds");
@@ -446,6 +627,9 @@ bool StereoCalibrationProcessor::calibrateIntrinsics(
     cv::Mat& cameraMatrix,
     cv::Mat& distCoeffs) {
 
+    core::Logger::getInstance().debug("Starting intrinsic calibration with " +
+                                     std::to_string(imagePoints.size()) + " image views");
+
     std::vector<double> perImageErrors;  // Local variable for now
 
     // Initialize camera matrix with reasonable guess
@@ -459,16 +643,22 @@ bool StereoCalibrationProcessor::calibrateIntrinsics(
 
     std::vector<cv::Mat> rvecs, tvecs;
 
-    // Calibrate with recommended flags
-    int flags = cv::CALIB_FIX_ASPECT_RATIO |
-                cv::CALIB_FIX_PRINCIPAL_POINT |
-                cv::CALIB_ZERO_TANGENT_DIST;
+    // Calibrate with minimal constraints (like MATLAB default)
+    // REMOVED excessive flags that were causing 10x focal length error:
+    // - CALIB_FIX_PRINCIPAL_POINT: Let OpenCV optimize cx,cy
+    // - CALIB_FIX_ASPECT_RATIO: Allow fx != fy (real cameras have slight difference)
+    // - CALIB_ZERO_TANGENT_DIST: Real lenses have tangential distortion
+    int flags = 0;  // Use OpenCV defaults
 
+    core::Logger::getInstance().debug("Running cv::calibrateCamera with " +
+                                     std::to_string(imagePoints.size()) + " views (this may take 1-2 minutes)...");
     double rms = cv::calibrateCamera(
         objectPoints, imagePoints, imageSize,
         cameraMatrix, distCoeffs,
-        rvecs, tvecs, flags
+        rvecs, tvecs, flags,
+        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-4)
     );
+    core::Logger::getInstance().debug("cv::calibrateCamera completed with RMS: " + std::to_string(rms));
 
     // Compute per-image errors
     perImageErrors.clear();
@@ -498,17 +688,38 @@ bool StereoCalibrationProcessor::calibrateStereo(
     const cv::Size& imageSize,
     CalibrationResult& result) {
 
+    core::Logger::getInstance().debug("Starting stereo calibration with " +
+                                     std::to_string(objectPoints.size()) + " views");
+
     // Stereo calibration with fixed intrinsics
     int flags = cv::CALIB_FIX_INTRINSIC;
 
+    core::Logger::getInstance().debug("Running cv::stereoCalibrate with " +
+                                     std::to_string(objectPoints.size()) + " views (this may take 2-3 minutes)...");
+
+    // Use reduced iterations to avoid infinite loops: 30 iterations max, or epsilon convergence
     double rms = cv::stereoCalibrate(
         objectPoints, leftPoints, rightPoints,
         result.cameraMatrixLeft, result.distCoeffsLeft,
         result.cameraMatrixRight, result.distCoeffsRight,
         imageSize, result.R, result.T, result.E, result.F,
         flags,
-        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, 1e-5)
+        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-4)
     );
+    core::Logger::getInstance().debug("cv::stereoCalibrate completed with RMS: " + std::to_string(rms));
+
+    // DEBUG: Check translation vector T
+    core::Logger::getInstance().debug("Translation vector T dimensions: " +
+        std::to_string(result.T.rows) + "x" + std::to_string(result.T.cols));
+    if (!result.T.empty()) {
+        core::Logger::getInstance().debug("T values: [" +
+            std::to_string(result.T.at<double>(0, 0)) + ", " +
+            std::to_string(result.T.at<double>(1, 0)) + ", " +
+            std::to_string(result.T.at<double>(2, 0)) + "]");
+        core::Logger::getInstance().debug("T(X) = " + std::to_string(result.T.at<double>(0, 0)) + " mm (baseline)");
+    } else {
+        core::Logger::getInstance().error("Translation vector T is EMPTY!");
+    }
 
     result.rmsReprojectionError = rms;
 
@@ -770,6 +981,10 @@ void StereoCalibrationProcessor::reportProgress(const std::string& message) {
         progressCallback_(message);
     }
     core::Logger::getInstance().info(message);
+
+    // Force flush to ensure log is written immediately
+    std::cout << "[PROGRESS] " << message << std::endl;
+    std::cout.flush();
 }
 
 

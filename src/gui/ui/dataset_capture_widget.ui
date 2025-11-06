@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>DatasetCaptureWidget</class>
+ <widget class="QWidget" name="DatasetCaptureWidget">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1024</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Dataset Capture - Stereo Calibration</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">/* Neomorphism Background */
+QWidget#DatasetCaptureWidget {
+    background-color: #e0e5ec;
+}
+
+QLabel {
+    color: #0e0e0e;
+}
+
+QPushButton {
+    font-weight: bold;
+    border-radius: 8px;
+    padding: 8px;
+}
+
+QProgressBar {
+    border: 2px solid #4ade80;
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+    background-color: #f1f5f9;
+    color: #1e293b;
+}
+
+QProgressBar::chunk {
+    background-color: #22c55e;
+    border-radius: 3px;
+}</string>
+  </property>
+  <layout class="QVBoxLayout" name="main_layout">
+   <property name="spacing">
+    <number>8</number>
+   </property>
+   <property name="leftMargin">
+    <number>8</number>
+   </property>
+   <property name="topMargin">
+    <number>8</number>
+   </property>
+   <property name="rightMargin">
+    <number>8</number>
+   </property>
+   <property name="bottomMargin">
+    <number>8</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="preview_layout">
+     <property name="spacing">
+      <number>8</number>
+     </property>
+     <item>
+      <layout class="QVBoxLayout" name="left_camera_layout">
+       <property name="spacing">
+        <number>5</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="left_camera_label">
+         <property name="styleSheet">
+          <string notr="true">font-weight: bold; font-size: 16pt; color: #0e0e0e;</string>
+         </property>
+         <property name="text">
+          <string>Left Camera</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="left_preview">
+         <property name="minimumSize">
+          <size>
+           <width>490</width>
+           <height>360</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border: 3px solid #bebebe; background-color: #000000;</string>
+         </property>
+         <property name="text">
+          <string>No Video</string>
+         </property>
+         <property name="scaledContents">
+          <bool>true</bool>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="pattern_overlay_left">
+         <property name="styleSheet">
+          <string notr="true">font-size: 12pt; color: #FFA500; font-weight: bold;</string>
+         </property>
+         <property name="text">
+          <string>Move checkerboard into view</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="right_camera_layout">
+       <property name="spacing">
+        <number>5</number>
+       </property>
+       <item>
+        <widget class="QLabel" name="right_camera_label">
+         <property name="styleSheet">
+          <string notr="true">font-weight: bold; font-size: 16pt; color: #0e0e0e;</string>
+         </property>
+         <property name="text">
+          <string>Right Camera</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="right_preview">
+         <property name="minimumSize">
+          <size>
+           <width>490</width>
+           <height>360</height>
+          </size>
+         </property>
+         <property name="styleSheet">
+          <string notr="true">border: 3px solid #bebebe; background-color: #000000;</string>
+         </property>
+         <property name="text">
+          <string>No Video</string>
+         </property>
+         <property name="scaledContents">
+          <bool>true</bool>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="pattern_overlay_right">
+         <property name="styleSheet">
+          <string notr="true">font-size: 12pt; color: #FFA500; font-weight: bold;</string>
+         </property>
+         <property name="text">
+          <string>Move checkerboard into view</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="capture_controls_layout">
+     <property name="spacing">
+      <number>10</number>
+     </property>
+     <item>
+      <widget class="QPushButton" name="board_options_button">
+       <property name="minimumSize">
+        <size>
+         <width>140</width>
+         <height>50</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>140</width>
+         <height>50</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-size: 11pt; background-color: #8b5cf6; color: white; font-weight: bold;</string>
+       </property>
+       <property name="text">
+        <string>⚙️ Board Options</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="start_capture_button">
+       <property name="minimumSize">
+        <size>
+         <width>320</width>
+         <height>50</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-size: 13pt; background-color: #10b981; color: white; font-weight: bold;</string>
+       </property>
+       <property name="text">
+        <string>▶ START CAPTURE (50 pairs)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QProgressBar" name="capture_progress">
+       <property name="maximum">
+        <number>50</number>
+       </property>
+       <property name="value">
+        <number>0</number>
+       </property>
+       <property name="format">
+        <string>%v / %m captured</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="status_layout">
+     <item>
+      <widget class="QLabel" name="detection_status_label">
+       <property name="minimumSize">
+        <size>
+         <width>0</width>
+         <height>30</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-size: 12pt; color: #FFA500; font-weight: bold;</string>
+       </property>
+       <property name="text">
+        <string>Pattern detection: Waiting...</string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="countdown_label">
+       <property name="minimumSize">
+        <size>
+         <width>200</width>
+         <height>30</height>
+        </size>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">font-size: 18pt; color: #f97316; font-weight: bold;</string>
+       </property>
+       <property name="text">
+        <string></string>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignCenter</set>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

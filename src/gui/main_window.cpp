@@ -71,7 +71,24 @@ UnlookMainWindow::UnlookMainWindow(QWidget* parent)
     
     // Setup navigation
     setupNavigation();
-    
+
+    // Initialize swipe gesture detector for touch-friendly navigation
+    swipe_detector_ = std::make_unique<SwipeGestureDetector>(this);
+    swipe_detector_->setEnabled(true);
+
+    // Configure swipe parameters for easy use
+    swipe_detector_->setEdgeZoneWidth(50);         // Wider edge zone (50px instead of 30px)
+    swipe_detector_->setMinimumSwipeDistance(120); // 120px minimum swipe distance
+    swipe_detector_->setMaxVerticalDeviation(80);  // More tolerant vertical deviation (80px instead of 50px)
+
+    swipe_detector_->setSwipeBackCallback([this]() {
+        // Navigate back to main menu when swipe right detected
+        if (current_screen_ != Screen::MAIN_MENU) {
+            showMainMenu();
+        }
+    });
+    qDebug() << "Swipe gesture detector initialized: edge=50px, min_distance=120px, tolerance=80px";
+
     // ULTIMATE BRUTAL FIX: Set central widget explicitly and force layout
     setCentralWidget(ui->central_widget);  // FORCE QMainWindow to use our central widget!
     

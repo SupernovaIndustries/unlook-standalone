@@ -6,7 +6,10 @@
 #include <QFileDialog>
 #include <QDir>
 #include <QDateTime>
+#include <QThread>
+#include <QMetaType>
 #include <fstream>
+#include <iostream>
 
 namespace unlook {
 namespace gui {
@@ -15,6 +18,9 @@ DatasetProcessingWidget::DatasetProcessingWidget(QWidget* parent)
     : QWidget(parent)
     , processingThread_(nullptr)
 {
+    // Register CalibrationResult for Qt signal/slot across threads
+    qRegisterMetaType<calibration::CalibrationResult>("calibration::CalibrationResult");
+
     processor_ = std::make_unique<calibration::StereoCalibrationProcessor>();
     setupUi();
 }
@@ -174,6 +180,34 @@ void DatasetProcessingWidget::onProcessingComplete(const calibration::Calibratio
     processingProgress_->setVisible(false);
     processButton_->setEnabled(true);
     updateLog("Calibration complete!");
+
+    // Save calibration to YAML file
+    QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    QString calibPath = QString("/unlook_calib/calib-%1.yaml").arg(timestamp);
+
+    updateLog("Saving calibration to: " + calibPath);
+    bool saved = processor_->saveCalibration(result, calibPath.toStdString());
+
+    if (saved) {
+        updateLog("✓ Calibration saved successfully!");
+
+        // If calibration passed all quality checks, set as system default
+        if (result.qualityPassed) {
+            updateLog("Quality checks PASSED - setting as system default...");
+            bool setDefault = processor_->setAsSystemDefault(calibPath.toStdString());
+            if (setDefault) {
+                updateLog("✓ Set as system default calibration: /unlook_calib/default.yaml");
+            } else {
+                updateLog("⚠ Warning: Could not set as system default");
+            }
+        } else {
+            updateLog("⚠ Quality checks FAILED - NOT setting as system default");
+            updateLog("  Fix issues and recalibrate to get a system-ready calibration");
+        }
+    } else {
+        updateLog("✗ ERROR: Failed to save calibration file!");
+    }
+
     displayResults(result);
 }
 
@@ -217,8 +251,7 @@ void DatasetProcessingWidget::displayResults(const calibration::CalibrationResul
 
     updateLog(QString("Final RMS Error: %1 px").arg(result.rmsReprojectionError, 0, 'f', 3));
     updateLog(QString("Baseline: %1 mm").arg(result.baselineMM, 0, 'f', 2));
-    updateLog(QString("Calibration saved to: /unlook_calib/calib-%1.yaml")
-             .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")));
+    updateLog(QString("Epipolar Error: %1 px").arg(result.meanEpipolarError, 0, 'f', 3));
 }
 
 void DatasetProcessingWidget::updateLog(const QString& message) {
@@ -233,11 +266,42 @@ void DatasetProcessingWidget::clearResults() {
 // CalibrationWorker implementation
 void CalibrationWorker::process() {
     try {
+        std::cout << "==========================================" << std::endl;
+        std::cout << "WORKER STARTED - Thread ID: " << QThread::currentThreadId() << std::endl;
+        std::cout << "Dataset path: " << datasetPath_.toStdString() << std::endl;
+        std::cout << "Processor ptr: " << (void*)processor_ << std::endl;
+        std::cout << "==========================================" << std::endl;
+        std::cout.flush();
+
+        // Setup progress callback to emit messages to GUI
+        processor_->setProgressCallback([this](const std::string& message) {
+            std::cout << "[CALLBACK] " << message << std::endl;
+            std::cout.flush();
+            emit progressMessage(QString::fromStdString(message));
+        });
+
+        std::cout << "Callback set, emitting start message..." << std::endl;
+        std::cout.flush();
+
         emit progressMessage("Starting calibration...");
+
+        std::cout << "Calling calibrateFromDataset()..." << std::endl;
+        std::cout.flush();
+
         auto result = processor_->calibrateFromDataset(datasetPath_.toStdString());
+
+        std::cout << "calibrateFromDataset() returned!" << std::endl;
+        std::cout.flush();
+
         emit finished(result);
     } catch (const std::exception& e) {
+        std::cout << "EXCEPTION: " << e.what() << std::endl;
+        std::cout.flush();
         emit error(QString("Calibration failed: ") + e.what());
+    } catch (...) {
+        std::cout << "UNKNOWN EXCEPTION!" << std::endl;
+        std::cout.flush();
+        emit error("Unknown error during calibration");
     }
 }
 

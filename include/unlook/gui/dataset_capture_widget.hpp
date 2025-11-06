@@ -14,6 +14,10 @@
 #include "unlook/calibration/PatternDetector.hpp"
 #include "unlook/core/types.hpp"
 
+QT_BEGIN_NAMESPACE
+namespace Ui { class DatasetCaptureWidget; }
+QT_END_NAMESPACE
+
 namespace unlook {
 
 // Forward declarations
@@ -46,10 +50,13 @@ signals:
 private slots:
     void onStartCapture();
     void onCaptureFrame();
-    void onPatternTypeChanged(int index);
+    void onCountdownTick();
+    void onBoardOptionsClicked();
+    void onBoardConfigChanged();
 
 private:
     void setupUi();
+    void setupConnections();
     void startPreviewCapture();
     void stopPreviewCapture();
     void updatePreview(const core::StereoFramePair& frame_pair);
@@ -57,24 +64,21 @@ private:
     void saveDatasetInfo();
     void updatePatternDetector();
 
-    // Preview
+    // UI from .ui file
+    Ui::DatasetCaptureWidget* ui;
+
+    // Preview (pointers to widgets in ui)
     QLabel* leftPreview_;
     QLabel* rightPreview_;
     QLabel* patternOverlayLeft_;
     QLabel* patternOverlayRight_;
 
-    // Pattern configuration controls
-    QComboBox* patternTypeCombo_;
-    QSpinBox* rowsSpinBox_;
-    QSpinBox* colsSpinBox_;
-    QDoubleSpinBox* squareSizeSpinBox_;
-    QDoubleSpinBox* arucoSizeSpinBox_;
-
-    // Capture controls
+    // Capture controls (pointers to widgets in ui)
+    QPushButton* boardOptionsButton_;
     QPushButton* startCaptureButton_;
     QProgressBar* captureProgress_;
-    QLabel* statusLabel_;
     QLabel* detectionStatusLabel_;
+    QLabel* countdownLabel_;
 
     // Capture state
     bool isCapturing_;
@@ -82,6 +86,8 @@ private:
     int captureCount_;
     int targetCaptures_;
     QTimer* captureTimer_;
+    QTimer* countdownTimer_;
+    int countdownValue_;
 
     // Camera and LED
     std::shared_ptr<camera::CameraSystem> cameraSystem_;
@@ -94,6 +100,7 @@ private:
     // Pattern detector
     std::unique_ptr<calibration::PatternDetector> patternDetector_;
     std::mutex patternDetectorMutex_;  // Thread safety for pattern detector access
+    calibration::PatternConfig currentPatternConfig_;  // Current pattern configuration (for board options dialog)
 
     // Dataset storage
     QString currentDatasetPath_;

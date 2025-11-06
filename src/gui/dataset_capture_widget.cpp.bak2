@@ -1,5 +1,4 @@
 #include "unlook/gui/dataset_capture_widget.hpp"
-#include "unlook/gui/board_options_dialog.hpp"
 #include "ui_dataset_capture_widget.h"
 #include "unlook/camera/CameraSystem.hpp"
 #include "unlook/hardware/AS1170Controller.hpp"
@@ -39,29 +38,18 @@ DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::CameraSystem>
     // Setup signal/slot connections
     setupConnections();
 
-    // Initialize default pattern config (ChArUco 7x10, 24mm squares, 17mm ArUco)
-    currentPatternConfig_.type = calibration::PatternType::CHARUCO;
-    currentPatternConfig_.rows = 7;
-    currentPatternConfig_.cols = 10;
-    currentPatternConfig_.squareSizeMM = 24.0f;
-    currentPatternConfig_.arucoMarkerSizeMM = 17.0f;
-    currentPatternConfig_.arucoDict = cv::aruco::DICT_4X4_250;
-
     // Initialize pattern detector with default config
-    patternDetector_ = std::make_unique<calibration::PatternDetector>(currentPatternConfig_);
+    calibration::PatternConfig defaultConfig;
+    patternDetector_ = std::make_unique<calibration::PatternDetector>(defaultConfig);
 
     // Initialize capture timer (not started yet)
     captureTimer_ = new QTimer(this);
-    captureTimer_->setSingleShot(true);
+    captureTimer_->setSingleShot(false);
     captureTimer_->setInterval(5000);  // 5 seconds between captures
     connect(captureTimer_, &QTimer::timeout, this, &DatasetCaptureWidget::onCaptureFrame);
 
-    // Initialize countdown timer (1 second interval)
-    countdownTimer_ = new QTimer(this);
-    countdownTimer_->setSingleShot(false);
-    countdownTimer_->setInterval(1000);  // 1 second ticks
-    connect(countdownTimer_, &QTimer::timeout, this, &DatasetCaptureWidget::onCountdownTick);
-    countdownValue_ = 0;
+    // Set ChArUco as default
+    patternTypeCombo_->setCurrentIndex(1);
 
     // Start camera preview using callback system (same as camera_preview_widget)
     startPreviewCapture();
@@ -70,7 +58,6 @@ DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::CameraSystem>
 DatasetCaptureWidget::~DatasetCaptureWidget() {
     if (isCapturing_) {
         captureTimer_->stop();
-        countdownTimer_->stop();
         ledController_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
     }
     delete ui;
@@ -86,62 +73,83 @@ void DatasetCaptureWidget::setupUi() {
     patternOverlayLeft_ = ui->pattern_overlay_left;
     patternOverlayRight_ = ui->pattern_overlay_right;
 
+    // Pattern configuration controls
+    patternTypeCombo_ = ui->pattern_type_combo;
+    arucoDictCombo_ = ui->aruco_dict_combo;
+    rowsSpinBox_ = ui->rows_spinbox;
+    colsSpinBox_ = ui->cols_spinbox;
+    squareSizeSpinBox_ = ui->square_size_spinbox;
+    arucoSizeSpinBox_ = ui->aruco_size_spinbox;
+
     // Capture controls
-    boardOptionsButton_ = ui->board_options_button;
     startCaptureButton_ = ui->start_capture_button;
     captureProgress_ = ui->capture_progress;
+    statusLabel_ = ui->status_label;
     detectionStatusLabel_ = ui->detection_status_label;
-    countdownLabel_ = ui->countdown_label;
+
+    // Set default ArUco dictionary to DICT_4X4_250 (index 2)
+    arucoDictCombo_->setCurrentIndex(2);
 }
 
 void DatasetCaptureWidget::setupConnections() {
-    // Board options button opens dialog
-    connect(boardOptionsButton_, &QPushButton::clicked, this, &DatasetCaptureWidget::onBoardOptionsClicked);
+    // Pattern type cycle buttons
+    connect(ui->pattern_prev_button, &QPushButton::clicked, [this]() {
+        int idx = patternTypeCombo_->currentIndex();
+        patternTypeCombo_->setCurrentIndex((idx - 1 + patternTypeCombo_->count()) % patternTypeCombo_->count());
+    });
+    connect(ui->pattern_next_button, &QPushButton::clicked, [this]() {
+        int idx = patternTypeCombo_->currentIndex();
+        patternTypeCombo_->setCurrentIndex((idx + 1) % patternTypeCombo_->count());
+    });
+    connect(patternTypeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DatasetCaptureWidget::onPatternTypeChanged);
+
+    // ArUco dictionary cycle buttons
+    connect(ui->dict_prev_button, &QPushButton::clicked, [this]() {
+        int idx = arucoDictCombo_->currentIndex();
+        arucoDictCombo_->setCurrentIndex((idx - 1 + arucoDictCombo_->count()) % arucoDictCombo_->count());
+    });
+    connect(ui->dict_next_button, &QPushButton::clicked, [this]() {
+        int idx = arucoDictCombo_->currentIndex();
+        arucoDictCombo_->setCurrentIndex((idx + 1) % arucoDictCombo_->count());
+    });
+    connect(arucoDictCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &DatasetCaptureWidget::onArucoDictChanged);
+
+    // Rows +/- buttons
+    connect(ui->rows_minus_button, &QPushButton::clicked, [this]() {
+        rowsSpinBox_->setValue(rowsSpinBox_->value() - 1);
+    });
+    connect(ui->rows_plus_button, &QPushButton::clicked, [this]() {
+        rowsSpinBox_->setValue(rowsSpinBox_->value() + 1);
+    });
+
+    // Columns +/- buttons
+    connect(ui->cols_minus_button, &QPushButton::clicked, [this]() {
+        colsSpinBox_->setValue(colsSpinBox_->value() - 1);
+    });
+    connect(ui->cols_plus_button, &QPushButton::clicked, [this]() {
+        colsSpinBox_->setValue(colsSpinBox_->value() + 1);
+    });
+
+    // Square size +/- buttons
+    connect(ui->square_minus_button, &QPushButton::clicked, [this]() {
+        squareSizeSpinBox_->setValue(squareSizeSpinBox_->value() - squareSizeSpinBox_->singleStep());
+    });
+    connect(ui->square_plus_button, &QPushButton::clicked, [this]() {
+        squareSizeSpinBox_->setValue(squareSizeSpinBox_->value() + squareSizeSpinBox_->singleStep());
+    });
+
+    // ArUco size +/- buttons
+    connect(ui->aruco_minus_button, &QPushButton::clicked, [this]() {
+        arucoSizeSpinBox_->setValue(arucoSizeSpinBox_->value() - arucoSizeSpinBox_->singleStep());
+    });
+    connect(ui->aruco_plus_button, &QPushButton::clicked, [this]() {
+        arucoSizeSpinBox_->setValue(arucoSizeSpinBox_->value() + arucoSizeSpinBox_->singleStep());
+    });
 
     // Start capture button
     connect(startCaptureButton_, &QPushButton::clicked, this, &DatasetCaptureWidget::onStartCapture);
-}
-
-void DatasetCaptureWidget::onBoardOptionsClicked() {
-    BoardOptionsDialog dialog(this);
-
-    // Set current configuration
-    dialog.setPatternConfig(currentPatternConfig_);
-
-    // Connect to configuration changed signal
-    connect(&dialog, &BoardOptionsDialog::configurationChanged,
-            this, &DatasetCaptureWidget::onBoardConfigChanged);
-
-    // Show dialog
-    if (dialog.exec() == QDialog::Accepted) {
-        // Update pattern detector with new config
-        currentPatternConfig_ = dialog.getPatternConfig();
-
-        std::lock_guard<std::mutex> lock(patternDetectorMutex_);
-        patternDetector_ = std::make_unique<calibration::PatternDetector>(currentPatternConfig_);
-
-        qDebug() << "Board configuration updated";
-    }
-}
-
-void DatasetCaptureWidget::onBoardConfigChanged() {
-    // Live update when changing values in dialog
-    qDebug() << "Board configuration changed (live update)";
-}
-
-void DatasetCaptureWidget::onCountdownTick() {
-    countdownValue_--;
-
-    if (countdownValue_ > 0) {
-        // Update countdown display
-        countdownLabel_->setText(QString("Next capture in: %1").arg(countdownValue_));
-        countdownLabel_->setStyleSheet("font-size: 18pt; color: #f97316; font-weight: bold;");
-    } else {
-        // Countdown finished
-        countdownTimer_->stop();
-        countdownLabel_->setText("📸 CAPTURING...");
-        countdownLabel_->setStyleSheet("font-size: 18pt; color: #10b981; font-weight: bold;");
-    }
 }
 
 // Start camera preview using callback system (same as camera_preview_widget)
@@ -191,10 +199,9 @@ void DatasetCaptureWidget::updatePreview(const core::StereoFramePair& frame_pair
         latestFramePair_ = frame_pair;
     }
 
-    // Frame skipping for performance - CRITICAL: checkerboard detection is HEAVY
+    // Frame skipping for performance (process every 3rd frame like camera_preview_widget)
     static int frame_skip_counter = 0;
-    int skip_factor = isCapturing_ ? 3 : 10;  // Preview: skip 10 frames (~3 FPS detection), Capture: skip 3
-    if (++frame_skip_counter % skip_factor != 0) {
+    if (++frame_skip_counter % 3 != 0) {
         return;
     }
 
@@ -203,38 +210,25 @@ void DatasetCaptureWidget::updatePreview(const core::StereoFramePair& frame_pair
     cv::cvtColor(frame_pair.left_frame.image, leftRGB, cv::COLOR_BGRA2RGB);
     cv::cvtColor(frame_pair.right_frame.image, rightRGB, cv::COLOR_BGRA2RGB);
 
-    // CRITICAL OPTIMIZATION: Always detect on VGA (640x360) - 4x faster than HD!
-    // Checkerboard detection is MUCH slower than ChArUco (no ArUco markers to guide search)
-    cv::Mat leftVGA, rightVGA;
-    cv::resize(leftRGB, leftVGA, cv::Size(640, 360), 0, 0, cv::INTER_AREA);
-    cv::resize(rightRGB, rightVGA, cv::Size(640, 360), 0, 0, cv::INTER_AREA);
+    // Downsample to HD 1280x720
+    cv::Mat leftHD, rightHD;
+    cv::resize(leftRGB, leftHD, cv::Size(1280, 720), 0, 0, cv::INTER_AREA);
+    cv::resize(rightRGB, rightHD, cv::Size(1280, 720), 0, 0, cv::INTER_AREA);
 
-    // Detect pattern on VGA resolution (much faster)
+    // Detect pattern and draw overlay (thread-safe)
     std::vector<cv::Point2f> cornersLeft, cornersRight;
-    cv::Mat overlayLeftVGA, overlayRightVGA;
-    bool leftDetected = false;
-    bool rightDetected = false;
+    cv::Mat overlayLeft, overlayRight;
 
+    bool leftDetected, rightDetected;
     {
         std::lock_guard<std::mutex> lock(patternDetectorMutex_);
         if (patternDetector_) {
-            leftDetected = patternDetector_->detect(leftVGA, cornersLeft, overlayLeftVGA);
-            rightDetected = patternDetector_->detect(rightVGA, cornersRight, overlayRightVGA);
+            leftDetected = patternDetector_->detect(leftHD, cornersLeft, overlayLeft);
+            rightDetected = patternDetector_->detect(rightHD, cornersRight, overlayRight);
+        } else {
+            leftDetected = false;
+            rightDetected = false;
         }
-    }
-
-    // Scale overlay back to HD for display
-    cv::Mat overlayLeft, overlayRight;
-    if (!overlayLeftVGA.empty()) {
-        cv::resize(overlayLeftVGA, overlayLeft, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
-    } else {
-        cv::resize(leftVGA, overlayLeft, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
-    }
-
-    if (!overlayRightVGA.empty()) {
-        cv::resize(overlayRightVGA, overlayRight, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
-    } else {
-        cv::resize(rightVGA, overlayRight, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
     }
 
     // Update detection status
@@ -274,15 +268,12 @@ void DatasetCaptureWidget::onStartCapture() {
     if (isCapturing_) {
         // Stop capture
         captureTimer_->stop();
-        countdownTimer_->stop();
         isCapturing_ = false;
         startCaptureButton_->setText("Start Dataset Capture (50 pairs)");
         startCaptureButton_->setStyleSheet(
             "QPushButton { background-color: #059669; color: white; font-size: 14pt; "
             "padding: 12px; border-radius: 8px; font-weight: bold; }");
-
-        // Clear countdown display
-        countdownLabel_->setText("");
+        statusLabel_->setText("Capture stopped");
 
         // Disable both LEDs (ensure both are OFF)
         if (ledController_) {
@@ -312,45 +303,24 @@ void DatasetCaptureWidget::onStartCapture() {
         QDateTime::currentDateTime().toString(Qt::ISODate).toStdString();
     datasetInfo_["dataset_info"]["dataset_path"] = currentDatasetPath_.toStdString();
 
-    // Pattern config (use currentPatternConfig_ instead of widget values)
-    QString patternTypeName;
-    switch (currentPatternConfig_.type) {
-        case calibration::PatternType::CHECKERBOARD:
-            patternTypeName = "Checkerboard";
-            break;
-        case calibration::PatternType::CHARUCO:
-            patternTypeName = "ChArUco";
-            break;
-        case calibration::PatternType::CIRCLE_GRID:
-            patternTypeName = "Circle Grid";
-            break;
-        default:
-            patternTypeName = "Unknown";
-    }
-
-    datasetInfo_["pattern_config"]["type"] = patternTypeName.toStdString();
-    datasetInfo_["pattern_config"]["rows"] = currentPatternConfig_.rows;
-    datasetInfo_["pattern_config"]["cols"] = currentPatternConfig_.cols;
-    datasetInfo_["pattern_config"]["square_size_mm"] = currentPatternConfig_.squareSizeMM;
-
-    // Only save ArUco-specific fields for ChArUco pattern
-    if (currentPatternConfig_.type == calibration::PatternType::CHARUCO) {
-        datasetInfo_["pattern_config"]["aruco_marker_size_mm"] = currentPatternConfig_.arucoMarkerSizeMM;
-        datasetInfo_["pattern_config"]["aruco_dict"] = currentPatternConfig_.arucoDict;
-    }
+    // Pattern config
+    datasetInfo_["pattern_config"]["type"] = patternTypeCombo_->currentText().toStdString();
+    datasetInfo_["pattern_config"]["rows"] = rowsSpinBox_->value();
+    datasetInfo_["pattern_config"]["cols"] = colsSpinBox_->value();
+    datasetInfo_["pattern_config"]["square_size_mm"] = squareSizeSpinBox_->value();
+    datasetInfo_["pattern_config"]["aruco_marker_size_mm"] = arucoSizeSpinBox_->value();
 
     // Capture config
     datasetInfo_["capture_config"]["image_width"] = 1280;
     datasetInfo_["capture_config"]["image_height"] = 720;
     datasetInfo_["capture_config"]["capture_delay_seconds"] = 5;
     datasetInfo_["capture_config"]["target_image_pairs"] = 50;
-    datasetInfo_["capture_config"]["led1_vcsel_enabled"] = false;
-    datasetInfo_["capture_config"]["led2_flood_enabled"] = false;
-    datasetInfo_["capture_config"]["lighting"] = "ambient_only";
+    datasetInfo_["capture_config"]["vcsel_enabled"] = true;
+    datasetInfo_["capture_config"]["vcsel_current_ma"] = 280;
 
-    // Initialize and enable Flood LED (LED2 only for calibration)
+    // Initialize and enable VCSEL LED (LED1 only, >= 250mA)
     if (ledController_) {
-        // Initialize if not already done
+        // Initialize if not already done (same as camera_preview_widget)
         if (!ledController_->isInitialized()) {
             qDebug() << "[DatasetCapture] Initializing AS1170 controller";
 
@@ -360,25 +330,26 @@ void DatasetCaptureWidget::onStartCapture() {
 
             if (!ledController_->initialize()) {
                 qWarning() << "[DatasetCapture] Failed to initialize AS1170 controller - LEDs will not work";
+                statusLabel_->setText("WARNING: LED controller initialization failed");
             } else {
                 qDebug() << "[DatasetCapture] AS1170 controller initialized successfully";
             }
         }
 
-        // For calibration: DISABLE ALL LEDs - use ambient lighting only
-        // LED1 (VCSEL) OFF - to avoid pattern interference
-        // LED2 (Flood) OFF - use external lighting (neon + softbox)
-        bool led1_success = ledController_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        // Enable LED1 (VCSEL) at 280mA (>= 250mA minimum requirement)
+        bool led1_success = ledController_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);
+
+        // Ensure LED2 is OFF (user requirement: LED1 ON, LED2 OFF)
         bool led2_success = ledController_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
 
         if (led1_success) {
-            qDebug() << "[DatasetCapture] LED1 (VCSEL) disabled for calibration";
+            qDebug() << "[DatasetCapture] LED1 (VCSEL) activated at 280mA";
         } else {
-            qWarning() << "[DatasetCapture] Failed to disable LED1 (VCSEL)";
+            qWarning() << "[DatasetCapture] Failed to activate LED1 (VCSEL)";
         }
 
         if (led2_success) {
-            qDebug() << "[DatasetCapture] LED2 (Flood) disabled - using ambient lighting";
+            qDebug() << "[DatasetCapture] LED2 (Flood) disabled";
         } else {
             qWarning() << "[DatasetCapture] Failed to disable LED2";
         }
@@ -393,22 +364,18 @@ void DatasetCaptureWidget::onStartCapture() {
     startCaptureButton_->setStyleSheet(
         "QPushButton { background-color: #dc2626; color: white; font-size: 14pt; "
         "padding: 12px; border-radius: 8px; font-weight: bold; }");
+    statusLabel_->setText("Capturing... move checkerboard between captures");
 
-    // Save initial JSON file with configuration
-    saveDatasetInfo();
-
-    // Start countdown for first capture
-    countdownValue_ = 5;
-    countdownLabel_->setText("Next capture in: 5");
-    countdownTimer_->start();
     captureTimer_->start();
+
+    // Capture first frame immediately
+    onCaptureFrame();
 }
 
 void DatasetCaptureWidget::onCaptureFrame() {
     if (captureCount_ >= targetCaptures_) {
         // Capture complete
         captureTimer_->stop();
-        countdownTimer_->stop();
         isCapturing_ = false;
 
         // Disable both LEDs (ensure both are OFF)
@@ -424,13 +391,14 @@ void DatasetCaptureWidget::onCaptureFrame() {
             }
         }
 
-        // Clear countdown display
-        countdownLabel_->setText("");
+        // Save dataset info
+        saveDatasetInfo();
 
         startCaptureButton_->setText("Start Dataset Capture (50 pairs)");
         startCaptureButton_->setStyleSheet(
             "QPushButton { background-color: #059669; color: white; font-size: 14pt; "
             "padding: 12px; border-radius: 8px; font-weight: bold; }");
+        statusLabel_->setText("Dataset capture complete!");
 
         QMessageBox::information(this, "Capture Complete",
             "Dataset saved to:\n" + currentDatasetPath_ +
@@ -445,14 +413,8 @@ void DatasetCaptureWidget::onCaptureFrame() {
     captureCount_++;
     captureProgress_->setValue(captureCount_);
 
-    // Save JSON after each capture (progressive save)
-    saveDatasetInfo();
-
-    // Start countdown for next capture
-    countdownValue_ = 5;
-    countdownLabel_->setText("Next capture in: 5");
-    countdownTimer_->start();
-    captureTimer_->start();  // Restart timer for next capture
+    statusLabel_->setText(QString("Captured %1 / %2 pairs - move checkerboard for next capture")
+                         .arg(captureCount_).arg(targetCaptures_));
 }
 
 void DatasetCaptureWidget::captureAndSaveFrame() {
@@ -561,6 +523,59 @@ void DatasetCaptureWidget::saveDatasetInfo() {
         qCritical() << "Error closing dataset info file:" << jsonPath;
     }
 }
+
+void DatasetCaptureWidget::onPatternTypeChanged(int index) {
+    updatePatternDetector();
+}
+
+void DatasetCaptureWidget::onArucoDictChanged(int index) {
+    qDebug() << "ArUco dictionary changed to index:" << index;
+    updatePatternDetector();
+}
+
+void DatasetCaptureWidget::updatePatternDetector() {
+    calibration::PatternConfig config;
+    config.type = static_cast<calibration::PatternType>(
+        patternTypeCombo_->currentData().toInt());
+    config.rows = rowsSpinBox_->value();
+    config.cols = colsSpinBox_->value();
+    config.squareSizeMM = squareSizeSpinBox_->value();
+    config.arucoMarkerSizeMM = arucoSizeSpinBox_->value();
+
+    // Map combo box index to ArUco dictionary enum
+    const std::vector<cv::aruco::PREDEFINED_DICTIONARY_NAME> dictMap = {
+        cv::aruco::DICT_4X4_50,
+        cv::aruco::DICT_4X4_100,
+        cv::aruco::DICT_4X4_250,
+        cv::aruco::DICT_4X4_1000,
+        cv::aruco::DICT_5X5_50,
+        cv::aruco::DICT_5X5_100,
+        cv::aruco::DICT_5X5_250,
+        cv::aruco::DICT_5X5_1000,
+        cv::aruco::DICT_6X6_50,
+        cv::aruco::DICT_6X6_100,
+        cv::aruco::DICT_6X6_250,
+        cv::aruco::DICT_6X6_1000,
+        cv::aruco::DICT_7X7_50,
+        cv::aruco::DICT_7X7_100,
+        cv::aruco::DICT_7X7_250,
+        cv::aruco::DICT_7X7_1000,
+        cv::aruco::DICT_ARUCO_ORIGINAL
+    };
+
+    int dictIndex = arucoDictCombo_->currentIndex();
+    if (dictIndex >= 0 && dictIndex < static_cast<int>(dictMap.size())) {
+        config.arucoDict = dictMap[dictIndex];
+        qDebug() << "Using ArUco dictionary:" << arucoDictCombo_->currentText();
+    } else {
+        config.arucoDict = cv::aruco::DICT_4X4_250;  // Default fallback
+    }
+
+    // Thread-safe pattern detector recreation
+    std::lock_guard<std::mutex> lock(patternDetectorMutex_);
+    patternDetector_ = std::make_unique<calibration::PatternDetector>(config);
+}
+
 
 } // namespace gui
 } // namespace unlook
