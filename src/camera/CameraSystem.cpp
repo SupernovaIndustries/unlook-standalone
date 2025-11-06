@@ -301,7 +301,16 @@ void CameraSystem::shutdown() {
 }
 
 bool CameraSystem::startCapture(core::StereoFrameCallback frame_callback) {
+    // CRITICAL FIX: Allow callback update even when capture is already running
+    // This fixes the issue where main_window auto-starts with dummy callback
+    // and then widgets can't receive frames because callback doesn't update
     frame_callback_ = frame_callback;
+
+    if (captureRunning_) {
+        LOG_INFO("Capture already running - callback updated successfully");
+        return true;
+    }
+
     return startCapture();
 }
 
@@ -310,7 +319,7 @@ bool CameraSystem::startCapture() {
         LOG_ERROR("Cannot start capture: system not initialized");
         return false;
     }
-    
+
     if (captureRunning_) {
         LOG_WARNING("Capture already running");
         return true;
