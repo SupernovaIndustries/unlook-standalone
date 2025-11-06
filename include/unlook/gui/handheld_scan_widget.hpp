@@ -15,6 +15,10 @@
 #include "unlook/camera/CameraSystemGUI.hpp"
 
 namespace unlook {
+
+// Forward declarations
+namespace hardware { class AS1170Controller; }
+
 namespace gui {
 
 /**
@@ -185,6 +189,7 @@ private:
 
     // Backend Integration
     std::shared_ptr<camera::gui::CameraSystem> camera_system_;  // Shared GUI camera system
+    std::shared_ptr<hardware::AS1170Controller> led_controller_;  // LED controller singleton
     QTimer* update_timer_;                                      // 30 Hz UI updates
 
     // Scan State Management

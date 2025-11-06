@@ -1,5 +1,6 @@
 #include "unlook/gui/handheld_scan_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
+#include "unlook/hardware/AS1170Controller.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -36,6 +37,12 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
 {
     qDebug() << "[HandheldScanWidget] Constructor - using shared GUI camera system";
 
+    // Get LED controller singleton instance (CRITICAL: same as other widgets)
+    led_controller_ = hardware::AS1170Controller::getInstance();
+    if (!led_controller_) {
+        qWarning() << "[HandheldScanWidget] Failed to get AS1170Controller singleton";
+    }
+
     setupUI();
     applySupernovanStyling();
 
@@ -60,6 +67,13 @@ HandheldScanWidget::~HandheldScanWidget() {
         scan_watcher_->waitForFinished();
     }
 
+    // CRITICAL: Disable all LEDs before destroying widget (prevent stuck LED state)
+    if (led_controller_) {
+        qDebug() << "[HandheldScanWidget] Disabling all LEDs in destructor";
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+    }
+
     // NOTE: We do NOT shutdown the API camera system here or re-initialize GUI system
     // The camera systems are singletons that persist across widget lifecycles
     // Other widgets will re-initialize GUI system when they need it
@@ -77,6 +91,14 @@ void HandheldScanWidget::showEvent(QShowEvent* event) {
 void HandheldScanWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     qDebug() << "[HandheldScanWidget::hideEvent] Widget hidden";
+
+    // CRITICAL: Disable all LEDs when hiding widget (user switched tab)
+    if (led_controller_) {
+        qDebug() << "[HandheldScanWidget::hideEvent] Disabling all LEDs on hide";
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+    }
+
     // Camera system is shared with GUI, no shutdown needed
 }
 
@@ -256,7 +278,52 @@ void HandheldScanWidget::onStartScan() {
         return;  // Abort scan
     }
 
-    qDebug() << "[HandheldScanWidget] Camera system ready, starting scan...";
+    qDebug() << "[HandheldScanWidget] Camera system ready, initializing LED controller...";
+
+    // CRITICAL: Initialize and reset LED controller BEFORE starting capture
+    // This prevents crashes from stuck LED states from previous widgets
+    if (led_controller_) {
+        // Initialize if not already done
+        if (!led_controller_->isInitialized()) {
+            qDebug() << "[HandheldScanWidget] Initializing AS1170 controller";
+
+            // CRITICAL: Force reset hardware BEFORE initialization
+            qDebug() << "[HandheldScanWidget] Forcing AS1170 hardware reset to clear stuck state";
+            led_controller_->forceResetHardware();
+
+            if (!led_controller_->initialize()) {
+                qWarning() << "[HandheldScanWidget] Failed to initialize AS1170 controller - LEDs will not work";
+            } else {
+                qDebug() << "[HandheldScanWidget] AS1170 controller initialized successfully";
+            }
+        } else {
+            // Already initialized, but force hardware reset anyway for safety
+            qDebug() << "[HandheldScanWidget] AS1170 already initialized, forcing hardware reset";
+            led_controller_->forceResetHardware();
+        }
+
+        // CRITICAL: Disable ALL LEDs before starting scan
+        // For handheld scan: We want ambient lighting only (no VCSEL, no flood)
+        // This matches calibration widget behavior
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        bool led2_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+
+        if (led1_success) {
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) disabled for handheld scan";
+        } else {
+            qWarning() << "[HandheldScanWidget] Failed to disable LED1 (VCSEL)";
+        }
+
+        if (led2_success) {
+            qDebug() << "[HandheldScanWidget] LED2 (Flood) disabled - using ambient lighting";
+        } else {
+            qWarning() << "[HandheldScanWidget] Failed to disable LED2";
+        }
+    } else {
+        qWarning() << "[HandheldScanWidget] LED controller not available - proceeding without LED control";
+    }
+
+    qDebug() << "[HandheldScanWidget] LED controller ready, starting scan...";
 
     // Reset state
     scan_state_ = ScanState::WAITING_STABILITY;
@@ -288,6 +355,13 @@ void HandheldScanWidget::onStopScan() {
     // Cancel ongoing scan
     if (scan_watcher_) {
         scan_watcher_->cancel();
+    }
+
+    // CRITICAL: Disable all LEDs when stopping scan
+    if (led_controller_) {
+        qDebug() << "[HandheldScanWidget] Disabling all LEDs after scan stop";
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
     }
 
     // Reset UI
@@ -583,6 +657,13 @@ void HandheldScanWidget::startScanThread() {
 void HandheldScanWidget::onScanCompleted() {
     qDebug() << "[HandheldScanWidget] Scan completed successfully";
 
+    // CRITICAL: Disable all LEDs after scan completion
+    if (led_controller_) {
+        qDebug() << "[HandheldScanWidget] Disabling all LEDs after scan completion";
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+    }
+
     scan_state_ = ScanState::COMPLETED;
 
     // Update UI with results
@@ -610,6 +691,13 @@ void HandheldScanWidget::onScanCompleted() {
 
 void HandheldScanWidget::onScanFailed(const QString& error) {
     qCritical() << "[HandheldScanWidget] Scan failed:" << error;
+
+    // CRITICAL: Disable all LEDs after scan failure
+    if (led_controller_) {
+        qDebug() << "[HandheldScanWidget] Disabling all LEDs after scan failure";
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
+    }
 
     scan_state_ = ScanState::FAILED;
 
