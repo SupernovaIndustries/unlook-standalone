@@ -65,6 +65,17 @@ signals:
      */
     void scanFailed(const QString& error_message);
 
+protected:
+    /**
+     * @brief Handle show events to initialize camera system
+     */
+    void showEvent(QShowEvent* event) override;
+
+    /**
+     * @brief Handle hide events to restore GUI camera system
+     */
+    void hideEvent(QHideEvent* event) override;
+
 private slots:
     /**
      * @brief Handle scan button click
