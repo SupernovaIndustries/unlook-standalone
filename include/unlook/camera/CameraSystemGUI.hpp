@@ -6,6 +6,13 @@
 #include <atomic>
 #include <mutex>
 
+// Forward declaration to avoid Qt/libcamera conflict
+namespace unlook {
+namespace camera {
+class HardwareSyncCapture;
+}
+}
+
 namespace unlook {
 namespace camera {
 namespace gui {
@@ -140,22 +147,11 @@ private:
      */
     CameraSystem();
     
-    /**
-     * @brief Internal camera capture thread
-     */
-    void captureThread();
-    
-    /**
-     * @brief Process captured frames
-     */
-    void processFrames(const core::CameraFrame& left, const core::CameraFrame& right);
-    
     // Static instance for singleton
     static std::shared_ptr<CameraSystem> instance_;
     static std::mutex instance_mutex_;
-    
-    // Thread management
-    std::unique_ptr<std::thread> capture_thread_;
+
+    // State management
     std::atomic<bool> capture_running_;
     std::atomic<bool> system_ready_;
     
@@ -177,9 +173,8 @@ private:
     double total_sync_error_ms_;
     size_t sync_sample_count_;
     
-    // Hardware interface (implementation-specific)
-    struct CameraImpl;
-    std::unique_ptr<CameraImpl> impl_;
+    // Hardware synchronized capture system
+    std::unique_ptr<unlook::camera::HardwareSyncCapture> hardware_sync_capture_;
 };
 
 } // namespace gui
