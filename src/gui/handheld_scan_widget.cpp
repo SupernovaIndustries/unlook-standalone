@@ -44,11 +44,18 @@ HandheldScanWidget::HandheldScanWidget(QWidget* parent)
     qDebug() << "[HandheldScanWidget] Logger configured with file output: /unlook_logs/handheld_scan.log";
     qDebug() << "[HandheldScanWidget] Debug directories created: /unlook_logs, /unlook_debug";
 
-    // Camera system is already initialized by MainWindow - just verify
+    // Initialize camera system if not already done
     if (!camera_system_->isInitialized()) {
-        qCritical() << "[HandheldScanWidget] CRITICAL: Camera system not initialized by MainWindow";
+        qDebug() << "[HandheldScanWidget] Camera system not initialized, initializing now...";
+
+        if (!camera_system_->initialize()) {
+            qCritical() << "[HandheldScanWidget] CRITICAL: Failed to initialize camera system!";
+            // Widget will be created but scanning will fail with proper error message
+        } else {
+            qDebug() << "[HandheldScanWidget] Camera system initialized successfully";
+        }
     } else {
-        qDebug() << "[HandheldScanWidget] Camera system ready (initialized by MainWindow)";
+        qDebug() << "[HandheldScanWidget] Camera system already initialized";
     }
 
     setupUI();
