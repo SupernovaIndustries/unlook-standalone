@@ -579,7 +579,14 @@ void HandheldScanWidget::startScanThread() {
                 }
             };
 
-            // Start continuous capture
+            // CRITICAL: Stop any existing capture first (from preview or other widgets)
+            // startCapture() returns false if capture is already running
+            qDebug() << "[HandheldScanWidget::ScanThread] Stopping any existing capture...";
+            camera_system_->stopCapture();
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Brief delay for cleanup
+
+            // Start continuous capture with our callback
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting continuous capture...";
             if (!camera_system_->startCapture(frame_callback)) {
                 qCritical() << "[HandheldScanWidget::ScanThread] Failed to start continuous capture";
                 return false;
