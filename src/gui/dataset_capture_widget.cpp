@@ -13,6 +13,8 @@
 #include <QImage>
 #include <QPixmap>
 #include <QDebug>
+#include <QShowEvent>
+#include <QHideEvent>
 #include <fstream>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
@@ -73,7 +75,30 @@ DatasetCaptureWidget::~DatasetCaptureWidget() {
         countdownTimer_->stop();
         ledController_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
     }
+    // Stop preview capture when destroying widget
+    if (previewActive_ && cameraSystem_) {
+        cameraSystem_->stopCapture();
+        previewActive_ = false;
+    }
     delete ui;
+}
+
+void DatasetCaptureWidget::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+
+    // Restart preview capture when widget becomes visible
+    // (in case it was stopped by another widget like handheld scan)
+    if (!previewActive_ && cameraSystem_) {
+        qDebug() << "[DatasetCapture] Widget shown, restarting preview capture";
+        startPreviewCapture();
+    }
+}
+
+void DatasetCaptureWidget::hideEvent(QHideEvent* event) {
+    QWidget::hideEvent(event);
+
+    // Don't stop capture on hide - let other widgets take over if needed
+    // Preview will restart automatically when we're shown again (showEvent)
 }
 
 void DatasetCaptureWidget::setupUi() {

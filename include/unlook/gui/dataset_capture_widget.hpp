@@ -45,6 +45,10 @@ public:
     explicit DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent = nullptr);
     ~DatasetCaptureWidget();
 
+protected:
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+
 signals:
     void datasetCaptureCompleted(const QString& datasetPath);
 
