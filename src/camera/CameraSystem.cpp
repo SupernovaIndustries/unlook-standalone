@@ -304,7 +304,12 @@ bool CameraSystem::startCapture(core::StereoFrameCallback frame_callback) {
     // CRITICAL FIX: Allow callback update even when capture is already running
     // This fixes the issue where main_window auto-starts with dummy callback
     // and then widgets can't receive frames because callback doesn't update
-    frame_callback_ = frame_callback;
+
+    // THREAD SAFETY: Use callbackMutex_ when updating frame_callback_
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        frame_callback_ = frame_callback;
+    }
 
     if (captureRunning_) {
         LOG_INFO("Capture already running - callback updated successfully");
@@ -341,36 +346,40 @@ bool CameraSystem::startCapture() {
         
         // Set up frame callback to convert HardwareSyncCapture frames to GUI format
         hardware_sync_capture_->setFrameCallback([this](const HardwareSyncCapture::StereoFrame& sync_frame) {
-        if (!frame_callback_) return;
-        
         // Convert HardwareSyncCapture::StereoFrame to core::StereoFramePair
         core::StereoFramePair gui_frame;
-        
+
         // Left frame (Camera 1 = MASTER)
         gui_frame.left_frame.image = sync_frame.left_image;
         gui_frame.left_frame.timestamp_ns = sync_frame.left_timestamp_ns;
         gui_frame.left_frame.camera_id = core::CameraId::LEFT;
         gui_frame.left_frame.valid = true;
-        
+
         // Right frame (Camera 0 = SLAVE)
         gui_frame.right_frame.image = sync_frame.right_image;
         gui_frame.right_frame.timestamp_ns = sync_frame.right_timestamp_ns;
         gui_frame.right_frame.camera_id = core::CameraId::RIGHT;
         gui_frame.right_frame.valid = true;
-        
+
         // Sync info
         gui_frame.sync_error_ms = sync_frame.sync_error_ms;
         gui_frame.synchronized = (sync_frame.sync_error_ms <= 5.0); // 5ms tolerance - realistic for hardware
-        
+
         // Update statistics
         totalFrames_++;
         if (sync_frame.sync_error_ms > 1.0) {
             syncErrors_++;
         }
         updateSyncStats(sync_frame.sync_error_ms);
-        
+
+        // THREAD SAFETY: Lock callbackMutex_ before accessing frame_callback_
         // Deliver to GUI callback
-        frame_callback_(gui_frame);
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex_);
+            if (frame_callback_) {
+                frame_callback_(gui_frame);
+            }
+        }
     });
     
     captureRunning_ = true;
