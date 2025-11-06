@@ -792,20 +792,31 @@ bool CameraSystem::startCapture(core::StereoFrameCallback frame_callback) {
         UNLOOK_LOG_ERROR("Camera") << "System not initialized";
         return false;
     }
-    
+
+    // CRITICAL FIX: Allow callback update even when capture is already running
+    // This enables multiple widgets to receive frames from the same capture session
     if (capture_running_.load()) {
-        UNLOOK_LOG_WARNING("Camera") << "Capture already running";
-        return false;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex_);
+            frame_callback_ = frame_callback;
+        }
+        // Update impl callback too
+        impl_->startCapture(frame_callback);
+        UNLOOK_LOG_INFO("Camera") << "Capture already running - callback updated successfully";
+        return true;  // Return success, not failure!
     }
-    
-    frame_callback_ = frame_callback;
-    capture_running_ = true;
-    left_state_ = core::CameraState::CAPTURING;
-    right_state_ = core::CameraState::CAPTURING;
-    
+
+    {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        frame_callback_ = frame_callback;
+        capture_running_ = true;
+        left_state_ = core::CameraState::CAPTURING;
+        right_state_ = core::CameraState::CAPTURING;
+    }
+
     // Start real synchronized capture
     impl_->startCapture(frame_callback);
-    
+
     UNLOOK_LOG_INFO("Camera") << "Hardware-synchronized stereo capture started";
     return true;
 }
