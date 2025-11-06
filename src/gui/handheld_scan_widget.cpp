@@ -1,5 +1,6 @@
 #include "unlook/gui/handheld_scan_widget.hpp"
 #include "unlook/gui/styles/supernova_style.hpp"
+#include "unlook/api/HandheldScanPipeline.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -14,7 +15,7 @@
 namespace unlook {
 namespace gui {
 
-HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                                        QWidget* parent)
     : QWidget(parent)
     , camera_system_(camera_system)
@@ -29,6 +30,21 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::CameraSystem> cam
     , scan_start_time_(std::chrono::steady_clock::now())
     , scan_watcher_(nullptr)
 {
+    // Configure Logger for file output
+    unlook::core::Logger::getInstance().initialize(
+        unlook::core::LogLevel::DEBUG,  // Log level
+        true,                            // Console output
+        true,                            // File output
+        "/unlook_logs/handheld_scan.log" // Log file path
+    );
+
+    // Create debug directories
+    system("mkdir -p /unlook_logs");
+    system("mkdir -p /unlook_debug");
+
+    qDebug() << "[HandheldScanWidget] Logger configured with file output: /unlook_logs/handheld_scan.log";
+    qDebug() << "[HandheldScanWidget] Debug directories created: /unlook_logs, /unlook_debug";
+
     setupUI();
     applySupernovanStyling();
 
@@ -440,38 +456,74 @@ void HandheldScanWidget::resetUI() {
 void HandheldScanWidget::startScanThread() {
     // Create background scan thread using QtConcurrent
     QFuture<bool> future = QtConcurrent::run([this]() -> bool {
-        qDebug() << "[HandheldScanWidget::ScanThread] Starting background scan...";
+        qDebug() << "[HandheldScanWidget::ScanThread] Starting background scan with real pipeline...";
 
         try {
-            // SIMULATION: In real implementation, this would:
-            // 1. Wait for stability using StabilityDetector
-            // 2. Capture frames using camera_system_
-            // 3. Process depth maps using DepthProcessor
-            // 4. Fuse multi-frame data
-            // 5. Apply WLS filter
-            // 6. Generate point cloud
+            // Create HandheldScanPipeline instance
+            auto pipeline = std::make_shared<unlook::api::HandheldScanPipeline>(camera_system_);
 
-            // For now, simulate the process with delays
-            std::this_thread::sleep_for(std::chrono::seconds(3));
+            // Initialize pipeline
+            if (!pipeline->initialize()) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Failed to initialize pipeline";
+                return false;
+            }
+
+            qDebug() << "[HandheldScanWidget::ScanThread] Pipeline initialized successfully";
+
+            // Configure scan parameters
+            unlook::api::HandheldScanPipeline::ScanParams params;
+            params.numFrames = TARGET_FRAMES;
+            params.targetPrecisionMM = 0.1f;
+            params.stabilityThreshold = STABILITY_THRESHOLD;
+            params.useWLSFilter = true;
+            params.useVCSEL = false;  // VCSEL disabled for now (API mismatch issue)
+
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting scan with params:";
+            qDebug() << "  numFrames:" << params.numFrames;
+            qDebug() << "  targetPrecision:" << params.targetPrecisionMM << "mm";
+            qDebug() << "  stabilityThreshold:" << params.stabilityThreshold;
+
+            // Run scan with progress callback
+            auto result = pipeline->scanWithStability(params,
+                [this](float progress, const std::string& message) {
+                    // Update UI via signals (thread-safe)
+                    qDebug() << "[Pipeline Progress]" << progress << ":" << QString::fromStdString(message);
+                });
 
             // Check if cancelled
             if (QThread::currentThread()->isInterruptionRequested()) {
                 qDebug() << "[HandheldScanWidget::ScanThread] Scan cancelled by user";
+                pipeline->shutdown();
                 return false;
             }
 
-            // Simulate successful scan
-            achieved_precision_mm_ = 0.12f;  // Simulated precision
-            point_count_ = 45000;            // Simulated point count
+            // Check result
+            if (!result.success) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Scan failed:"
+                           << QString::fromStdString(result.errorMessage);
+                pipeline->shutdown();
+                return false;
+            }
+
+            // Extract results
+            achieved_precision_mm_ = result.achievedPrecisionMM;
+            point_count_ = result.pointCloud.rows;
 
             qDebug() << "[HandheldScanWidget::ScanThread] Scan completed successfully";
             qDebug() << "  Precision:" << achieved_precision_mm_ << "mm";
             qDebug() << "  Points:" << point_count_;
+            qDebug() << "  Valid pixels:" << result.validPixelPercentage << "%";
+            qDebug() << "  Scan duration:" << result.scanDuration.count() << "ms";
+            qDebug() << "  Frames captured:" << result.framesCaptures;
+            qDebug() << "  Frames used:" << result.framesUsed;
+
+            // Shutdown pipeline
+            pipeline->shutdown();
 
             return true;
 
         } catch (const std::exception& e) {
-            qCritical() << "[HandheldScanWidget::ScanThread] Scan failed:" << e.what();
+            qCritical() << "[HandheldScanWidget::ScanThread] Scan failed with exception:" << e.what();
             return false;
         }
     });

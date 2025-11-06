@@ -8,10 +8,11 @@
 
 namespace unlook {
 namespace camera {
+namespace gui {
 
 /**
- * @brief Thread-safe camera system manager for dual IMX296 cameras
- * 
+ * @brief Thread-safe camera system manager for dual IMX296 cameras (GUI version)
+ *
  * This class manages both cameras with hardware synchronization support.
  * It provides a single shared instance that can be safely used across
  * multiple GUI components.
@@ -181,5 +182,6 @@ private:
     std::unique_ptr<CameraImpl> impl_;
 };
 
+} // namespace gui
 } // namespace camera
 } // namespace unlook

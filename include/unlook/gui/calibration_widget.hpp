@@ -28,14 +28,14 @@ class CalibrationWidget : public QWidget {
     Q_OBJECT
 
 public:
-    explicit CalibrationWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent = nullptr);
+    explicit CalibrationWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent = nullptr);
     ~CalibrationWidget() = default;
 
 private:
     QTabWidget* tabWidget_;
     DatasetCaptureWidget* captureWidget_;
     DatasetProcessingWidget* processingWidget_;
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
 };
 
 } // namespace gui

@@ -19,7 +19,7 @@ using namespace unlook::gui::widgets;
 namespace unlook {
 namespace gui {
 
-CameraPreviewWidget::CameraPreviewWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
+CameraPreviewWidget::CameraPreviewWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
     , ui(new Ui::CameraPreviewWidget)
     , camera_system_(camera_system)

@@ -16,7 +16,7 @@
 #include <atomic>
 
 // Unlook core systems
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 #include "unlook/core/types.hpp"
 
 // Face recognition APIs
@@ -149,7 +149,7 @@ public:
      * @param camera_system Shared camera system for stereo capture
      * @param parent Parent widget
      */
-    explicit FaceEnrollmentWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+    explicit FaceEnrollmentWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                                   QWidget* parent = nullptr);
 
     /**
@@ -368,7 +368,7 @@ private:
     std::map<CaptureAngle, widgets::TouchButton*> angle_indicator_buttons_;
 
     // Core system integrations
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
     // std::unique_ptr<hardware::VCSELProjector> vcsel_projector_;  // Temporarily disabled
     std::shared_ptr<hardware::AS1170Controller> as1170_controller_;  // Singleton instance
 

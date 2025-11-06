@@ -14,10 +14,13 @@
 #include <future>
 
 namespace unlook {
-namespace api {
 
 // Forward declarations
-class CameraSystem;
+namespace camera {
+    class CameraSystem;
+}
+
+namespace api {
 
 /**
  * @brief Handheld scanning pipeline with IMU-based stability detection
@@ -123,7 +126,7 @@ public:
      * @brief Constructor
      * @param cameraSystem Shared pointer to camera system
      */
-    explicit HandheldScanPipeline(std::shared_ptr<CameraSystem> cameraSystem);
+    explicit HandheldScanPipeline(std::shared_ptr<camera::CameraSystem> cameraSystem);
 
     /**
      * @brief Destructor
@@ -259,6 +262,21 @@ public:
      * @return Map of statistic name to value
      */
     std::map<std::string, double> getStatistics() const;
+
+    /**
+     * @brief Save debug output (images, depth maps, point cloud)
+     * @param timestamp Timestamp string for file naming
+     * @param frames Captured stereo frames
+     * @param depthMaps Generated depth maps
+     * @param fusedDepth Fused depth map
+     * @param pointCloud Final point cloud
+     * @return true if all debug output saved successfully
+     */
+    bool saveDebugOutput(const std::string& timestamp,
+                        const std::vector<StereoFrame>& frames,
+                        const std::vector<cv::Mat>& depthMaps,
+                        const cv::Mat& fusedDepth,
+                        const cv::Mat& pointCloud);
 
 private:
     class Impl;

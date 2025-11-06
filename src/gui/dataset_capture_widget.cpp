@@ -21,7 +21,7 @@
 namespace unlook {
 namespace gui {
 
-DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
+DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
     , ui(new Ui::DatasetCaptureWidget)
     , cameraSystem_(camera_system)

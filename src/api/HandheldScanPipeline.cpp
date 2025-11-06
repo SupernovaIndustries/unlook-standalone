@@ -10,6 +10,7 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/ximgproc.hpp>
+#include <opencv2/imgcodecs.hpp>
 
 #include <numeric>
 #include <algorithm>
@@ -17,6 +18,9 @@
 #include <mutex>
 #include <condition_variable>
 #include <omp.h>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
 
 namespace unlook {
 namespace api {
@@ -72,7 +76,7 @@ private:
 class HandheldScanPipeline::Impl {
 public:
     // Camera system
-    std::shared_ptr<CameraSystem> cameraSystem_;
+    std::shared_ptr<camera::CameraSystem> cameraSystem_;
 
     // Stereo processor
     std::unique_ptr<stereo::TemporalStereoProcessor> temporalProcessor_;
@@ -109,7 +113,7 @@ public:
     // Logger
     core::Logger& logger_ = core::Logger::getInstance();
 
-    Impl(std::shared_ptr<CameraSystem> cameraSystem)
+    Impl(std::shared_ptr<camera::CameraSystem> cameraSystem)
         : cameraSystem_(cameraSystem) {
 
         // Initialize stereo parameters for VCSEL
@@ -214,7 +218,7 @@ public:
 };
 
 // Constructor
-HandheldScanPipeline::HandheldScanPipeline(std::shared_ptr<CameraSystem> cameraSystem)
+HandheldScanPipeline::HandheldScanPipeline(std::shared_ptr<camera::CameraSystem> cameraSystem)
     : pImpl(std::make_unique<Impl>(cameraSystem)) {
 }
 
@@ -439,6 +443,21 @@ HandheldScanPipeline::ScanResult HandheldScanPipeline::scanWithStability(
         pImpl->logger_.info("Scan completed successfully in " +
                            std::to_string(result.scanDuration.count()) + "ms");
 
+        // Save debug output with timestamp
+        auto now = std::chrono::system_clock::now();
+        auto time_t_now = std::chrono::system_clock::to_time_t(now);
+        std::stringstream timestamp;
+        timestamp << std::put_time(std::localtime(&time_t_now), "%Y%m%d_%H%M%S");
+
+        bool debugSaved = saveDebugOutput(timestamp.str(), frames, depthMaps,
+                                          result.depthMap, result.pointCloud);
+
+        if (debugSaved) {
+            pImpl->logger_.info("Debug output saved to /unlook_debug/");
+        } else {
+            pImpl->logger_.warning("Failed to save debug output (non-critical)");
+        }
+
         if (progressCallback) {
             progressCallback(1.0f, "Scan complete!");
         }
@@ -471,8 +490,15 @@ std::vector<HandheldScanPipeline::StereoFrame> HandheldScanPipeline::captureMult
     std::vector<StereoFrame> frames;
     frames.reserve(numFrames);
 
-    pImpl->logger_.info("Capturing " + std::to_string(numFrames) + " frames...");
+    pImpl->logger_.info("Capturing " + std::to_string(numFrames) + " frames using camera system...");
 
+    // Ensure camera system is initialized
+    if (!pImpl->cameraSystem_->isInitialized()) {
+        pImpl->logger_.error("Camera system not initialized");
+        return frames;
+    }
+
+    // Capture frames one by one
     for (int i = 0; i < numFrames; ++i) {
         if (progressCallback) {
             progressCallback(static_cast<float>(i) / numFrames,
@@ -481,35 +507,29 @@ std::vector<HandheldScanPipeline::StereoFrame> HandheldScanPipeline::captureMult
 
         StereoFrame frame;
 
-        // Capture synchronized frame from camera system
-        cv::Mat leftFrame, rightFrame;
+        // Capture single synchronized frame from camera system
+        camera::StereoFrame cameraFrame;
+        bool success = pImpl->cameraSystem_->captureStereoFrame(cameraFrame, 2000);
 
-        // For now, simulate frame capture (will be replaced with actual camera capture)
-        // In production, this would call:
-        // pImpl->cameraSystem->captureSynchronized(leftFrame, rightFrame);
-
-        // Simulate frames (replace with actual capture)
-        frame.leftImage = cv::Mat::zeros(720, 1280, CV_8UC1);
-        frame.rightImage = cv::Mat::zeros(720, 1280, CV_8UC1);
-        frame.timestampUs = std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count();
-
-        // If VCSEL enabled, capture with projection
-        if (pImpl->vcselEnabled_ && pImpl->vcselController_) {
-            // Enable VCSEL
-            pImpl->vcselController_->activateVCSEL1(100);
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            // Capture with VCSEL (simulation)
-            frame.leftVCSEL = cv::Mat::zeros(720, 1280, CV_8UC1);
-            frame.rightVCSEL = cv::Mat::zeros(720, 1280, CV_8UC1);
-
-            // Disable VCSEL
-            pImpl->vcselController_->deactivateVCSEL1();
-        } else {
-            frame.leftVCSEL = frame.leftImage;
-            frame.rightVCSEL = frame.rightImage;
+        if (!success) {
+            pImpl->logger_.warning("Frame capture failed at frame " + std::to_string(i));
+            continue;  // Skip this frame
         }
+
+        // Verify frames are not empty
+        if (cameraFrame.leftImage.empty() || cameraFrame.rightImage.empty()) {
+            pImpl->logger_.warning("Empty frames received at frame " + std::to_string(i));
+            continue;
+        }
+
+        // Copy frame data (convert camera::StereoFrame to api::StereoFrame)
+        frame.leftImage = cameraFrame.leftImage.clone();
+        frame.rightImage = cameraFrame.rightImage.clone();
+        frame.timestampUs = cameraFrame.leftTimestampNs / 1000;  // ns to us
+
+        // For now, VCSEL is same as regular image (VCSEL controller integration TODO)
+        frame.leftVCSEL = frame.leftImage;
+        frame.rightVCSEL = frame.rightImage;
 
         // Get stability score
         if (pImpl->stabilityDetector_) {
@@ -520,11 +540,17 @@ std::vector<HandheldScanPipeline::StereoFrame> HandheldScanPipeline::captureMult
 
         frames.push_back(frame);
 
-        // Small delay between frames (100ms for ~10 FPS)
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        pImpl->logger_.debug("Captured frame " + std::to_string(i + 1) + "/" + std::to_string(numFrames) +
+                            " - Size: " + std::to_string(cameraFrame.leftImage.cols) + "x" + std::to_string(cameraFrame.leftImage.rows));
+
+        // Small delay between frames for ~10 FPS
+        if (i < numFrames - 1) {  // Don't delay after last frame
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
     }
 
-    pImpl->logger_.info("Captured " + std::to_string(frames.size()) + " frames successfully");
+    pImpl->logger_.info("Captured " + std::to_string(frames.size()) + "/" +
+                       std::to_string(numFrames) + " frames successfully");
 
     return frames;
 }
@@ -907,6 +933,138 @@ void HandheldScanPipeline::enableVCSEL(bool enable) {
 std::map<std::string, double> HandheldScanPipeline::getStatistics() const {
     std::lock_guard<std::mutex> lock(pImpl->statsMutex_);
     return pImpl->statistics_;
+}
+
+// Save debug output
+bool HandheldScanPipeline::saveDebugOutput(const std::string& timestamp,
+                                           const std::vector<StereoFrame>& frames,
+                                           const std::vector<cv::Mat>& depthMaps,
+                                           const cv::Mat& fusedDepth,
+                                           const cv::Mat& pointCloud) {
+    pImpl->logger_.info("Saving debug output to /unlook_debug/ with timestamp: " + timestamp);
+
+    try {
+        const std::string debugDir = "/unlook_debug";
+
+        // Save captured frames (left/right images)
+        for (size_t i = 0; i < frames.size(); ++i) {
+            std::stringstream ss;
+            ss << std::setw(3) << std::setfill('0') << i;
+            std::string frameNum = ss.str();
+
+            // Save left image
+            if (!frames[i].leftImage.empty()) {
+                std::string leftPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_left.png";
+                cv::imwrite(leftPath, frames[i].leftImage);
+                pImpl->logger_.debug("Saved: " + leftPath);
+            }
+
+            // Save right image
+            if (!frames[i].rightImage.empty()) {
+                std::string rightPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_right.png";
+                cv::imwrite(rightPath, frames[i].rightImage);
+                pImpl->logger_.debug("Saved: " + rightPath);
+            }
+
+            // Save VCSEL images if available
+            if (!frames[i].leftVCSEL.empty() &&
+                !cv::countNonZero(frames[i].leftVCSEL == frames[i].leftImage)) {
+                std::string vcselPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_vcsel_left.png";
+                cv::imwrite(vcselPath, frames[i].leftVCSEL);
+                pImpl->logger_.debug("Saved: " + vcselPath);
+            }
+        }
+
+        // Save individual depth maps
+        for (size_t i = 0; i < depthMaps.size(); ++i) {
+            if (depthMaps[i].empty()) continue;
+
+            std::stringstream ss;
+            ss << std::setw(3) << std::setfill('0') << i;
+            std::string depthNum = ss.str();
+
+            // Normalize for visualization (0-255)
+            cv::Mat depthVis;
+            cv::normalize(depthMaps[i], depthVis, 0, 255, cv::NORM_MINMAX, CV_8U);
+
+            std::string depthPath = debugDir + "/depth_" + timestamp + "_" + depthNum + ".png";
+            cv::imwrite(depthPath, depthVis);
+            pImpl->logger_.debug("Saved: " + depthPath);
+        }
+
+        // Save fused depth map
+        if (!fusedDepth.empty()) {
+            // Visualization (normalized)
+            cv::Mat fusedVis;
+            cv::normalize(fusedDepth, fusedVis, 0, 255, cv::NORM_MINMAX, CV_8U);
+            cv::applyColorMap(fusedVis, fusedVis, cv::COLORMAP_JET);
+
+            std::string fusedPath = debugDir + "/depth_fused_" + timestamp + ".png";
+            cv::imwrite(fusedPath, fusedVis);
+            pImpl->logger_.info("Saved fused depth visualization: " + fusedPath);
+
+            // Save raw depth data as 32-bit float TIFF for analysis
+            std::string rawDepthPath = debugDir + "/depth_fused_raw_" + timestamp + ".tiff";
+            cv::imwrite(rawDepthPath, fusedDepth);
+            pImpl->logger_.info("Saved raw depth data: " + rawDepthPath);
+        }
+
+        // Save point cloud as PLY
+        if (!pointCloud.empty()) {
+            std::string plyPath = debugDir + "/pointcloud_" + timestamp + ".ply";
+
+            // Create PLY file
+            std::ofstream ply(plyPath);
+            if (!ply.is_open()) {
+                pImpl->logger_.error("Failed to open PLY file: " + plyPath);
+                return false;
+            }
+
+            int numPoints = pointCloud.rows;
+            bool hasColor = (pointCloud.channels() == 6);
+
+            // Write PLY header
+            ply << "ply\n";
+            ply << "format ascii 1.0\n";
+            ply << "element vertex " << numPoints << "\n";
+            ply << "property float x\n";
+            ply << "property float y\n";
+            ply << "property float z\n";
+            if (hasColor) {
+                ply << "property uchar red\n";
+                ply << "property uchar green\n";
+                ply << "property uchar blue\n";
+            }
+            ply << "end_header\n";
+
+            // Write points
+            for (int i = 0; i < numPoints; ++i) {
+                const float* ptr = pointCloud.ptr<float>(i);
+
+                ply << ptr[0] << " " << ptr[1] << " " << ptr[2];
+
+                if (hasColor) {
+                    // RGB values (0-1) to (0-255)
+                    int r = static_cast<int>(ptr[3] * 255.0f);
+                    int g = static_cast<int>(ptr[4] * 255.0f);
+                    int b = static_cast<int>(ptr[5] * 255.0f);
+                    ply << " " << r << " " << g << " " << b;
+                }
+
+                ply << "\n";
+            }
+
+            ply.close();
+            pImpl->logger_.info("Saved point cloud (" + std::to_string(numPoints) + " points): " + plyPath);
+        }
+
+        pImpl->logger_.info("Debug output saved successfully");
+        return true;
+
+    } catch (const std::exception& e) {
+        pImpl->logger_.error("Failed to save debug output: " + std::string(e.what()));
+        return false;
+    }
 }
 
 } // namespace api

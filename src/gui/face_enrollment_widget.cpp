@@ -19,7 +19,7 @@ using namespace unlook::gui::widgets;
 namespace unlook {
 namespace gui {
 
-FaceEnrollmentWidget::FaceEnrollmentWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+FaceEnrollmentWidget::FaceEnrollmentWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                                            QWidget* parent)
     : QWidget(parent)
     , camera_system_(camera_system)

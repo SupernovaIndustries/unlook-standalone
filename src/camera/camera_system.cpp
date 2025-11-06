@@ -1,4 +1,4 @@
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 #include "unlook/core/Logger.hpp"
 #include "unlook/core/exception.h"
 
@@ -26,6 +26,7 @@
 
 namespace unlook {
 namespace camera {
+namespace gui {
 
 // Static members
 std::shared_ptr<CameraSystem> CameraSystem::instance_;
@@ -982,5 +983,6 @@ void CameraSystem::setErrorCallback(core::ErrorCallback callback) {
     error_callback_ = callback;
 }
 
+} // namespace gui
 } // namespace camera
 } // namespace unlook

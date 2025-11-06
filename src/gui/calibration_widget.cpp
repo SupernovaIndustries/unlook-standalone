@@ -7,7 +7,7 @@
 namespace unlook {
 namespace gui {
 
-CalibrationWidget::CalibrationWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent)
+CalibrationWidget::CalibrationWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent)
     : QWidget(parent)
     , tabWidget_(new QTabWidget(this))
     , captureWidget_(new DatasetCaptureWidget(camera_system, this))

@@ -7,7 +7,7 @@
 #include <QScrollArea>
 #include <memory>
 
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 
@@ -38,7 +38,7 @@ public:
      * @param camera_system Shared camera system instance
      * @param parent Parent widget
      */
-    explicit OptionsWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+    explicit OptionsWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                           QWidget* parent = nullptr);
     
     /**
@@ -128,7 +128,7 @@ private:
     void updateStatusDisplays();
     
     // System integration
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
     
     // UI Layout
     QVBoxLayout* main_layout_;

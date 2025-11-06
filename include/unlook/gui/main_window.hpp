@@ -9,7 +9,7 @@
 #include <QTimer>
 #include <memory>
 
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
 #include "unlook/gui/swipe_gesture_detector.hpp"
@@ -184,7 +184,7 @@ private:
     std::unique_ptr<OptionsWidget> options_widget_;
     
     // System integration
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
     
     // State management
     bool is_fullscreen_;

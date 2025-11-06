@@ -9,7 +9,7 @@
 #include <QPixmap>
 #include <memory>
 
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 #include "unlook/gui/widgets/touch_button.hpp"
 #include "unlook/gui/widgets/parameter_slider.hpp"
 #include "unlook/gui/widgets/status_display.hpp"
@@ -49,7 +49,7 @@ public:
      * @param camera_system Shared camera system instance
      * @param parent Parent widget
      */
-    explicit CameraPreviewWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+    explicit CameraPreviewWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                                 QWidget* parent = nullptr);
     
     /**
@@ -230,7 +230,7 @@ private:
     Ui::CameraPreviewWidget *ui;
     
     // Camera system
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
     
     // State management
     bool cameras_swapped_;

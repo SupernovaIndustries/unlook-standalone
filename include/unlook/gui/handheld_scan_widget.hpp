@@ -12,7 +12,7 @@
 #include <memory>
 #include <chrono>
 
-#include "unlook/camera/camera_system.hpp"
+#include "unlook/camera/CameraSystemGUI.hpp"
 
 namespace unlook {
 namespace gui {
@@ -45,7 +45,7 @@ public:
      * @param camera_system Shared camera system for frame acquisition
      * @param parent Parent widget
      */
-    explicit HandheldScanWidget(std::shared_ptr<camera::CameraSystem> camera_system,
+    explicit HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system,
                                 QWidget* parent = nullptr);
 
     /**
@@ -173,7 +173,7 @@ private:
     QLabel* status_label_;                 // Current pipeline status
 
     // Backend Integration
-    std::shared_ptr<camera::CameraSystem> camera_system_;
+    std::shared_ptr<camera::gui::CameraSystem> camera_system_;
     QTimer* update_timer_;                 // 30 Hz UI updates
 
     // Scan State Management

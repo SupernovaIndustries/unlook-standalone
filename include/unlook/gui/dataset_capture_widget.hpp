@@ -41,7 +41,7 @@ class DatasetCaptureWidget : public QWidget {
     Q_OBJECT
 
 public:
-    explicit DatasetCaptureWidget(std::shared_ptr<camera::CameraSystem> camera_system, QWidget* parent = nullptr);
+    explicit DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSystem> camera_system, QWidget* parent = nullptr);
     ~DatasetCaptureWidget();
 
 signals:
@@ -90,7 +90,7 @@ private:
     int countdownValue_;
 
     // Camera and LED
-    std::shared_ptr<camera::CameraSystem> cameraSystem_;
+    std::shared_ptr<camera::gui::CameraSystem> cameraSystem_;
     std::shared_ptr<hardware::AS1170Controller> ledController_;
 
     // Latest frame from preview callback (for capture)
