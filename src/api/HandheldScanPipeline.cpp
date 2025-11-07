@@ -77,18 +77,20 @@ public:
     Impl(std::shared_ptr<camera::CameraSystem> cameraSystem)
         : cameraSystem_(cameraSystem) {
 
-        // Initialize stereo parameters for AD-Census (VCSEL-optimized)
-        stereoParams_.blockSize = 5;
-        stereoParams_.numDisparities = 256;  // Full range for AD-Census (0-256)
-        stereoParams_.minDisparity = 0;      // Start from 0 to support close-range (30cm-infinity)
-        stereoParams_.P1 = 4;                // Small penalty for AD-Census
-        stereoParams_.P2 = 24;               // Moderate smoothing
-        stereoParams_.uniquenessRatio = 25;  // Strict matching for precision
-        stereoParams_.speckleWindowSize = 50;
+        // Initialize stereo parameters for AD-Census (universal robustness)
+        // Optimized for ALL object types: organic (hands), mechanical (gears),
+        // smooth (boxes), textured (3D prints), matte/glossy surfaces
+        stereoParams_.blockSize = 7;         // Larger window for robustness (noise reduction)
+        stereoParams_.numDisparities = 256;  // Full range for AD-Census (0-256 = 30cm-infinity)
+        stereoParams_.minDisparity = 0;      // Start from 0 to support close-range scanning
+        stereoParams_.P1 = 8;                // Increased penalty for smoothness (reduced noise)
+        stereoParams_.P2 = 32;               // Stronger smoothing for uniform regions (skin, boxes)
+        stereoParams_.uniquenessRatio = 15;  // Relaxed for weak texture (was too strict at 25)
+        stereoParams_.speckleWindowSize = 100;  // Larger speckle filter for clean results
         stereoParams_.speckleRange = 16;
-        stereoParams_.disp12MaxDiff = 1;
-        stereoParams_.preFilterCap = 31;
-        stereoParams_.mode = 3;  // MODE_HH4
+        stereoParams_.disp12MaxDiff = 2;     // Relaxed LR consistency (was too strict at 1)
+        stereoParams_.preFilterCap = 63;     // Higher contrast boost for weak texture
+        stereoParams_.mode = 3;  // MODE_HH4 (full resolution processing)
 
         // Initialize VCSELStereoMatcher (AD-Census algorithm)
         logger_.info("Initializing VCSELStereoMatcher (AD-Census)...");
