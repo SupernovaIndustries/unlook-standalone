@@ -15,8 +15,8 @@ std::shared_ptr<CameraSystem> CameraSystem::instance_;
 std::mutex CameraSystem::instance_mutex_;
 
 // Hardware configuration constants for IMX296 cameras
-constexpr int IMX296_WIDTH = 1456;
-constexpr int IMX296_HEIGHT = 1088;
+constexpr int IMX296_WIDTH = 1280;
+constexpr int IMX296_HEIGHT = 720;
 constexpr double TARGET_FPS = 30.0;
 
 CameraSystem::CameraSystem()
@@ -78,7 +78,7 @@ bool CameraSystem::initialize() {
 
     UNLOOK_LOG_INFO("Camera") << "Camera system initialized successfully";
     UNLOOK_LOG_INFO("Camera") << "Hardware sync: XVS/XHS enabled, <1ms precision target";
-    UNLOOK_LOG_INFO("Camera") << "Resolution: " << IMX296_WIDTH << "x" << IMX296_HEIGHT << " YUV420";
+    UNLOOK_LOG_INFO("Camera") << "Resolution: " << IMX296_WIDTH << "x" << IMX296_HEIGHT << " YUV420 (calibration resolution)";
     UNLOOK_LOG_INFO("Camera") << "Baseline: 70.017mm (from calibration)";
 
     return true;
@@ -309,9 +309,9 @@ double CameraSystem::getCurrentFrameRate() const {
 
 std::string CameraSystem::getCameraInfo(core::CameraId camera_id) const {
     if (camera_id == core::CameraId::LEFT) {
-        return "LEFT/MASTER IMX296 1456x1088 @ 30 FPS";
+        return "LEFT/MASTER IMX296 1280x720 @ 30 FPS";
     } else {
-        return "RIGHT/SLAVE IMX296 1456x1088 @ 30 FPS";
+        return "RIGHT/SLAVE IMX296 1280x720 @ 30 FPS";
     }
 }
 
