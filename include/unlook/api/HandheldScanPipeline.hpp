@@ -266,6 +266,20 @@ public:
     std::map<std::string, double> getStatistics() const;
 
     /**
+     * @brief Enable/disable debug image output during processing
+     *
+     * When enabled, saves intermediate processing images:
+     * - 01_rectified_frameXX_left/right.png: Rectified stereo pairs
+     * - 02_disparity_frameXX.png: Disparity maps (normalized 8-bit)
+     * - 03_depth_frameXX.png: Depth maps (normalized 8-bit)
+     * - 03_depth_frameXX_raw.tiff: Raw depth maps (32-bit float)
+     *
+     * @param enable Enable debug output
+     * @param debugDir Debug output directory path
+     */
+    void setDebugOutput(bool enable, const std::string& debugDir = "");
+
+    /**
      * @brief Save debug output (images, depth maps, point cloud)
      * @param debugDir Debug output directory (e.g., "/home/alessandro/unlook_debug/scan_20251107_015620")
      * @param frames Captured stereo frames

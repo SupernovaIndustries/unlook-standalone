@@ -66,6 +66,11 @@ public:
     cv::Mat R1_, R2_, P1_, P2_, Q_;
     float baseline_mm_ = 70.017f;  // From calibration
 
+    // Debug output configuration
+    std::string debugDir_;
+    bool saveDebugImages_ = false;
+    std::atomic<int> frameCounter_{0};
+
     // Logger
     core::Logger& logger_ = core::Logger::getInstance();
 
@@ -150,6 +155,26 @@ public:
         } else {
             logger_.info("Loaded system default calibration: " + defaultCalibPath);
         }
+
+        // CRITICAL FIX: Extract rectification matrices from calibration
+        // Without Q matrix, disparity-to-depth conversion will fail (returns 0 depth maps)
+        if (calibrationManager_->isCalibrationValid()) {
+            const auto& calibData = calibrationManager_->getCalibrationData();
+            Q_ = calibData.Q.clone();
+            R1_ = calibData.R1.clone();
+            R2_ = calibData.R2.clone();
+            P1_ = calibData.P1.clone();
+            P2_ = calibData.P2.clone();
+            cameraMatrix_ = calibData.cameraMatrixLeft.clone();
+            distCoeffs_ = calibData.distCoeffsLeft.clone();
+            baseline_mm_ = calibData.baselineMm;
+
+            logger_.info("Calibration matrices extracted: Q=" +
+                        std::to_string(Q_.rows) + "x" + std::to_string(Q_.cols) +
+                        ", Baseline=" + std::to_string(baseline_mm_) + "mm");
+        } else {
+            logger_.error("Calibration data invalid - Q matrix not available!");
+        }
     }
 
     /**
@@ -181,15 +206,40 @@ public:
             return cv::Mat();
         }
 
+        // Get frame index for debug output
+        int frameIdx = frameCounter_.fetch_add(1);
+
+        // RECTIFICATION: Rectify images before stereo matching
+        cv::Mat leftRect, rightRect;
+        if (calibrationManager_ && calibrationManager_->isCalibrationValid()) {
+            calibrationManager_->rectifyImages(frame.leftImage, frame.rightImage, leftRect, rightRect);
+
+            // Save rectified images if debug enabled
+            if (saveDebugImages_ && !debugDir_.empty()) {
+                std::string leftRectPath = debugDir_ + "/01_rectified_frame" +
+                                          std::string(2 - std::to_string(frameIdx).length(), '0') +
+                                          std::to_string(frameIdx) + "_left.png";
+                std::string rightRectPath = debugDir_ + "/01_rectified_frame" +
+                                           std::string(2 - std::to_string(frameIdx).length(), '0') +
+                                           std::to_string(frameIdx) + "_right.png";
+                cv::imwrite(leftRectPath, leftRect);
+                cv::imwrite(rightRectPath, rightRect);
+            }
+        } else {
+            // No calibration available, use original images
+            leftRect = frame.leftImage.clone();
+            rightRect = frame.rightImage.clone();
+        }
+
         // PERFORMANCE MONITORING: Track AD-Census processing time
         auto start = std::chrono::steady_clock::now();
         logger_.info("Starting AD-Census disparity computation (" +
-                    std::to_string(frame.leftImage.cols) + "x" +
-                    std::to_string(frame.leftImage.rows) + ")...");
+                    std::to_string(leftRect.cols) + "x" +
+                    std::to_string(leftRect.rows) + ")...");
 
-        // Use AD-Census stereo matcher optimized for VCSEL patterns
+        // Use AD-Census stereo matcher optimized for VCSEL patterns on RECTIFIED images
         vcselMatcher_->setParameters(params);
-        if (!vcselMatcher_->computeDisparity(frame.leftImage, frame.rightImage, disparity)) {
+        if (!vcselMatcher_->computeDisparity(leftRect, rightRect, disparity)) {
             logger_.error("VCSELStereoMatcher failed to compute disparity");
             return cv::Mat();
         }
@@ -197,6 +247,20 @@ public:
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
         logger_.info("AD-Census disparity computed in " + std::to_string(elapsed) + "ms");
+
+        // Save disparity map if debug enabled
+        if (saveDebugImages_ && !debugDir_.empty() && !disparity.empty()) {
+            // Normalize disparity for visualization (0-255)
+            cv::Mat disparityVis;
+            double minVal, maxVal;
+            cv::minMaxLoc(disparity, &minVal, &maxVal);
+            disparity.convertTo(disparityVis, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+
+            std::string disparityPath = debugDir_ + "/02_disparity_frame" +
+                                       std::string(2 - std::to_string(frameIdx).length(), '0') +
+                                       std::to_string(frameIdx) + ".png";
+            cv::imwrite(disparityPath, disparityVis);
+        }
 
         // Convert disparity to depth
         if (!disparity.empty() && Q_.rows == 4 && Q_.cols == 4) {
@@ -206,6 +270,27 @@ public:
             std::vector<cv::Mat> channels;
             cv::split(depth, channels);
             depth = channels[2];  // Z channel
+
+            // Save depth map if debug enabled
+            if (saveDebugImages_ && !debugDir_.empty() && !depth.empty()) {
+                // Save as normalized PNG for visualization
+                cv::Mat depthVis;
+                cv::normalize(depth, depthVis, 0, 255, cv::NORM_MINMAX, CV_8U);
+                std::string depthPath = debugDir_ + "/03_depth_frame" +
+                                       std::string(2 - std::to_string(frameIdx).length(), '0') +
+                                       std::to_string(frameIdx) + ".png";
+                cv::imwrite(depthPath, depthVis);
+
+                // Save raw depth as 32-bit float TIFF
+                std::string depthRawPath = debugDir_ + "/03_depth_frame" +
+                                          std::string(2 - std::to_string(frameIdx).length(), '0') +
+                                          std::to_string(frameIdx) + "_raw.tiff";
+                cv::imwrite(depthRawPath, depth);
+            }
+        } else {
+            if (Q_.rows != 4 || Q_.cols != 4) {
+                logger_.error("Q matrix invalid! Size: " + std::to_string(Q_.rows) + "x" + std::to_string(Q_.cols));
+            }
         }
 
         return depth;
@@ -979,6 +1064,18 @@ void HandheldScanPipeline::enableVCSEL(bool enable) {
     }
 
     pImpl->logger_.info("VCSEL " + std::string(pImpl->vcselEnabled_ ? "enabled" : "disabled"));
+}
+
+void HandheldScanPipeline::setDebugOutput(bool enable, const std::string& debugDir) {
+    pImpl->saveDebugImages_ = enable;
+    pImpl->debugDir_ = debugDir;
+    pImpl->frameCounter_ = 0;  // Reset frame counter
+
+    if (enable) {
+        pImpl->logger_.info("Debug output enabled: " + debugDir);
+    } else {
+        pImpl->logger_.info("Debug output disabled");
+    }
 }
 
 // Get statistics

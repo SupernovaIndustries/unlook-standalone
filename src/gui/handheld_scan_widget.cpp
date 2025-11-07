@@ -652,6 +652,9 @@ void HandheldScanWidget::startScanThread() {
 
                 qDebug() << "[HandheldScanWidget] Debug output directory:" << debug_dir;
 
+                // Enable debug output for intermediate images (rectified, disparity, depth)
+                pipeline->setDebugOutput(true, debug_dir.toStdString());
+
                 // Convert gui frames to api format and save debug images
                 std::vector<api::HandheldScanPipeline::StereoFrame> api_frames;
                 api_frames.reserve(captured_frames.size());
