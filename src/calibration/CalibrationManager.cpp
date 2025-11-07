@@ -143,30 +143,62 @@ public:
             fs["baseline_mm"] >> calibData.baselineMm;
             fs["precision_mm"] >> calibData.precisionMm;
             
-            // Read image size
+            // Read image size - support both formats for backward compatibility
+            // Format 1: image_size: [width, height] (legacy CalibrationManager format)
+            // Format 2: image_width: 1280, image_height: 720 (StereoCalibrationProcessor format)
             std::vector<int> imgSize;
             fs["image_size"] >> imgSize;
             if (imgSize.size() == 2) {
                 calibData.imageSize = cv::Size(imgSize[0], imgSize[1]);
+            } else {
+                // Try separate width/height fields (new format)
+                int width = 0, height = 0;
+                fs["image_width"] >> width;
+                fs["image_height"] >> height;
+                if (width > 0 && height > 0) {
+                    calibData.imageSize = cv::Size(width, height);
+                }
             }
             
             // Read camera matrices
             fs["camera_matrix_left"] >> calibData.cameraMatrixLeft;
             fs["camera_matrix_right"] >> calibData.cameraMatrixRight;
-            
-            // Read distortion coefficients
+
+            // Read distortion coefficients - support both naming conventions
             fs["dist_coeffs_left"] >> calibData.distCoeffsLeft;
             fs["dist_coeffs_right"] >> calibData.distCoeffsRight;
-            
-            // Read stereo calibration data
+            if (calibData.distCoeffsLeft.empty()) {
+                fs["distortion_coeffs_left"] >> calibData.distCoeffsLeft;  // StereoCalibrationProcessor format
+            }
+            if (calibData.distCoeffsRight.empty()) {
+                fs["distortion_coeffs_right"] >> calibData.distCoeffsRight;  // StereoCalibrationProcessor format
+            }
+
+            // Read stereo calibration data - support both naming conventions
             fs["R"] >> calibData.R;
             fs["T"] >> calibData.T;
             fs["E"] >> calibData.E;
             fs["F"] >> calibData.F;
-            
-            // Read rectification data
+            if (calibData.R.empty()) {
+                fs["rotation_matrix"] >> calibData.R;  // StereoCalibrationProcessor format
+            }
+            if (calibData.T.empty()) {
+                fs["translation_vector"] >> calibData.T;  // StereoCalibrationProcessor format
+            }
+            if (calibData.E.empty()) {
+                fs["essential_matrix"] >> calibData.E;  // StereoCalibrationProcessor format
+            }
+            if (calibData.F.empty()) {
+                fs["fundamental_matrix"] >> calibData.F;  // StereoCalibrationProcessor format
+            }
+
+            // Read rectification data - support both naming conventions
             fs["R1"] >> calibData.R1;
             fs["R2"] >> calibData.R2;
+            if (calibData.R1.empty()) {
+                fs["rectification_transform_left"] >> calibData.R1;  // StereoCalibrationProcessor format (but swapped!)
+                fs["rectification_transform_right"] >> calibData.R2;
+            }
             fs["P1"] >> calibData.P1;
             fs["P2"] >> calibData.P2;
             fs["Q"] >> calibData.Q;
