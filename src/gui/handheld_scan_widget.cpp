@@ -195,10 +195,10 @@ void HandheldScanWidget::onStartScan() {
             qWarning() << "[HandheldScanWidget] Failed to disable LED2 (Flood)";
         }
 
-        // ENABLE VCSEL at 280mA for structured light
-        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);
+        // ENABLE VCSEL at 300mA for structured light (increased from 280mA for better visibility)
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 300);
         if (led1_success) {
-            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 280mA for AD-CENSUS structured light";
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 300mA for AD-CENSUS structured light";
         } else {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
     // HIDDEN:             ui->statusLabel->setText("ERROR: Failed to enable VCSEL");

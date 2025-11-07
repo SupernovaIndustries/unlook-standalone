@@ -181,12 +181,22 @@ public:
             return cv::Mat();
         }
 
+        // PERFORMANCE MONITORING: Track AD-Census processing time
+        auto start = std::chrono::steady_clock::now();
+        logger_.info("Starting AD-Census disparity computation (" +
+                    std::to_string(frame.leftImage.cols) + "x" +
+                    std::to_string(frame.leftImage.rows) + ")...");
+
         // Use AD-Census stereo matcher optimized for VCSEL patterns
         vcselMatcher_->setParameters(params);
         if (!vcselMatcher_->computeDisparity(frame.leftImage, frame.rightImage, disparity)) {
             logger_.error("VCSELStereoMatcher failed to compute disparity");
             return cv::Mat();
         }
+
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start).count();
+        logger_.info("AD-Census disparity computed in " + std::to_string(elapsed) + "ms");
 
         // Convert disparity to depth
         if (!disparity.empty() && Q_.rows == 4 && Q_.cols == 4) {
@@ -600,6 +610,7 @@ std::vector<cv::Mat> HandheldScanPipeline::processFrames(
 
         #pragma omp parallel for num_threads(params.numThreads)
         for (size_t i = 0; i < frames.size(); ++i) {
+            pImpl->logger_.info("Processing frame " + std::to_string(i+1) + "/" + std::to_string(frames.size()));
             tempMaps[i] = pImpl->processFrame(frames[i], params);
         }
 
@@ -611,7 +622,10 @@ std::vector<cv::Mat> HandheldScanPipeline::processFrames(
         }
     } else {
         // Sequential processing
+        size_t i = 0;
         for (const auto& frame : frames) {
+            i++;
+            pImpl->logger_.info("Processing frame " + std::to_string(i) + "/" + std::to_string(frames.size()));
             cv::Mat depth = pImpl->processFrame(frame, params);
             if (!depth.empty()) {
                 depthMaps.push_back(depth);
