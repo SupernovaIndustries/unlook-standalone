@@ -59,6 +59,101 @@
     </widget>
    </item>
 
+   <!-- PROCESSING STATUS AND PROGRESS BAR -->
+   <item>
+    <widget class="QFrame" name="progressFrame">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>80</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>80</height>
+      </size>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <property name="styleSheet">
+      <string>
+       QFrame {
+         background-color: #1a1a1a;
+         border-top: 1px solid #333333;
+       }
+      </string>
+     </property>
+     <layout class="QVBoxLayout" name="progressLayout">
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <property name="leftMargin">
+       <number>20</number>
+      </property>
+      <property name="topMargin">
+       <number>12</number>
+      </property>
+      <property name="rightMargin">
+       <number>20</number>
+      </property>
+      <property name="bottomMargin">
+       <number>12</number>
+      </property>
+
+      <!-- STATUS LABEL -->
+      <item>
+       <widget class="QLabel" name="statusLabel">
+        <property name="text">
+         <string>Processing...</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="styleSheet">
+         <string>
+          font-size: 16pt;
+          font-weight: bold;
+          color: #00FF88;
+         </string>
+        </property>
+       </widget>
+      </item>
+
+      <!-- PROGRESS BAR -->
+      <item>
+       <widget class="QProgressBar" name="progressBar">
+        <property name="value">
+         <number>0</number>
+        </property>
+        <property name="textVisible">
+         <bool>true</bool>
+        </property>
+        <property name="styleSheet">
+         <string>
+          QProgressBar {
+            border: 2px solid #333333;
+            border-radius: 8px;
+            background-color: #0a0a0a;
+            text-align: center;
+            color: #FFFFFF;
+            font-size: 14pt;
+            font-weight: bold;
+          }
+          QProgressBar::chunk {
+            background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #00AA44, stop:1 #00FF88);
+            border-radius: 6px;
+          }
+         </string>
+        </property>
+       </widget>
+      </item>
+
+     </layout>
+    </widget>
+   </item>
+
    <!-- CONTROL BUTTONS - 3 BUTTONS: START, STOP, INFO -->
    <item>
     <widget class="QFrame" name="controlFrame">

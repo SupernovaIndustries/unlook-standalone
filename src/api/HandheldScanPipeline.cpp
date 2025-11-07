@@ -596,7 +596,8 @@ std::vector<HandheldScanPipeline::StereoFrame> HandheldScanPipeline::captureMult
 // Process frames to depth maps
 std::vector<cv::Mat> HandheldScanPipeline::processFrames(
     const std::vector<StereoFrame>& frames,
-    const stereo::StereoMatchingParams& params) {
+    const stereo::StereoMatchingParams& params,
+    ProgressCallback progressCallback) {
 
     std::vector<cv::Mat> depthMaps;
     depthMaps.reserve(frames.size());
@@ -621,11 +622,19 @@ std::vector<cv::Mat> HandheldScanPipeline::processFrames(
             }
         }
     } else {
-        // Sequential processing
+        // Sequential processing with progress updates
         size_t i = 0;
         for (const auto& frame : frames) {
             i++;
             pImpl->logger_.info("Processing frame " + std::to_string(i) + "/" + std::to_string(frames.size()));
+
+            // Report progress to GUI
+            if (progressCallback) {
+                float progress = static_cast<float>(i) / static_cast<float>(frames.size());
+                std::string message = "Processing frame " + std::to_string(i) + "/" + std::to_string(frames.size()) + " with AD-CENSUS";
+                progressCallback(progress, message);
+            }
+
             cv::Mat depth = pImpl->processFrame(frame, params);
             if (!depth.empty()) {
                 depthMaps.push_back(depth);
@@ -979,82 +988,56 @@ std::map<std::string, double> HandheldScanPipeline::getStatistics() const {
 }
 
 // Save debug output
-bool HandheldScanPipeline::saveDebugOutput(const std::string& timestamp,
+bool HandheldScanPipeline::saveDebugOutput(const std::string& debugDir,
                                            const std::vector<StereoFrame>& frames,
                                            const std::vector<cv::Mat>& depthMaps,
                                            const cv::Mat& fusedDepth,
                                            const cv::Mat& pointCloud) {
-    pImpl->logger_.info("Saving debug output to /unlook_debug/ with timestamp: " + timestamp);
+    pImpl->logger_.info("Saving comprehensive debug output to: " + debugDir);
 
     try {
-        const std::string debugDir = "/unlook_debug";
 
-        // Save captured frames (left/right images)
-        for (size_t i = 0; i < frames.size(); ++i) {
-            std::stringstream ss;
-            ss << std::setw(3) << std::setfill('0') << i;
-            std::string frameNum = ss.str();
+        // Raw frames already saved by widget (00_raw_frameXX_left/right.png)
+        // Skip saving raw frames here to avoid duplication
 
-            // Save left image
-            if (!frames[i].leftImage.empty()) {
-                std::string leftPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_left.png";
-                cv::imwrite(leftPath, frames[i].leftImage);
-                pImpl->logger_.debug("Saved: " + leftPath);
-            }
-
-            // Save right image
-            if (!frames[i].rightImage.empty()) {
-                std::string rightPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_right.png";
-                cv::imwrite(rightPath, frames[i].rightImage);
-                pImpl->logger_.debug("Saved: " + rightPath);
-            }
-
-            // Save VCSEL images if available
-            if (!frames[i].leftVCSEL.empty() &&
-                !cv::countNonZero(frames[i].leftVCSEL == frames[i].leftImage)) {
-                std::string vcselPath = debugDir + "/frame_" + timestamp + "_" + frameNum + "_vcsel_left.png";
-                cv::imwrite(vcselPath, frames[i].leftVCSEL);
-                pImpl->logger_.debug("Saved: " + vcselPath);
-            }
-        }
-
-        // Save individual depth maps
+        // Save individual depth maps (03_depth_frameXX.png)
         for (size_t i = 0; i < depthMaps.size(); ++i) {
             if (depthMaps[i].empty()) continue;
 
             std::stringstream ss;
-            ss << std::setw(3) << std::setfill('0') << i;
-            std::string depthNum = ss.str();
+            ss << std::setw(2) << std::setfill('0') << i;
+            std::string frameNum = ss.str();
 
             // Normalize for visualization (0-255)
             cv::Mat depthVis;
             cv::normalize(depthMaps[i], depthVis, 0, 255, cv::NORM_MINMAX, CV_8U);
+            cv::applyColorMap(depthVis, depthVis, cv::COLORMAP_JET);  // Apply colormap
 
-            std::string depthPath = debugDir + "/depth_" + timestamp + "_" + depthNum + ".png";
+            std::string depthPath = debugDir + "/03_depth_frame" + frameNum + ".png";
             cv::imwrite(depthPath, depthVis);
             pImpl->logger_.debug("Saved: " + depthPath);
         }
 
-        // Save fused depth map
+        // Save fused depth map (04_depth_fused.png and .tiff)
         if (!fusedDepth.empty()) {
-            // Visualization (normalized)
+            // Visualization (normalized with colormap)
             cv::Mat fusedVis;
             cv::normalize(fusedDepth, fusedVis, 0, 255, cv::NORM_MINMAX, CV_8U);
             cv::applyColorMap(fusedVis, fusedVis, cv::COLORMAP_JET);
 
-            std::string fusedPath = debugDir + "/depth_fused_" + timestamp + ".png";
+            std::string fusedPath = debugDir + "/04_depth_fused.png";
             cv::imwrite(fusedPath, fusedVis);
             pImpl->logger_.info("Saved fused depth visualization: " + fusedPath);
 
-            // Save raw depth data as 32-bit float TIFF for analysis
-            std::string rawDepthPath = debugDir + "/depth_fused_raw_" + timestamp + ".tiff";
+            // Save raw depth data as 32-bit float TIFF for precision analysis
+            std::string rawDepthPath = debugDir + "/04_depth_fused_raw.tiff";
             cv::imwrite(rawDepthPath, fusedDepth);
             pImpl->logger_.info("Saved raw depth data: " + rawDepthPath);
         }
 
-        // Save point cloud as PLY
+        // Save point cloud as PLY (05_pointcloud.ply)
         if (!pointCloud.empty()) {
-            std::string plyPath = debugDir + "/pointcloud_" + timestamp + ".ply";
+            std::string plyPath = debugDir + "/05_pointcloud.ply";
 
             // Create PLY file
             std::ofstream ply(plyPath);

@@ -183,10 +183,12 @@ public:
      * @brief Process frames to generate depth maps
      * @param frames Vector of stereo frames
      * @param params Stereo matching parameters
+     * @param progressCallback Optional progress callback for GUI updates
      * @return Vector of depth maps
      */
     std::vector<cv::Mat> processFrames(const std::vector<StereoFrame>& frames,
-                                       const stereo::StereoMatchingParams& params);
+                                       const stereo::StereoMatchingParams& params,
+                                       ProgressCallback progressCallback = nullptr);
 
     /**
      * @brief Fuse multiple depth maps with outlier rejection
@@ -265,14 +267,14 @@ public:
 
     /**
      * @brief Save debug output (images, depth maps, point cloud)
-     * @param timestamp Timestamp string for file naming
+     * @param debugDir Debug output directory (e.g., "/home/alessandro/unlook_debug/scan_20251107_015620")
      * @param frames Captured stereo frames
      * @param depthMaps Generated depth maps
      * @param fusedDepth Fused depth map
      * @param pointCloud Final point cloud
      * @return true if all debug output saved successfully
      */
-    bool saveDebugOutput(const std::string& timestamp,
+    bool saveDebugOutput(const std::string& debugDir,
                         const std::vector<StereoFrame>& frames,
                         const std::vector<cv::Mat>& depthMaps,
                         const cv::Mat& fusedDepth,

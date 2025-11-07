@@ -14,9 +14,9 @@ namespace gui {
 std::shared_ptr<CameraSystem> CameraSystem::instance_;
 std::mutex CameraSystem::instance_mutex_;
 
-// Hardware configuration constants for IMX296 cameras
-constexpr int IMX296_WIDTH = 1280;
-constexpr int IMX296_HEIGHT = 720;
+// Hardware configuration constants for IMX296 cameras - MUST match calibration
+constexpr int IMX296_WIDTH = 1280;   // Calibration resolution (verified from remap bin size: 1280x720)
+constexpr int IMX296_HEIGHT = 720;   // Calibration resolution (verified from remap bin size: 1280x720)
 constexpr double TARGET_FPS = 30.0;
 
 CameraSystem::CameraSystem()

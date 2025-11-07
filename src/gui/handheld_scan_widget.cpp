@@ -211,10 +211,10 @@ void HandheldScanWidget::onStartScan() {
 
     qDebug() << "[HandheldScanWidget] LED controller ready, starting scan...";
 
-    // Reset state
-    scan_state_ = ScanState::WAITING_STABILITY;
+    // Reset state - SKIP stability wait (bugged) and go directly to CAPTURING
+    scan_state_ = ScanState::CAPTURING;
     frames_captured_ = 0;
-    current_stability_ = 0.0f;
+    current_stability_ = 1.0f;  // Set to 100% to skip stability check
     achieved_precision_mm_ = 0.0f;
     point_count_ = 0;
     scan_start_time_ = std::chrono::steady_clock::now();
@@ -392,27 +392,8 @@ void HandheldScanWidget::updateUI() {
         return;
     }
 
-    // Simulate stability calculation (replace with actual StabilityDetector)
-    // For now, use a simple simulation that increases stability over time
-    if (scan_state_ == ScanState::WAITING_STABILITY) {
-        // Simulate increasing stability (would come from StabilityDetector)
-        static float simulated_stability = 0.0f;
-        simulated_stability += 0.02f;  // Increase by 2% per update
-        if (simulated_stability > 1.0f) {
-            simulated_stability = 1.0f;
-        }
-        current_stability_ = simulated_stability;
-
-        updateStabilityIndicator(current_stability_);
-
-        // Auto-transition to CAPTURING when stable
-        if (current_stability_ >= STABILITY_THRESHOLD) {
-            scan_state_ = ScanState::CAPTURING;
-    // HIDDEN:             ui->statusLabel->setText("Stable! Capturing frames...");
-    // HIDDEN:             ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
-            qDebug() << "[HandheldScanWidget] Stability threshold reached, starting capture";
-        }
-    } else if (scan_state_ == ScanState::CAPTURING) {
+    // STABILITY CHECK DISABLED - bugged variable, skip directly to capture
+    if (scan_state_ == ScanState::CAPTURING) {
         // Simulate frame capture progress (would come from actual capture pipeline)
         static int frame_counter = 0;
         frame_counter++;
@@ -664,11 +645,20 @@ void HandheldScanWidget::startScanThread() {
                     return false;
                 }
 
-                // Convert gui frames to api format
+                // CRITICAL: Save captured frames for debugging in timestamped scan folder
+                QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+                QString debug_dir = QString("/home/alessandro/unlook_debug/scan_%1").arg(timestamp);
+                QDir().mkpath(debug_dir);
+
+                qDebug() << "[HandheldScanWidget] Debug output directory:" << debug_dir;
+
+                // Convert gui frames to api format and save debug images
                 std::vector<api::HandheldScanPipeline::StereoFrame> api_frames;
                 api_frames.reserve(captured_frames.size());
 
-                for (const auto& gui_frame : captured_frames) {
+                for (size_t i = 0; i < captured_frames.size(); i++) {
+                    const auto& gui_frame = captured_frames[i];
+
                     api::HandheldScanPipeline::StereoFrame api_frame;
                     api_frame.leftImage = gui_frame.left_frame.image.clone();
                     api_frame.rightImage = gui_frame.right_frame.image.clone();
@@ -677,16 +667,82 @@ void HandheldScanWidget::startScanThread() {
                     api_frame.rightVCSEL = api_frame.rightImage;
                     api_frame.stabilityScore = 1.0f;  // Assumed stable since frames were captured
 
+                    // Save debug images (YUV420 converted to grayscale for visualization)
+                    try {
+                        cv::Mat left_gray, right_gray;
+                        if (api_frame.leftImage.channels() == 1) {
+                            left_gray = api_frame.leftImage;
+                            right_gray = api_frame.rightImage;
+                        } else {
+                            cv::cvtColor(api_frame.leftImage, left_gray, cv::COLOR_YUV2GRAY_I420);
+                            cv::cvtColor(api_frame.rightImage, right_gray, cv::COLOR_YUV2GRAY_I420);
+                        }
+
+                        QString left_path = QString("%1/00_raw_frame%2_left.png").arg(debug_dir).arg(i, 2, 10, QChar('0'));
+                        QString right_path = QString("%1/00_raw_frame%2_right.png").arg(debug_dir).arg(i, 2, 10, QChar('0'));
+
+                        cv::imwrite(left_path.toStdString(), left_gray);
+                        cv::imwrite(right_path.toStdString(), right_gray);
+
+                        qDebug() << "[HandheldScanWidget] Saved debug frame" << i << "to" << debug_dir;
+                    } catch (const std::exception& e) {
+                        qWarning() << "[HandheldScanWidget] Failed to save debug frame" << i << ":" << e.what();
+                    }
+
                     api_frames.push_back(api_frame);
                 }
 
                 qDebug() << "[HandheldScanWidget::ScanThread] Processing" << api_frames.size() << "frames with VCSELStereoMatcher...";
 
+                // Show progress frame on main thread
+                QMetaObject::invokeMethod(this, [this]() {
+                    ui->progressFrame->setVisible(true);
+                    ui->progressBar->setValue(0);
+                    ui->statusLabel->setText("Starting AD-CENSUS processing...");
+                }, Qt::QueuedConnection);
+
                 // Get stereo parameters
                 auto stereo_params = pipeline->getStereoParams();
 
-                // Process frames to depth maps using AD-Census
-                auto depth_maps = pipeline->processFrames(api_frames, stereo_params);
+                // Track processing start time for ETA calculation
+                auto processing_start = std::chrono::steady_clock::now();
+                std::atomic<int> frames_completed{0};
+                const int total_frames = api_frames.size();
+
+                // Process frames to depth maps using AD-Census with progress callback
+                auto depth_maps = pipeline->processFrames(api_frames, stereo_params,
+                    [this, &processing_start, &frames_completed, total_frames](float progress, const std::string& message) {
+                        // Called from background thread - use QMetaObject::invokeMethod for thread safety
+                        frames_completed++;
+
+                        // Calculate ETA based on average time per frame
+                        auto elapsed = std::chrono::steady_clock::now() - processing_start;
+                        auto elapsed_sec = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+
+                        int eta_sec = 0;
+                        if (frames_completed > 0) {
+                            double avg_sec_per_frame = static_cast<double>(elapsed_sec) / frames_completed;
+                            int remaining_frames = total_frames - frames_completed;
+                            eta_sec = static_cast<int>(avg_sec_per_frame * remaining_frames);
+                        }
+
+                        // Format status message with ETA
+                        QString status_msg = QString::fromStdString(message);
+                        if (eta_sec > 0) {
+                            int eta_min = eta_sec / 60;
+                            int eta_sec_remainder = eta_sec % 60;
+                            status_msg += QString(" (ETA: %1:%2)")
+                                .arg(eta_min)
+                                .arg(eta_sec_remainder, 2, 10, QChar('0'));
+                        }
+
+                        // Update UI on main thread
+                        QMetaObject::invokeMethod(this, [this, progress, status_msg]() {
+                            ui->progressBar->setValue(static_cast<int>(progress * 100));
+                            ui->statusLabel->setText(status_msg);
+                        }, Qt::QueuedConnection);
+                    }
+                );
 
                 if (depth_maps.empty()) {
                     qCritical() << "[HandheldScanWidget::ScanThread] No depth maps generated";
@@ -720,6 +776,26 @@ void HandheldScanWidget::startScanThread() {
                 qDebug() << "[HandheldScanWidget::ScanThread] Scan completed successfully!";
                 qDebug() << "  Point count:" << point_count_;
                 qDebug() << "  Achieved precision:" << achieved_precision_mm_ << "mm";
+
+                // CRITICAL: Save all debug output (rectified, epipolar, disparity, depth, point cloud)
+                qDebug() << "[HandheldScanWidget] Saving comprehensive debug output to" << debug_dir;
+                try {
+                    bool debug_saved = pipeline->saveDebugOutput(
+                        debug_dir.toStdString(),
+                        api_frames,
+                        depth_maps,
+                        fused_depth,
+                        point_cloud
+                    );
+
+                    if (debug_saved) {
+                        qDebug() << "[HandheldScanWidget] All debug images saved successfully";
+                    } else {
+                        qWarning() << "[HandheldScanWidget] Failed to save some debug images";
+                    }
+                } catch (const std::exception& e) {
+                    qWarning() << "[HandheldScanWidget] Debug save error:" << e.what();
+                }
 
                 // Shutdown pipeline
                 pipeline->shutdown();
@@ -774,11 +850,17 @@ void HandheldScanWidget::onScanCompleted() {
     auto scan_duration = std::chrono::steady_clock::now() - scan_start_time_;
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(scan_duration).count();
 
-    // HIDDEN: Update UI with results
-    // ui->precisionLabel->setText("Precision: " + QString::number(achieved_precision_mm_, 'f', 2) + " mm");
-    // ui->precisionLabel->setStyleSheet("font-size: 16pt; font-weight: bold; color: #00FF00;");
-    // ui->statusLabel->setText("Scan complete! Duration: " + QString::number(duration_ms) + " ms | Points: " + QString::number(point_count_));
-    // ui->statusLabel->setStyleSheet("font-size: 14pt; color: #00FF00;");
+    // Hide progress frame
+    ui->progressFrame->setVisible(false);
+
+    // Update camera preview with success message
+    ui->cameraPreviewLabel->setText(
+        QString("Scan Complete!\n\nDuration: %1s\nPoints: %2\nPrecision: %3 mm")
+            .arg(duration_ms / 1000.0, 0, 'f', 1)
+            .arg(point_count_)
+            .arg(achieved_precision_mm_, 0, 'f', 3)
+    );
+    ui->cameraPreviewLabel->setStyleSheet("font-size: 20pt; font-weight: bold; color: #00FF88; background-color: #0a0a0a;");
 
     // Hide stop button, show scan button
     ui->stopButton->setVisible(false);
@@ -802,8 +884,12 @@ void HandheldScanWidget::onScanFailed(const QString& error) {
 
     scan_state_ = ScanState::FAILED;
 
-    // HIDDEN:     ui->statusLabel->setText("Scan failed: " + error);
-    // HIDDEN:     ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
+    // Hide progress frame
+    ui->progressFrame->setVisible(false);
+
+    // Show error message
+    ui->cameraPreviewLabel->setText("Scan Failed\n\n" + error);
+    ui->cameraPreviewLabel->setStyleSheet("font-size: 20pt; font-weight: bold; color: #FF4444; background-color: #0a0a0a;");
 
     // Reset UI after delay
     QTimer::singleShot(3000, this, [this]() {
