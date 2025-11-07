@@ -79,8 +79,8 @@ public:
 
         // Initialize stereo parameters for AD-Census (VCSEL-optimized)
         stereoParams_.blockSize = 5;
-        stereoParams_.numDisparities = 256;  // Wider range for AD-Census
-        stereoParams_.minDisparity = 48;     // Optimized for 70mm baseline
+        stereoParams_.numDisparities = 256;  // Full range for AD-Census (0-256)
+        stereoParams_.minDisparity = 0;      // Start from 0 to support close-range (30cm-infinity)
         stereoParams_.P1 = 4;                // Small penalty for AD-Census
         stereoParams_.P2 = 24;               // Moderate smoothing
         stereoParams_.uniquenessRatio = 25;  // Strict matching for precision
