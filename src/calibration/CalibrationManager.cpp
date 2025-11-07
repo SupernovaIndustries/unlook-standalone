@@ -196,12 +196,19 @@ public:
             fs["R1"] >> calibData.R1;
             fs["R2"] >> calibData.R2;
             if (calibData.R1.empty()) {
-                fs["rectification_transform_left"] >> calibData.R1;  // StereoCalibrationProcessor format (but swapped!)
+                fs["rectification_transform_left"] >> calibData.R1;  // StereoCalibrationProcessor format
                 fs["rectification_transform_right"] >> calibData.R2;
             }
             fs["P1"] >> calibData.P1;
             fs["P2"] >> calibData.P2;
+            if (calibData.P1.empty()) {
+                fs["projection_matrix_left"] >> calibData.P1;  // StereoCalibrationProcessor format
+                fs["projection_matrix_right"] >> calibData.P2;
+            }
             fs["Q"] >> calibData.Q;
+            if (calibData.Q.empty()) {
+                fs["disparity_to_depth_matrix"] >> calibData.Q;  // StereoCalibrationProcessor format
+            }
 
             // DEBUG: Verify rectification matrices were loaded
             std::cout << "[CalibrationManager] After loading from YAML:" << std::endl;
