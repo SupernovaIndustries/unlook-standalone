@@ -654,9 +654,10 @@ void HandheldScanWidget::startScanThread() {
             qDebug() << "  Frames captured:" << captured_frames.size();
 
             try {
-                // Create HandheldScanPipeline with real camera system singleton
-                auto api_camera_system = camera::CameraSystem::getInstance();
-                auto pipeline = std::make_unique<api::HandheldScanPipeline>(api_camera_system);
+                // CRITICAL FIX: Do NOT create camera::CameraSystem::getInstance() here!
+                // It would create a SECOND HardwareSyncCapture instance conflicting with GUI camera system
+                // HandheldScanPipeline doesn't need CameraSystem since frames are already captured
+                auto pipeline = std::make_unique<api::HandheldScanPipeline>(nullptr);
 
                 if (!pipeline->initialize()) {
                     qCritical() << "[HandheldScanWidget::ScanThread] Failed to initialize pipeline";

@@ -228,10 +228,10 @@ bool HandheldScanPipeline::initialize() {
 
     pImpl->logger_.info("Initializing HandheldScanPipeline...");
 
-    // Initialize camera system if not already initialized
+    // CRITICAL FIX: Camera system is optional when frames are pre-captured
+    // Widget-based scanning captures frames first, then processes without camera access
     if (!pImpl->cameraSystem_) {
-        pImpl->logger_.error("Camera system not provided");
-        return false;
+        pImpl->logger_.warning("Camera system not provided - pipeline will work with pre-captured frames only");
     }
 
     // Initialize VCSELStereoMatcher with parameters
