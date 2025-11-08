@@ -11,6 +11,8 @@ set(STEREO_SOURCES
     TemporalStereoProcessor.cpp
     VCSELStereoMatcher.cpp
     VulkanSGMAccelerator.cpp
+    RectificationEngine.cpp
+    DebugOutputManager.cpp
 )
 
 # NEON optimized sources

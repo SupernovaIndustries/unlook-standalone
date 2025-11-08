@@ -3,6 +3,7 @@ add_library(unlook_calibration STATIC
     CalibrationManager.cpp
     StereoCalibrationProcessor.cpp
     CalibrationValidator.cpp
+    CalibrationValidation.cpp
     PatternDetector.cpp
 )
 
