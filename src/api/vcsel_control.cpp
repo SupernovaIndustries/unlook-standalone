@@ -633,9 +633,9 @@ bool unlook_vcsel_validate_config(const unlook_vcsel_config_t* config,
         return false;
     }
 
-    if (config->vcsel_current_ma == 0 || config->vcsel_current_ma > 300) {
+    if (config->vcsel_current_ma == 0 || config->vcsel_current_ma > 400) {
         if (error_message && buffer_size > 0) {
-            snprintf(error_message, buffer_size, "Invalid VCSEL current: %dmA (valid range: 1-300mA)",
+            snprintf(error_message, buffer_size, "Invalid VCSEL current: %dmA (valid range: 1-400mA)",
                     config->vcsel_current_ma);
         }
         return false;

@@ -13,6 +13,7 @@
 #include <QPainter>
 #include <QDialog>
 #include <QVBoxLayout>
+#include <QMessageBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QFrame>
@@ -100,6 +101,29 @@ void HandheldScanWidget::showEvent(QShowEvent* event) {
 
     qDebug() << "[HandheldScanWidget::showEvent] Widget now visible";
 
+    // CRITICAL: Initialize LED controller when widget becomes visible
+    // This ensures AS1170 is ready for both CALIBRATE and START buttons
+    if (led_controller_) {
+        // Initialize if not already done
+        if (!led_controller_->isInitialized()) {
+            qDebug() << "[HandheldScanWidget] Initializing AS1170 controller";
+
+            // CRITICAL: Force reset hardware BEFORE initialization
+            qDebug() << "[HandheldScanWidget] Forcing AS1170 hardware reset to clear stuck state";
+            led_controller_->forceResetHardware();
+
+            if (!led_controller_->initialize()) {
+                qWarning() << "[HandheldScanWidget] Failed to initialize AS1170 controller - LEDs will not work";
+            } else {
+                qDebug() << "[HandheldScanWidget] AS1170 controller initialized successfully";
+            }
+        } else {
+            // Already initialized, but force hardware reset anyway for safety
+            qDebug() << "[HandheldScanWidget] AS1170 already initialized, forcing hardware reset";
+            led_controller_->forceResetHardware();
+        }
+    }
+
     // Start camera preview (now working with HardwareSyncCapture!)
     startCameraPreview();
 }
@@ -128,6 +152,7 @@ void HandheldScanWidget::setupUI() {
     // Connect button signals
     connect(ui->scanButton, &QPushButton::clicked, this, &HandheldScanWidget::onStartScan);
     connect(ui->stopButton, &QPushButton::clicked, this, &HandheldScanWidget::onStopScan);
+    connect(ui->calibrateButton, &QPushButton::clicked, this, &HandheldScanWidget::onAutoCalibrate);
     connect(ui->infoButton, &QPushButton::clicked, this, &HandheldScanWidget::onShowInfo);
 
     // All statistics hidden (shown in INFO popup)
@@ -140,8 +165,10 @@ void HandheldScanWidget::setupUI() {
     // HIDDEN:     ui->captureProgressBar->setMaximum(TARGET_FRAMES);
     // HIDDEN:     ui->captureProgressBar->setValue(0);
 
-    // Set initial state
-    ui->stopButton->setEnabled(false);
+    // Set initial button visibility (IDLE state: Start + Calibrate visible, Stop hidden)
+    ui->scanButton->setVisible(true);
+    ui->calibrateButton->setVisible(true);
+    ui->stopButton->setVisible(false);
     // HIDDEN:     ui->captureProgressBar->setVisible(true);  // Keep visible but at 0
 
     qDebug() << "[HandheldScanWidget::setupUI] UI initialized from .ui file with camera preview";
@@ -160,28 +187,9 @@ void HandheldScanWidget::onStartScan() {
 
     qDebug() << "[HandheldScanWidget] Camera system ready, initializing LED controller...";
 
-    // CRITICAL: Initialize and reset LED controller BEFORE starting capture
-    // This prevents crashes from stuck LED states from previous widgets
+    // CRITICAL: Enable VCSEL for AD-CENSUS stereo matching
+    // AS1170 already initialized in showEvent(), just enable LED here
     if (led_controller_) {
-        // Initialize if not already done
-        if (!led_controller_->isInitialized()) {
-            qDebug() << "[HandheldScanWidget] Initializing AS1170 controller";
-
-            // CRITICAL: Force reset hardware BEFORE initialization
-            qDebug() << "[HandheldScanWidget] Forcing AS1170 hardware reset to clear stuck state";
-            led_controller_->forceResetHardware();
-
-            if (!led_controller_->initialize()) {
-                qWarning() << "[HandheldScanWidget] Failed to initialize AS1170 controller - LEDs will not work";
-            } else {
-                qDebug() << "[HandheldScanWidget] AS1170 controller initialized successfully";
-            }
-        } else {
-            // Already initialized, but force hardware reset anyway for safety
-            qDebug() << "[HandheldScanWidget] AS1170 already initialized, forcing hardware reset";
-            led_controller_->forceResetHardware();
-        }
-
         // CRITICAL: ENABLE VCSEL for AD-CENSUS stereo matching!
         // AD-CENSUS requires structured light pattern from VCSEL for texture on smooth surfaces
         // LED1 (VCSEL): ENABLED at 280mA for structured light projection
@@ -195,10 +203,10 @@ void HandheldScanWidget::onStartScan() {
             qWarning() << "[HandheldScanWidget] Failed to disable LED2 (Flood)";
         }
 
-        // ENABLE VCSEL at 300mA for structured light (increased from 280mA for better visibility)
-        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 300);
+        // ENABLE VCSEL at 350mA for structured light (max safe current - increased from 300mA)
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
         if (led1_success) {
-            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 300mA for AD-CENSUS structured light";
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 350mA for AD-CENSUS structured light";
         } else {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
     // HIDDEN:             ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
@@ -220,8 +228,9 @@ void HandheldScanWidget::onStartScan() {
     scan_start_time_ = std::chrono::steady_clock::now();
     fps_samples_.clear();
 
-    // Update UI
+    // Update UI: SCANNING state (hide Start/Calibrate, show Stop)
     ui->scanButton->setVisible(false);
+    ui->calibrateButton->setVisible(false);
     ui->stopButton->setVisible(true);
     // HIDDEN:     ui->captureProgressBar->setVisible(true);
     // removed capture_count_label(true);
@@ -536,7 +545,9 @@ QString HandheldScanWidget::getStabilityText(float score) const {
 
 void HandheldScanWidget::resetUI() {
     scan_state_ = ScanState::IDLE;
+    // IDLE state: show Start + Calibrate, hide Stop
     ui->scanButton->setVisible(true);
+    ui->calibrateButton->setVisible(true);
     ui->stopButton->setVisible(false);
     // HIDDEN:     ui->captureProgressBar->setVisible(false);
     // removed capture_count_label(false);
@@ -982,6 +993,249 @@ void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation
     ));
+}
+
+// Auto-calibration for VCSEL structured light
+void HandheldScanWidget::onAutoCalibrate() {
+    qDebug() << "[HandheldScanWidget] Auto-calibration requested...";
+
+    // Disable calibrate button during calibration
+    ui->calibrateButton->setEnabled(false);
+    ui->calibrateButton->setText("⚙ CALIBRATING...");
+
+    // Show status message
+    ui->cameraPreviewLabel->setText("Auto-Calibrating Camera\nfor VCSEL Dots...\n\nPlease wait...");
+    ui->cameraPreviewLabel->setStyleSheet("font-size: 18pt; color: #FFAA00; background-color: #0a0a0a;");
+
+    // Force GUI update
+    QApplication::processEvents();
+
+    // Perform calibration
+    bool success = performAutoCalibration();
+
+    // Re-enable button
+    ui->calibrateButton->setEnabled(true);
+    ui->calibrateButton->setText("⚙ CALIBRATE");
+
+    if (success) {
+        qDebug() << "[HandheldScanWidget] Auto-calibration completed successfully";
+
+        // Get final parameters to display
+        auto final_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
+        QString message = QString("Calibration Complete!\n\n"
+                                 "Exposure: %1 µs\n"
+                                 "Gain: %2x\n\n"
+                                 "Auto-exposure/gain DISABLED\n"
+                                 "Parameters locked for VCSEL scanning")
+                         .arg(static_cast<int>(final_config.exposure_time_us))
+                         .arg(final_config.gain, 0, 'f', 2);
+
+        ui->cameraPreviewLabel->setText(message);
+        ui->cameraPreviewLabel->setStyleSheet("font-size: 14pt; color: #00FF00; background-color: #0a0a0a;");
+
+        // Popup removed per user request - info shown on preview label only
+        // QMessageBox::information(this, "Auto-Calibration Complete", message);
+    } else {
+        qCritical() << "[HandheldScanWidget] Auto-calibration failed";
+        ui->cameraPreviewLabel->setText("Calibration Failed!\n\nPlease check camera connection");
+        ui->cameraPreviewLabel->setStyleSheet("font-size: 18pt; color: #FF4444; background-color: #0a0a0a;");
+    }
+
+    // Reset preview after 3 seconds
+    QTimer::singleShot(3000, this, [this]() {
+        startCameraPreview();
+    });
+}
+
+bool HandheldScanWidget::performAutoCalibration() {
+    using namespace unlook::core;
+
+    qDebug() << "[AutoCalibration] Starting camera auto-calibration for VCSEL dots...";
+
+    if (!camera_system_) {
+        qCritical() << "[AutoCalibration] Camera system not available";
+        return false;
+    }
+
+    if (!led_controller_) {
+        qCritical() << "[AutoCalibration] LED controller not available";
+        return false;
+    }
+
+    // Stop preview temporarily
+    stopCameraPreview();
+
+    // STEP 1: Enable VCSEL LED1 at 350mA for structured light (max safe current)
+    qDebug() << "[AutoCalibration] Enabling VCSEL LED1 at 350mA...";
+    bool led_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
+    if (!led_success) {
+        qCritical() << "[AutoCalibration] Failed to enable VCSEL LED1";
+        return false;
+    }
+
+    // Wait for VCSEL to stabilize
+    QThread::msleep(100);
+
+    // STEP 2: Iterative calibration loop
+    // NOTE: VCSEL structured light produces sparse dots, not full illumination
+    // Target brightness is lower than normal scene (30-50 instead of 100-120)
+    const int MAX_ITERATIONS = 7;
+    const int TARGET_MEAN_MIN = 30;   // Lower target for VCSEL dots
+    const int TARGET_MEAN_MAX = 50;   // Lower target for VCSEL dots
+    const float MAX_SATURATED_PERCENT = 1.0f;  // 1% max saturated pixels
+
+    // Get current camera parameters from config
+    auto left_config = camera_system_->getCameraConfig(CameraId::LEFT);
+    double current_exposure = left_config.exposure_time_us;
+    double current_gain = left_config.gain;
+
+    qDebug() << "[AutoCalibration] Initial parameters: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
+
+    bool calibration_success = false;
+
+    for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+        qDebug() << "[AutoCalibration] Iteration" << (iteration + 1) << "/" << MAX_ITERATIONS;
+        qDebug() << "[AutoCalibration]   Current: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
+
+        // Update status label
+        ui->cameraPreviewLabel->setText(QString("Calibrating... %1/%2\n\nExposure: %3 µs\nGain: %4x")
+            .arg(iteration + 1).arg(MAX_ITERATIONS)
+            .arg(QString::number(current_exposure, 'f', 0))
+            .arg(QString::number(current_gain, 'f', 1)));
+        QApplication::processEvents();
+
+        // Apply current parameters to both cameras
+        camera_system_->setExposureTime(CameraId::LEFT, current_exposure);
+        camera_system_->setExposureTime(CameraId::RIGHT, current_exposure);
+        camera_system_->setGain(CameraId::LEFT, current_gain);
+        camera_system_->setGain(CameraId::RIGHT, current_gain);
+
+        // Wait for settings to apply
+        QThread::msleep(200);
+
+        // Capture test frame
+        StereoFramePair test_frame;
+        bool capture_success = false;
+
+        auto callback = [&test_frame, &capture_success](const StereoFramePair& frame) {
+            test_frame = frame;
+            capture_success = true;
+        };
+
+        camera_system_->startCapture(callback);
+        QThread::msleep(100);  // Wait for one frame
+        camera_system_->stopCapture();
+
+        if (!capture_success || test_frame.left_frame.image.empty()) {
+            qWarning() << "[AutoCalibration] Failed to capture test frame";
+            continue;
+        }
+
+        // STEP 3: Analyze histogram
+        cv::Mat gray_image;
+        if (test_frame.left_frame.image.channels() == 3) {
+            cv::cvtColor(test_frame.left_frame.image, gray_image, cv::COLOR_BGR2GRAY);
+        } else {
+            gray_image = test_frame.left_frame.image;
+        }
+
+        // Calculate statistics
+        int saturated_count = 0;
+        long long sum = 0;
+        int total_pixels = gray_image.rows * gray_image.cols;
+
+        for (int y = 0; y < gray_image.rows; y++) {
+            const uint8_t* row = gray_image.ptr<uint8_t>(y);
+            for (int x = 0; x < gray_image.cols; x++) {
+                uint8_t val = row[x];
+                sum += val;
+                if (val >= 250) {  // Saturated pixels
+                    saturated_count++;
+                }
+            }
+        }
+
+        double mean_brightness = static_cast<double>(sum) / total_pixels;
+        float saturated_percent = 100.0f * saturated_count / total_pixels;
+
+        qDebug() << "[AutoCalibration]   Mean brightness:" << mean_brightness;
+        qDebug() << "[AutoCalibration]   Saturated pixels:" << saturated_percent << "%";
+
+        // STEP 4: Check if calibration target achieved
+        if (mean_brightness >= TARGET_MEAN_MIN &&
+            mean_brightness <= TARGET_MEAN_MAX &&
+            saturated_percent < MAX_SATURATED_PERCENT) {
+            qDebug() << "[AutoCalibration] ✓ Target achieved! Mean:" << mean_brightness
+                     << ", Saturated:" << saturated_percent << "%";
+            calibration_success = true;
+            break;
+        }
+
+        // STEP 5: Adjust parameters for VCSEL structured light
+        if (saturated_percent > 5.0f || mean_brightness > 80) {
+            // Too bright - reduce exposure
+            qDebug() << "[AutoCalibration]   → Too bright, reducing exposure by 20%";
+            current_exposure *= 0.8;
+            current_exposure = std::max(current_exposure, 5000.0);  // Min 5ms
+        } else if (mean_brightness < 20) {
+            // Very dark - increase both exposure AND gain aggressively
+            qDebug() << "[AutoCalibration]   → Very dark, increasing exposure by 30% and gain";
+            current_exposure *= 1.30;  // More aggressive for VCSEL
+            current_exposure = std::min(current_exposure, 50000.0);  // Max 50ms
+            current_gain = std::min(current_gain * 1.15, 16.0);  // Also increase gain
+        } else if (mean_brightness < TARGET_MEAN_MIN) {
+            // Slightly dark - fine-tune with gain
+            qDebug() << "[AutoCalibration]   → Slightly dark, increasing gain";
+            current_gain = std::min(current_gain * 1.2, 16.0);  // More aggressive gain
+        } else if (mean_brightness > TARGET_MEAN_MAX) {
+            // Slightly bright - fine-tune with gain
+            qDebug() << "[AutoCalibration]   → Slightly bright, reducing gain";
+            current_gain = std::max(current_gain * 0.9, 1.0);
+        }
+    }
+
+    // STEP 6: Apply final parameters BEFORE disabling VCSEL and stopping capture
+    // CRITICAL: Must apply while camera is still capturing!
+    if (calibration_success) {
+        qDebug() << "[AutoCalibration] ✓ Target achieved!";
+        qDebug() << "[AutoCalibration]   Final exposure:" << current_exposure << "us";
+        qDebug() << "[AutoCalibration]   Final gain:" << current_gain << "x";
+
+        // CRITICAL: Disable auto-exposure and auto-gain FIRST to prevent override
+        qDebug() << "[AutoCalibration] Disabling auto-exposure and auto-gain...";
+        camera_system_->setAutoExposure(CameraId::LEFT, false);
+        camera_system_->setAutoExposure(CameraId::RIGHT, false);
+        camera_system_->setAutoGain(CameraId::LEFT, false);
+        camera_system_->setAutoGain(CameraId::RIGHT, false);
+
+        // Apply final parameters while camera is STILL ACTIVE
+        qDebug() << "[AutoCalibration] Applying final parameters (camera still active)...";
+        bool exp_left = camera_system_->setExposureTime(CameraId::LEFT, current_exposure);
+        bool exp_right = camera_system_->setExposureTime(CameraId::RIGHT, current_exposure);
+        bool gain_left = camera_system_->setGain(CameraId::LEFT, current_gain);
+        bool gain_right = camera_system_->setGain(CameraId::RIGHT, current_gain);
+
+        qDebug() << "[AutoCalibration] Parameter application results:"
+                 << "exp_left=" << exp_left << "exp_right=" << exp_right
+                 << "gain_left=" << gain_left << "gain_right=" << gain_right;
+
+        // Wait for parameters to settle
+        QThread::msleep(200);
+
+        // Verify parameters were applied
+        auto verify_config = camera_system_->getCameraConfig(CameraId::LEFT);
+        qDebug() << "[AutoCalibration] Verification - Applied exposure:" << verify_config.exposure_time_us
+                 << "us, gain:" << verify_config.gain << "x";
+    } else {
+        qWarning() << "[AutoCalibration] ✗ Calibration did not converge after" << MAX_ITERATIONS << "iterations";
+        qWarning() << "[AutoCalibration]   Best parameters: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
+    }
+
+    // STEP 7: Now disable VCSEL
+    qDebug() << "[AutoCalibration] Disabling VCSEL LED1...";
+    led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+
+    return calibration_success;
 }
 
 } // namespace gui

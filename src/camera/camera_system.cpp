@@ -279,6 +279,12 @@ bool CameraSystem::setExposureTime(core::CameraId camera_id, double exposure_us)
     // HardwareSyncCapture manages exposure internally
     if (hardware_sync_capture_) {
         hardware_sync_capture_->setExposureTime(static_cast<int>(exposure_us));
+
+        // CRITICAL: Also update saved configuration so getCameraConfig() returns correct values
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        left_config_.exposure_time_us = exposure_us;
+        right_config_.exposure_time_us = exposure_us;
+
         return true;
     }
     return false;
@@ -293,6 +299,12 @@ bool CameraSystem::setGain(core::CameraId camera_id, double gain) {
     // HardwareSyncCapture manages gain internally
     if (hardware_sync_capture_) {
         hardware_sync_capture_->setGain(gain);
+
+        // CRITICAL: Also update saved configuration so getCameraConfig() returns correct values
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        left_config_.gain = gain;
+        right_config_.gain = gain;
+
         return true;
     }
     return false;

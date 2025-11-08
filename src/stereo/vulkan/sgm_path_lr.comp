@@ -1,0 +1,99 @@
+/**
+ * @file sgm_path_lr.comp
+ * @brief Vulkan compute shader for SGM Left-to-Right path aggregation
+ *
+ * Optimized for Raspberry Pi 5 VideoCore VII GPU (Vulkan 1.2+)
+ * Processes entire scanlines in parallel for maximum GPU utilization.
+ */
+
+#version 450
+#extension GL_EXT_shader_atomic_float : enable
+
+// Workgroup size optimized for VideoCore VII
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Input: fused cost volume (H×W×D)
+layout(binding = 0) readonly buffer CostVolumeIn {
+    float costs[];
+} costIn;
+
+// Output: aggregated cost volume (H×W×D)
+layout(binding = 1) buffer CostVolumeOut {
+    float costs[];
+} costOut;
+
+// Push constants for parameters
+layout(push_constant) uniform Parameters {
+    uint width;
+    uint height;
+    uint disparities;
+    float P1;      // Small disparity penalty
+    float P2;      // Large disparity penalty
+    uint pathDir;  // 0=L→R, 1=R→L, 2=T→B, 3=B→T
+} params;
+
+// Shared memory for previous costs (reduces global memory access)
+shared float prevCosts[256];  // Max 256 disparities
+
+// Helper: Get 3D index in flattened array
+uint getCostIndex(uint y, uint x, uint d) {
+    return y * params.width * params.disparities + x * params.disparities + d;
+}
+
+void main() {
+    // Get thread coordinates
+    uint y = gl_GlobalInvocationID.y;
+    uint tid = gl_LocalInvocationID.x;
+
+    // Early exit if out of bounds
+    if (y >= params.height) return;
+
+    // Initialize shared memory for this scanline
+    if (tid < params.disparities) {
+        prevCosts[tid] = 0.0;
+    }
+    barrier();
+
+    // Process scanline Left → Right
+    for (uint x = 0; x < params.width; x++) {
+        // Each thread processes one disparity
+        if (tid < params.disparities) {
+            uint d = tid;
+            uint idx = getCostIndex(y, x, d);
+
+            // Load cost from input
+            float cost = costIn.costs[idx];
+
+            // Find minimum of previous costs
+            float minPrevCost = prevCosts[0];
+            for (uint i = 1; i < params.disparities; i++) {
+                minPrevCost = min(minPrevCost, prevCosts[i]);
+            }
+
+            // SGM smoothness term
+            float smoothCost = prevCosts[d];
+
+            // Penalty for d±1
+            if (d > 0) {
+                smoothCost = min(smoothCost, prevCosts[d-1] + params.P1);
+            }
+            if (d < params.disparities - 1) {
+                smoothCost = min(smoothCost, prevCosts[d+1] + params.P1);
+            }
+
+            // Penalty for large disparity changes
+            smoothCost = min(smoothCost, minPrevCost + params.P2);
+
+            // Aggregated cost
+            float aggCost = cost + smoothCost - minPrevCost;
+
+            // Store in shared memory for next pixel
+            prevCosts[d] = aggCost;
+
+            // Accumulate to output (atomic add for multiple paths)
+            atomicAdd(costOut.costs[idx], aggCost);
+        }
+
+        barrier();  // Sync threads before next pixel
+    }
+}

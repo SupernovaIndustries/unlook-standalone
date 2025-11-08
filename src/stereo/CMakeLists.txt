@@ -10,6 +10,7 @@ set(STEREO_SOURCES
     RawStereoProcessor.cpp
     TemporalStereoProcessor.cpp
     VCSELStereoMatcher.cpp
+    VulkanSGMAccelerator.cpp
 )
 
 # NEON optimized sources
@@ -57,6 +58,18 @@ target_link_libraries(unlook_stereo
         unlook_camera_impl
         unlook_hardware
 )
+
+# Link Vulkan for GPU acceleration
+find_package(Vulkan)
+if(Vulkan_FOUND)
+    target_link_libraries(unlook_stereo PUBLIC Vulkan::Vulkan)
+    target_compile_definitions(unlook_stereo PUBLIC HAS_VULKAN)
+    message(STATUS "Vulkan GPU acceleration enabled for stereo matching")
+
+    # Copy SPIR-V shaders to build directory
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/vulkan/sgm_path_lr.spv
+         DESTINATION ${CMAKE_BINARY_DIR}/src/stereo/vulkan/)
+endif()
 
 # Explicitly ensure OpenCV modules are linked (especially ximgproc for WLS filtering)
 if(OpenCV_FOUND)

@@ -648,8 +648,15 @@ std::vector<HandheldScanPipeline::StereoFrame> HandheldScanPipeline::captureMult
         }
 
         // Copy frame data (convert camera::StereoFrame to api::StereoFrame)
-        frame.leftImage = cameraFrame.leftImage.clone();
-        frame.rightImage = cameraFrame.rightImage.clone();
+        // CRITICAL FIX: Resize to calibration resolution (1280x720) if needed
+        if (cameraFrame.leftImage.cols == 1456 && cameraFrame.leftImage.rows == 1088) {
+            cv::resize(cameraFrame.leftImage, frame.leftImage, cv::Size(1280, 720), 0, 0, cv::INTER_AREA);
+            cv::resize(cameraFrame.rightImage, frame.rightImage, cv::Size(1280, 720), 0, 0, cv::INTER_AREA);
+            pImpl->logger_.debug("Resized images from 1456x1088 to 1280x720 (calibration resolution)");
+        } else {
+            frame.leftImage = cameraFrame.leftImage.clone();
+            frame.rightImage = cameraFrame.rightImage.clone();
+        }
         frame.timestampUs = cameraFrame.leftTimestampNs / 1000;  // ns to us
 
         // For now, VCSEL is same as regular image (VCSEL controller integration TODO)

@@ -103,6 +103,11 @@ private slots:
     void onShowInfo();
 
     /**
+     * @brief Handle calibrate button click - auto-calibrate camera exposure/gain for VCSEL
+     */
+    void onAutoCalibrate();
+
+    /**
      * @brief Update UI components (called at 30 Hz)
      */
     void updateUI();
@@ -180,6 +185,18 @@ private:
      * @brief Start background scan thread
      */
     void startScanThread();
+
+    /**
+     * @brief Perform automatic camera calibration for VCSEL dots visibility
+     *
+     * Analyzes histogram of captured frames and iteratively adjusts exposure/gain
+     * to avoid saturation while maintaining good VCSEL dot visibility.
+     *
+     * Target: mean brightness 100-120, <1% saturated pixels (>=250)
+     *
+     * @return true if calibration successful, false otherwise
+     */
+    bool performAutoCalibration();
 
     // UI from .ui file
     Ui::HandheldScanWidget* ui;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "StereoMatcher.hpp"
+#include "VulkanSGMAccelerator.hpp"
 #include <opencv2/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <memory>
@@ -267,10 +268,10 @@ private:
     cv::Mat aggregatedCostVolume_;          // SGM aggregated cost
     cv::Mat leftDownsampled_, rightDownsampled_;  // HD images
 
-    // Vulkan compute (experimental, optional)
+    // Vulkan GPU acceleration (Raspberry Pi 5 VideoCore VII)
     bool tryInitVulkan();
     bool vulkanAvailable_ = false;
-    void* vulkanContext_ = nullptr;  // Opaque pointer to Vulkan context
+    std::unique_ptr<VulkanSGMAccelerator> vulkanAccelerator_;  // GPU compute accelerator
 };
 
 } // namespace stereo

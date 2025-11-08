@@ -24,40 +24,34 @@ namespace stereo {
 namespace neon {
 
 /**
- * @brief Compute Hamming distance between two 80-bit descriptors
+ * @brief Compute Hamming distance between two 24-bit descriptors (5x5 Census)
+ * OPTIMIZED FOR VCSEL DOT PATTERN
  */
-inline int hammingDistance80(uint64_t low1, uint16_t high1,
-                            uint64_t low2, uint16_t high2) {
+inline int hammingDistance24(uint32_t desc1, uint32_t desc2) {
+    // XOR to find differing bits, then count (only 24 bits used)
+    uint32_t xor_val = desc1 ^ desc2;
+
 #ifdef __ARM_NEON
-    // XOR the descriptors to find differing bits
-    uint64_t xor_low = low1 ^ low2;
-    uint16_t xor_high = high1 ^ high2;
-
-    // Use NEON POPCOUNT for the 64-bit part
-    uint8x8_t bytes_low = vreinterpret_u8_u64(vdup_n_u64(xor_low));
-    uint8x8_t popcount_low = vcnt_u8(bytes_low);
-    uint32_t count_low = vaddlv_u8(popcount_low);
-
-    // Count bits in the 16-bit part
-    uint32_t count_high = __builtin_popcount(xor_high);
-
-    return count_low + count_high;
+    // Use NEON POPCOUNT for hardware acceleration
+    uint8x8_t bytes = vreinterpret_u8_u32(vdup_n_u32(xor_val));
+    uint8x8_t popcount = vcnt_u8(bytes);
+    return vaddlv_u8(popcount);
 #else
-    // CPU fallback using builtin popcount
-    uint64_t xor_low = low1 ^ low2;
-    uint16_t xor_high = high1 ^ high2;
-    return __builtin_popcountll(xor_low) + __builtin_popcount(xor_high);
+    // CPU fallback
+    return __builtin_popcount(xor_val);
 #endif
 }
 
 /**
- * @brief NEON-optimized Hamming cost volume computation
+ * @brief NEON-optimized Hamming cost volume computation (24-bit Census)
  *
- * Computes matching costs between left and right Census descriptors
+ * Computes matching costs between left and right 24-bit Census descriptors
  * using NEON POPCOUNT instructions for maximum performance.
  *
- * @param censusLeft Left census descriptors (CV_64FC2)
- * @param censusRight Right census descriptors (CV_64FC2)
+ * OPTIMIZED FOR: VCSEL dot pattern stereo matching
+ *
+ * @param censusLeft Left census descriptors (CV_32FC1)
+ * @param censusRight Right census descriptors (CV_32FC1)
  * @param costVolume Output cost volume (CV_32FC1, H×W×D)
  * @param minDisparity Minimum disparity value
  * @param numDisparities Number of disparity levels
@@ -78,31 +72,27 @@ void computeHammingCostNEON(const cv::Mat& censusLeft,
     // Process each row in parallel
     #pragma omp parallel for schedule(dynamic)
     for (int y = 0; y < height; y++) {
-        const cv::Vec2d* leftPtr = censusLeft.ptr<cv::Vec2d>(y);
-        const cv::Vec2d* rightPtr = censusRight.ptr<cv::Vec2d>(y);
+        const float* leftPtr = censusLeft.ptr<float>(y);
+        const float* rightPtr = censusRight.ptr<float>(y);
 
         for (int x = 0; x < width; x++) {
-            // Extract left descriptor
-            uint64_t left_low, left_high_temp;
-            memcpy(&left_low, &leftPtr[x][0], sizeof(uint64_t));
-            memcpy(&left_high_temp, &leftPtr[x][1], sizeof(uint64_t));
-            uint16_t left_high = static_cast<uint16_t>(left_high_temp);
+            // Extract left descriptor (24-bit stored as float)
+            uint32_t left_desc;
+            memcpy(&left_desc, &leftPtr[x], sizeof(uint32_t));
 
             // Compute costs for all disparities
             for (int d = 0; d < numDisparities; d++) {
                 int xr = x - (minDisparity + d);
-                float cost = 80.0f;  // Maximum cost (all bits different)
+                float cost = 24.0f;  // Maximum cost (all 24 bits different)
 
                 if (xr >= 0 && xr < width) {
                     // Extract right descriptor
-                    uint64_t right_low, right_high_temp;
-                    memcpy(&right_low, &rightPtr[xr][0], sizeof(uint64_t));
-                    memcpy(&right_high_temp, &rightPtr[xr][1], sizeof(uint64_t));
-                    uint16_t right_high = static_cast<uint16_t>(right_high_temp);
+                    uint32_t right_desc;
+                    memcpy(&right_desc, &rightPtr[xr], sizeof(uint32_t));
 
                     // Compute Hamming distance using NEON
                     cost = static_cast<float>(
-                        hammingDistance80(left_low, left_high, right_low, right_high)
+                        hammingDistance24(left_desc, right_desc)
                     );
                 }
 
@@ -141,51 +131,35 @@ void computeHammingCostVectorizedNEON(const cv::Mat& censusLeft,
 
     #pragma omp parallel for schedule(dynamic)
     for (int y = 0; y < height; y++) {
-        const cv::Vec2d* leftPtr = censusLeft.ptr<cv::Vec2d>(y);
-        const cv::Vec2d* rightPtr = censusRight.ptr<cv::Vec2d>(y);
+        const float* leftPtr = censusLeft.ptr<float>(y);
+        const float* rightPtr = censusRight.ptr<float>(y);
 
         for (int x = 0; x < width; x++) {
-            uint64_t left_low, left_high_temp;
-            memcpy(&left_low, &leftPtr[x][0], sizeof(uint64_t));
-            memcpy(&left_high_temp, &leftPtr[x][1], sizeof(uint64_t));
-            uint16_t left_high = static_cast<uint16_t>(left_high_temp);
+            uint32_t left_desc;
+            memcpy(&left_desc, &leftPtr[x], sizeof(uint32_t));
 
             float* costPtr = costVolume.ptr<float>(y, x);
 
             // Process disparities in blocks of 4
             for (int d = 0; d < numDisparities; d += dispBlock) {
-                float32x4_t costs = vdupq_n_f32(80.0f);  // Initialize to max cost
-                float cost_array[4] = {80.0f, 80.0f, 80.0f, 80.0f};
-
+                float cost_array[4] = {24.0f, 24.0f, 24.0f, 24.0f};
                 int remaining = std::min(dispBlock, numDisparities - d);
 
                 for (int i = 0; i < remaining; i++) {
                     int xr = x - (minDisparity + d + i);
 
                     if (xr >= 0 && xr < width) {
-                        uint64_t right_low, right_high_temp;
-                        memcpy(&right_low, &rightPtr[xr][0], sizeof(uint64_t));
-                        memcpy(&right_high_temp, &rightPtr[xr][1], sizeof(uint64_t));
-                        uint16_t right_high = static_cast<uint16_t>(right_high_temp);
+                        uint32_t right_desc;
+                        memcpy(&right_desc, &rightPtr[xr], sizeof(uint32_t));
 
-                        // Compute Hamming distance with NEON POPCOUNT
-                        uint64_t xor_low = left_low ^ right_low;
-                        uint16_t xor_high = left_high ^ right_high;
-
-                        // NEON POPCOUNT for 64-bit part
-                        uint8x8_t bytes = vreinterpret_u8_u64(vdup_n_u64(xor_low));
-                        uint8x8_t popcount = vcnt_u8(bytes);
-                        uint32_t count = vaddlv_u8(popcount);
-
-                        // Add 16-bit part
-                        count += __builtin_popcount(xor_high);
-
-                        cost_array[i] = static_cast<float>(count);
+                        cost_array[i] = static_cast<float>(
+                            hammingDistance24(left_desc, right_desc)
+                        );
                     }
                 }
 
                 // Store costs using NEON store
-                costs = vld1q_f32(cost_array);
+                float32x4_t costs = vld1q_f32(cost_array);
                 vst1q_f32(&costPtr[d], costs);
             }
         }
@@ -196,7 +170,8 @@ void computeHammingCostVectorizedNEON(const cv::Mat& censusLeft,
 }
 
 /**
- * @brief CPU fallback for Hamming cost computation
+ * @brief CPU fallback for Hamming cost computation (24-bit)
+ * OPTIMIZED FOR VCSEL DOT PATTERN
  */
 void computeHammingCostCPU(const cv::Mat& censusLeft,
                            const cv::Mat& censusRight,
@@ -210,32 +185,26 @@ void computeHammingCostCPU(const cv::Mat& censusLeft,
     costVolume.create(3, dims, CV_32F);
 
     for (int y = 0; y < height; y++) {
-        const cv::Vec2d* leftPtr = censusLeft.ptr<cv::Vec2d>(y);
-        const cv::Vec2d* rightPtr = censusRight.ptr<cv::Vec2d>(y);
+        const float* leftPtr = censusLeft.ptr<float>(y);
+        const float* rightPtr = censusRight.ptr<float>(y);
 
         for (int x = 0; x < width; x++) {
-            uint64_t left_low, left_high_temp;
-            memcpy(&left_low, &leftPtr[x][0], sizeof(uint64_t));
-            memcpy(&left_high_temp, &leftPtr[x][1], sizeof(uint64_t));
-            uint16_t left_high = static_cast<uint16_t>(left_high_temp);
+            uint32_t left_desc;
+            memcpy(&left_desc, &leftPtr[x], sizeof(uint32_t));
 
             float* costPtr = costVolume.ptr<float>(y, x);
 
             for (int d = 0; d < numDisparities; d++) {
                 int xr = x - (minDisparity + d);
-                float cost = 80.0f;
+                float cost = 24.0f;  // Max cost for 24-bit
 
                 if (xr >= 0 && xr < width) {
-                    uint64_t right_low, right_high_temp;
-                    memcpy(&right_low, &rightPtr[xr][0], sizeof(uint64_t));
-                    memcpy(&right_high_temp, &rightPtr[xr][1], sizeof(uint64_t));
-                    uint16_t right_high = static_cast<uint16_t>(right_high_temp);
+                    uint32_t right_desc;
+                    memcpy(&right_desc, &rightPtr[xr], sizeof(uint32_t));
 
-                    uint64_t xor_low = left_low ^ right_low;
-                    uint16_t xor_high = left_high ^ right_high;
-
-                    int distance = __builtin_popcountll(xor_low) + __builtin_popcount(xor_high);
-                    cost = static_cast<float>(distance);
+                    cost = static_cast<float>(
+                        hammingDistance24(left_desc, right_desc)
+                    );
                 }
 
                 costPtr[d] = cost;
@@ -244,78 +213,7 @@ void computeHammingCostCPU(const cv::Mat& censusLeft,
     }
 }
 
-/**
- * @brief Batch Hamming distance computation with prefetching
- *
- * Optimized for cache locality and prefetching patterns.
- */
-void computeHammingCostBatchNEON(const cv::Mat& censusLeft,
-                                 const cv::Mat& censusRight,
-                                 cv::Mat& costVolume,
-                                 int minDisparity,
-                                 int numDisparities) {
-#ifdef __ARM_NEON
-    const int width = censusLeft.cols;
-    const int height = censusLeft.rows;
-
-    const int dims[3] = {height, width, numDisparities};
-    costVolume.create(3, dims, CV_32F);
-
-    // Process multiple pixels at once for better cache usage
-    const int pixelBlock = 8;
-
-    #pragma omp parallel for schedule(dynamic)
-    for (int y = 0; y < height; y++) {
-        const cv::Vec2d* leftPtr = censusLeft.ptr<cv::Vec2d>(y);
-        const cv::Vec2d* rightPtr = censusRight.ptr<cv::Vec2d>(y);
-
-        for (int x = 0; x < width; x += pixelBlock) {
-            int blockSize = std::min(pixelBlock, width - x);
-
-            // Prefetch next block
-            if (x + pixelBlock < width) {
-                __builtin_prefetch(&leftPtr[x + pixelBlock], 0, 3);
-                __builtin_prefetch(&rightPtr[x + pixelBlock], 0, 3);
-            }
-
-            for (int px = 0; px < blockSize; px++) {
-                int curr_x = x + px;
-
-                uint64_t left_low, left_high_temp;
-                memcpy(&left_low, &leftPtr[curr_x][0], sizeof(uint64_t));
-                memcpy(&left_high_temp, &leftPtr[curr_x][1], sizeof(uint64_t));
-                uint16_t left_high = static_cast<uint16_t>(left_high_temp);
-
-                float* costPtr = costVolume.ptr<float>(y, curr_x);
-
-                // Unroll disparity loop for better pipelining
-                for (int d = 0; d < numDisparities; d += 2) {
-                    // Process two disparities at once
-                    for (int di = 0; di < 2 && d + di < numDisparities; di++) {
-                        int xr = curr_x - (minDisparity + d + di);
-                        float cost = 80.0f;
-
-                        if (xr >= 0 && xr < width) {
-                            uint64_t right_low, right_high_temp;
-                            memcpy(&right_low, &rightPtr[xr][0], sizeof(uint64_t));
-                            memcpy(&right_high_temp, &rightPtr[xr][1], sizeof(uint64_t));
-                            uint16_t right_high = static_cast<uint16_t>(right_high_temp);
-
-                            cost = static_cast<float>(
-                                hammingDistance80(left_low, left_high, right_low, right_high)
-                            );
-                        }
-
-                        costPtr[d + di] = cost;
-                    }
-                }
-            }
-        }
-    }
-#else
-    computeHammingCostCPU(censusLeft, censusRight, costVolume, minDisparity, numDisparities);
-#endif
-}
+// Note: computeHammingCostBatchNEON removed - was for 80-bit Census, not needed for 5x5 (24-bit)
 
 } // namespace neon
 } // namespace stereo

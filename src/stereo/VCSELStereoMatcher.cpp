@@ -75,11 +75,7 @@ VCSELStereoMatcher::VCSELStereoMatcher() {
 }
 
 VCSELStereoMatcher::~VCSELStereoMatcher() {
-    // Cleanup Vulkan context if initialized
-    if (vulkanContext_) {
-        // Vulkan cleanup would go here
-        vulkanContext_ = nullptr;
-    }
+    // Vulkan accelerator cleans up automatically via unique_ptr
 }
 
 bool VCSELStereoMatcher::computeDisparity(const cv::Mat& leftRectified,
@@ -372,8 +368,8 @@ void VCSELStereoMatcher::fuseCosts(const cv::Mat& adCost,
                 // Normalize AD cost (0-255 -> 0-1)
                 float adNorm = adPtr[d] / 255.0f;
 
-                // Normalize Census cost (0-80 -> 0-1)
-                float censusNorm = censusPtr[d] / 80.0f;
+                // Normalize Census cost (0-24 -> 0-1) [5x5 Census = 24-bit]
+                float censusNorm = censusPtr[d] / 24.0f;
 
                 // Fused cost
                 fusedPtr[d] = lambdaAD * adNorm + lambdaCensus * censusNorm;
@@ -387,6 +383,39 @@ void VCSELStereoMatcher::sgmAggregation(const cv::Mat& costVolume,
     const int height = costVolume.size[0];
     const int width = costVolume.size[1];
     const int disparities = costVolume.size[2];
+
+    // Try GPU acceleration first
+    if (vulkanAvailable_ && vulkanAccelerator_) {
+        core::Logger::getInstance().log(
+            core::LogLevel::DEBUG,
+            "Attempting GPU-accelerated SGM aggregation..."
+        );
+
+        if (vulkanAccelerator_->aggregateSGM(costVolume, aggregatedCost,
+                                             static_cast<float>(adCensusParams_.P1),
+                                             static_cast<float>(adCensusParams_.P2))) {
+            // GPU success - log performance
+            auto gpuStats = vulkanAccelerator_->getLastStats();
+            core::Logger::getInstance().log(
+                core::LogLevel::INFO,
+                "GPU SGM: upload=" + std::to_string(gpuStats.uploadTimeMs) +
+                "ms, compute=" + std::to_string(gpuStats.computeTimeMs) +
+                "ms, download=" + std::to_string(gpuStats.downloadTimeMs) + "ms"
+            );
+            return;
+        } else {
+            core::Logger::getInstance().log(
+                core::LogLevel::WARNING,
+                "GPU SGM failed, falling back to CPU"
+            );
+        }
+    }
+
+    // CPU fallback (original implementation)
+    core::Logger::getInstance().log(
+        core::LogLevel::DEBUG,
+        "Using CPU SGM aggregation"
+    );
 
     // Create aggregated cost volume
     aggregatedCost.create(costVolume.dims, costVolume.size, CV_32F);
@@ -541,13 +570,11 @@ void VCSELStereoMatcher::winnerTakeAll(const cv::Mat& aggregatedCost,
             }
 
             // Apply uniqueness check
-            int secondBestDisp = -1;
             float secondMinCost = std::numeric_limits<float>::max();
 
             for (int d = 0; d < disparities; d++) {
                 if (d != bestDisp && costPtr[d] < secondMinCost) {
                     secondMinCost = costPtr[d];
-                    secondBestDisp = d;
                 }
             }
 
@@ -567,7 +594,6 @@ void VCSELStereoMatcher::subpixelRefinement(const cv::Mat& aggregatedCost,
     const int height = aggregatedCost.size[0];
     const int width = aggregatedCost.size[1];
     const int disparities = aggregatedCost.size[2];
-    const float scale = static_cast<float>(adCensusParams_.subpixelScale);
 
     #pragma omp parallel for collapse(2)
     for (int y = 0; y < height; y++) {
@@ -589,8 +615,8 @@ void VCSELStereoMatcher::subpixelRefinement(const cv::Mat& aggregatedCost,
                     if (std::abs(denom) > 1e-6) {
                         float delta = (c0 - c2) / denom;
 
-                        // Apply subpixel offset
-                        disparity.at<float>(y, x) = disp + delta / scale;
+                        // Apply subpixel offset (delta already in correct range)
+                        disparity.at<float>(y, x) = disp + delta;
                     }
                 }
             }
@@ -599,49 +625,30 @@ void VCSELStereoMatcher::subpixelRefinement(const cv::Mat& aggregatedCost,
 }
 
 void VCSELStereoMatcher::postProcessDisparity(cv::Mat& disparity) {
-    // Speckle filter
-    const int maxSpeckleSize = 100;
-    const int maxDifference = 1;
+    // FAST speckle filter using OpenCV's optimized filterSpeckles
+    // (previous connectedComponents implementation was TOO SLOW - 68 seconds!)
+    const int maxSpeckleSize = 50;   // Slightly larger for better noise removal
+    const double maxDiff = 2.0;      // Disparity difference threshold
 
-    cv::Mat labels, stats, centroids;
-    cv::Mat disparityInt;
-    disparity.convertTo(disparityInt, CV_32S);
+    // Convert to 16-bit for filterSpeckles (requires CV_16S or CV_32F)
+    cv::Mat disp16;
+    disparity.convertTo(disp16, CV_16S);
 
-    int numLabels = cv::connectedComponentsWithStats(
-        disparityInt > 0, labels, stats, centroids, 8, CV_32S
-    );
+    // Fast speckle filtering (OpenCV optimized)
+    cv::filterSpeckles(disp16, 0, maxSpeckleSize, maxDiff);
 
-    for (int label = 1; label < numLabels; label++) {
-        int area = stats.at<int>(label, cv::CC_STAT_AREA);
+    // Convert back to float
+    disp16.convertTo(disparity, CV_32F);
 
-        if (area < maxSpeckleSize) {
-            // Remove small speckle
-            cv::Mat mask = (labels == label);
-            disparity.setTo(0, mask);
-        }
-    }
-
-    // Median filter for smoothing
+    // Light median filter for smoothing (only 3x3 - fast!)
     cv::Mat temp;
     cv::medianBlur(disparity, temp, 3);
 
-    // Only update non-zero values
+    // Only update non-zero values to preserve edges
     cv::Mat mask = disparity > 0;
     temp.copyTo(disparity, mask);
 
-    // Fill holes using interpolation
-    cv::Mat validMask = disparity > 0;
-    cv::Mat holes = 1 - validMask;
-
-    if (cv::countNonZero(holes) > 0 && cv::countNonZero(validMask) > 0) {
-        cv::Mat filled;
-        cv::inpaint(disparity, holes, filled, 3, cv::INPAINT_NS);
-
-        // Only fill small holes
-        cv::Mat smallHoles;
-        cv::erode(holes, smallHoles, cv::Mat(), cv::Point(-1, -1), 2);
-        filled.copyTo(disparity, smallHoles);
-    }
+    // NO inpaint - was too slow (removed to get from 68s to <1s)
 }
 
 bool VCSELStereoMatcher::checkNEONSupport() const {
@@ -662,24 +669,55 @@ int VCSELStereoMatcher::hammingDistance80(const uint64_t* desc1, const uint64_t*
 }
 
 bool VCSELStereoMatcher::tryInitVulkan() {
-    // Experimental Vulkan initialization
-    // This is a placeholder - actual Vulkan implementation would be complex
+    // TEMPORARY: Vulkan GPU disabled due to crash in compute pipeline creation
+    // Will be re-enabled after proper debugging
+    core::Logger::getInstance().log(
+        core::LogLevel::INFO,
+        "Vulkan GPU temporarily disabled - using optimized CPU SGM with NEON"
+    );
+    return false;
 
-    // For now, just check if Vulkan library is available
+    // Original Vulkan code commented out for now
+    /*
 #ifdef HAS_VULKAN
     try {
-        // Vulkan initialization would go here
-        // - Create instance
-        // - Select compute device
-        // - Create compute pipeline
-        // - Allocate buffers
-        return false;  // Disabled for now
-    } catch (...) {
+        core::Logger::getInstance().log(
+            core::LogLevel::INFO,
+            "Attempting to initialize Vulkan GPU acceleration..."
+        );
+
+        vulkanAccelerator_ = std::make_unique<VulkanSGMAccelerator>();
+
+        if (vulkanAccelerator_->initialize()) {
+            core::Logger::getInstance().log(
+                core::LogLevel::INFO,
+                "Vulkan GPU acceleration successfully initialized for SGM"
+            );
+            return true;
+        } else {
+            core::Logger::getInstance().log(
+                core::LogLevel::WARNING,
+                "Vulkan initialization failed, falling back to CPU"
+            );
+            vulkanAccelerator_.reset();
+            return false;
+        }
+    } catch (const std::exception& e) {
+        core::Logger::getInstance().log(
+            core::LogLevel::WARNING,
+            "Vulkan initialization exception: " + std::string(e.what())
+        );
+        vulkanAccelerator_.reset();
         return false;
     }
 #else
+    core::Logger::getInstance().log(
+        core::LogLevel::INFO,
+        "Vulkan not available - using CPU SGM"
+    );
     return false;
 #endif
+    */
 }
 
 std::string VCSELStereoMatcher::ProcessingStats::toString() const {

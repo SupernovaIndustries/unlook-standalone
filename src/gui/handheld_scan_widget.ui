@@ -273,6 +273,44 @@
        </widget>
       </item>
 
+      <!-- CALIBRATE BUTTON -->
+      <item>
+       <widget class="QPushButton" name="calibrateButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>⚙ CALIBRATE</string>
+        </property>
+        <property name="styleSheet">
+         <string>
+          QPushButton {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #FFFFFF;
+            background-color: #FF8800;
+            border: 2px solid #FFAA44;
+            border-radius: 12px;
+          }
+          QPushButton:hover {
+            background-color: #FFAA00;
+          }
+          QPushButton:pressed {
+            background-color: #DD6600;
+          }
+          QPushButton:disabled {
+            background-color: #333333;
+            color: #666666;
+            border: 2px solid #444444;
+          }
+         </string>
+        </property>
+       </widget>
+      </item>
+
       <!-- INFO BUTTON -->
       <item>
        <widget class="QPushButton" name="infoButton">
