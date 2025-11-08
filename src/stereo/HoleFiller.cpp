@@ -38,7 +38,7 @@ void HoleFiller::setConfig(const Config& config) {
 
     if (logger_) {
         logger_->info("HoleFiller configured:");
-        logger_->info("  Method: " +
+        logger_->info(std::string("  Method: ") +
             (config_.method == Method::NEAREST_NEIGHBOR ? "NEAREST_NEIGHBOR" :
              config_.method == Method::WEIGHTED_AVERAGE ? "WEIGHTED_AVERAGE" :
              config_.method == Method::MORPHOLOGICAL ? "MORPHOLOGICAL" :
@@ -133,26 +133,26 @@ HoleFiller::Result HoleFiller::fill(const cv::Mat& depthMap, const cv::Mat& colo
             logger_->info("  Processing time: " + std::to_string(result.processingTime.count()) + " µs");
         }
 
-        // Save debug output
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            DebugOutputManager::getInstance().saveDebugImage("hole_mask", result.holeMask);
-
-            // Create visualization of filled regions
-            cv::Mat filledViz;
-            result.filled.convertTo(filledViz, CV_8U, 255.0 / 2000.0); // Assume max 2000mm
-            cv::cvtColor(filledViz, filledViz, cv::COLOR_GRAY2BGR);
-
-            // Highlight filled regions in green
-            for (int y = 0; y < result.holeMask.rows; ++y) {
-                for (int x = 0; x < result.holeMask.cols; ++x) {
-                    if (result.holeMask.at<uint8_t>(y, x) > 0) {
-                        filledViz.at<cv::Vec3b>(y, x)[1] = 255; // Green channel
-                    }
-                }
-            }
-
-            DebugOutputManager::getInstance().saveDebugImage("hole_filled_viz", filledViz);
-        }
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     DebugOutputManager::getInstance().saveDebugImage("hole_mask", result.holeMask);
+        //
+        //     // Create visualization of filled regions
+        //     cv::Mat filledViz;
+        //     result.filled.convertTo(filledViz, CV_8U, 255.0 / 2000.0); // Assume max 2000mm
+        //     cv::cvtColor(filledViz, filledViz, cv::COLOR_GRAY2BGR);
+        //
+        //     // Highlight filled regions in green
+        //     for (int y = 0; y < result.holeMask.rows; ++y) {
+        //         for (int x = 0; x < result.holeMask.cols; ++x) {
+        //             if (result.holeMask.at<uint8_t>(y, x) > 0) {
+        //                 filledViz.at<cv::Vec3b>(y, x)[1] = 255; // Green channel
+        //             }
+        //         }
+        //     }
+        //
+        //     DebugOutputManager::getInstance().saveDebugImage("hole_filled_viz", filledViz);
+        // }
 
     } catch (const cv::Exception& e) {
         result.success = false;

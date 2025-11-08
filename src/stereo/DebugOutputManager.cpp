@@ -73,7 +73,7 @@ std::string DebugOutputManager::createSession(const std::string& sessionName) {
 bool DebugOutputManager::ensureSessionDir() {
     if (currentSessionDir_.empty()) {
         if (logger_) {
-            logger_->warn("No debug session created, creating default session");
+            logger_->warning("No debug session created, creating default session");
         }
         createSession();
     }
@@ -167,7 +167,7 @@ void DebugOutputManager::saveRawDisparity(const cv::Mat& rawDisparity) {
 
         // Save colormap visualization
         if (config_.saveColorMapped) {
-            cv::Mat colormap = applyColorMap(rawDisparity, cv::COLORMAP_JET);
+            cv::Mat colormap = applyColorMap(rawDisparity, 2); // COLORMAP_JET
             std::string colorPath = currentSessionDir_ + "/02_disparity_raw_vis.png";
             cv::imwrite(colorPath, colormap);
         }
@@ -203,7 +203,7 @@ void DebugOutputManager::saveFilteredDisparity(const cv::Mat& filteredDisparity)
 
         // Save colormap visualization
         if (config_.saveColorMapped) {
-            cv::Mat colormap = applyColorMap(filteredDisparity, cv::COLORMAP_JET);
+            cv::Mat colormap = applyColorMap(filteredDisparity, 2); // COLORMAP_JET
             std::string colorPath = currentSessionDir_ + "/03_disparity_filtered_vis.png";
             cv::imwrite(colorPath, colormap);
         }
@@ -259,7 +259,7 @@ void DebugOutputManager::saveDepthMap(const cv::Mat& depthMap) {
 
         // Save colormap visualization (TURBO for depth)
         if (config_.saveColorMapped) {
-            cv::Mat colormap = applyColorMap(depthMap, cv::COLORMAP_TURBO);
+            cv::Mat colormap = applyColorMap(depthMap, 20);
             std::string colorPath = currentSessionDir_ + "/05_depth_map_vis.png";
             cv::imwrite(colorPath, colormap);
         }

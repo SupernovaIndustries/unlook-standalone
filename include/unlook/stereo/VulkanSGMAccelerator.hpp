@@ -75,7 +75,7 @@ public:
     /**
      * @brief Set configuration
      */
-    void setConfig(const Config& config) { config_ = config; }
+    void setConfig(const Config& config);
 
     /**
      * @brief Process stereo pair on GPU

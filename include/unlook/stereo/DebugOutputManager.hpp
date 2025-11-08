@@ -201,7 +201,7 @@ public:
      */
     static cv::Mat applyColorMap(
         const cv::Mat& input,
-        int colormapType = cv::COLORMAP_JET);
+        int colormapType = 2); // cv::COLORMAP_JET
 
 private:
     core::Logger* logger_;

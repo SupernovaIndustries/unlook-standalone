@@ -74,7 +74,7 @@ public:
         int subpixelScale = 16;          // 1/16 pixel precision (fixed in OpenCV)
 
         // Post-filtering
-        bool useWLSFilter = true;        // Weighted Least Squares filter
+        bool useWLSFilter = false; // DISABLED: requires opencv_contrib ximgproc        // Weighted Least Squares filter
         double wlsLambda = 8000.0;       // WLS smoothness
         double wlsSigma = 1.5;           // WLS edge sensitivity
 
@@ -157,8 +157,10 @@ private:
     cv::Ptr<cv::StereoSGBM> sgbmMatcher_;
     std::unique_ptr<VulkanSGMAccelerator> vulkanAccelerator_;
 
-    // WLS filter
-    cv::Ptr<cv::ximgproc::DisparityWLSFilter> wlsFilter_;
+    // WLS filter - DISABLED: requires opencv_contrib ximgproc
+    // When ximgproc is available, uncomment this line:
+    // cv::Ptr<cv::ximgproc::DisparityWLSFilter> wlsFilter_;
+    void* wlsFilter_ = nullptr;  // Placeholder for disabled WLS filter
 
     bool gpuInitialized_ = false;
 

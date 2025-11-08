@@ -202,18 +202,18 @@ TemporalFilter::Result TemporalFilter::filter(const cv::Mat& depthMap, const cv:
             logger_->info("  Processing time: " + std::to_string(result.processingTime.count()) + " µs");
         }
 
-        // Save debug output
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            DebugOutputManager::getInstance().saveDebugImage("temporal_motion_mask", result.motionMask);
-
-            // Create temporal difference visualization
-            cv::Mat diff;
-            cv::absdiff(depthMap, result.filtered, diff);
-            cv::normalize(diff, diff, 0, 255, cv::NORM_MINMAX);
-            diff.convertTo(diff, CV_8U);
-            cv::applyColorMap(diff, diff, cv::COLORMAP_JET);
-            DebugOutputManager::getInstance().saveDebugImage("temporal_diff", diff);
-        }
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     DebugOutputManager::getInstance().saveDebugImage("temporal_motion_mask", result.motionMask);
+        //
+        //     // Create temporal difference visualization
+        //     cv::Mat diff;
+        //     cv::absdiff(depthMap, result.filtered, diff);
+        //     cv::normalize(diff, diff, 0, 255, cv::NORM_MINMAX);
+        //     diff.convertTo(diff, CV_8U);
+        //     cv::applyColorMap(diff, diff, cv::COLORMAP_JET);
+        //     DebugOutputManager::getInstance().saveDebugImage("temporal_diff", diff);
+        // }
 
     } catch (const cv::Exception& e) {
         result.success = false;

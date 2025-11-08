@@ -10,7 +10,8 @@
 #include "unlook/stereo/VulkanSGMAccelerator.hpp"
 #include "unlook/stereo/DebugOutputManager.hpp"
 #include "unlook/core/Logger.hpp"
-#include <opencv2/ximgproc.hpp>
+// TODO: Re-enable WLS filter when OpenCV is built with ximgproc contrib module
+// #include <opencv2/ximgproc.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <arm_neon.h>
@@ -46,7 +47,7 @@ void DisparityComputer::setConfig(const Config& config) {
 
     if (logger_) {
         logger_->info("DisparityComputer configured:");
-        logger_->info("  Method: " +
+        logger_->info(std::string("  Method: ") +
             (config_.method == DisparityMethod::SGBM_OPENCV ? "SGBM_OPENCV" :
              config_.method == DisparityMethod::AD_CENSUS_CPU ? "AD_CENSUS_CPU" :
              config_.method == DisparityMethod::VULKAN_SGM ? "VULKAN_SGM" : "AUTO"));
@@ -186,7 +187,7 @@ DisparityComputer::Result DisparityComputer::compute(
 
     if (logger_ && result.success) {
         logger_->info("Disparity computation completed:");
-        logger_->info("  Method: " +
+        logger_->info(std::string("  Method: ") +
             (result.methodUsed == DisparityMethod::SGBM_OPENCV ? "SGBM_OPENCV" :
              result.methodUsed == DisparityMethod::AD_CENSUS_CPU ? "AD_CENSUS_CPU" :
              result.methodUsed == DisparityMethod::VULKAN_SGM ? "VULKAN_SGM" : "UNKNOWN"));
@@ -691,14 +692,14 @@ DisparityComputer::Result DisparityComputer::computeADCensus(
             logger_->info("  Disparity selection: " + std::to_string(elapsed.count()) + "ms");
         }
 
-        // Save debug output if enabled
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            cv::Mat disparityVis;
-            cv::normalize(result.disparity, disparityVis, 0, 255, cv::NORM_MINMAX, CV_8U);
-            cv::applyColorMap(disparityVis, disparityVis, cv::COLORMAP_JET);
-            DebugOutputManager::getInstance().saveDebugImage("ad_census_disparity", disparityVis);
-            DebugOutputManager::getInstance().saveDebugImage("ad_census_confidence", result.confidence);
-        }
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     cv::Mat disparityVis;
+        //     cv::normalize(result.disparity, disparityVis, 0, 255, cv::NORM_MINMAX, CV_8U);
+        //     cv::applyColorMap(disparityVis, disparityVis, cv::COLORMAP_JET);
+        //     DebugOutputManager::getInstance().saveDebugImage("ad_census_disparity", disparityVis);
+        //     DebugOutputManager::getInstance().saveDebugImage("ad_census_confidence", result.confidence);
+        // }
 
         result.success = true;
         result.gpuAccelerated = false;
@@ -779,7 +780,23 @@ void DisparityComputer::applyWLSFilter(
     cv::Mat& disparity,
     cv::Mat& confidence)
 {
-    if (!config_.useWLSFilter || !wlsFilter_) {
+    // TODO: Re-enable WLS filter when OpenCV is built with ximgproc contrib module
+    // WLS (Weighted Least Squares) filtering provides edge-preserving smoothing
+    // and is particularly effective for disparity refinement.
+
+    if (!config_.useWLSFilter) {
+        return;
+    }
+
+    if (logger_) {
+        logger_->warning("WLS filter requested but disabled (OpenCV ximgproc not available)");
+    }
+
+    // Placeholder implementation - currently disabled
+    // When ximgproc is available, this will use cv::ximgproc::DisparityWLSFilter
+
+    /* DISABLED - Requires OpenCV contrib ximgproc module
+    if (!wlsFilter_) {
         return;
     }
 
@@ -809,11 +826,12 @@ void DisparityComputer::applyWLSFilter(
             confidence = combinedConfidence;
         }
 
-        if (logger_) logger_->info("✓ WLS filtering applied successfully");
+        if (logger_) logger_->info("WLS filtering applied successfully");
 
     } catch (const cv::Exception& e) {
-        if (logger_) logger_->warning("WLS filtering failed: " + std::string(e.what()));
+        if (logger_) logger_->warning(std::string("WLS filtering failed: ") + e.what());
     }
+    */
 }
 
 // ========== QUALITY METRICS ==========
@@ -882,6 +900,9 @@ void DisparityComputer::updateSGBMMatcher()
 
 void DisparityComputer::updateWLSFilter()
 {
+    // TODO: Re-enable WLS filter when OpenCV is built with ximgproc contrib module
+
+    /* DISABLED - Requires OpenCV contrib ximgproc module
     if (config_.useWLSFilter) {
         // Create a matcher for WLS filter (it needs one internally)
         cv::Ptr<cv::StereoMatcher> matcher = cv::StereoSGBM::create(
@@ -894,6 +915,10 @@ void DisparityComputer::updateWLSFilter()
         wlsFilter_->setLambda(config_.wlsLambda);
         wlsFilter_->setSigmaColor(config_.wlsSigma);
     }
+    */
+
+    // WLS filter initialization disabled - ximgproc not available
+    wlsFilter_ = nullptr;
 }
 
 } // namespace stereo

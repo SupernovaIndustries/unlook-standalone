@@ -111,20 +111,20 @@ SpatialFilter::Result SpatialFilter::filter(const cv::Mat& depthMap, const cv::M
             logger_->info("  Processing time: " + std::to_string(result.processingTime.count()) + " µs");
         }
 
-        // Save debug output
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            if (!result.edgeMap.empty()) {
-                DebugOutputManager::getInstance().saveDebugImage("spatial_edge_map", result.edgeMap);
-            }
-
-            // Create difference map for visualization
-            cv::Mat diff;
-            cv::absdiff(depthMap, result.filtered, diff);
-            cv::normalize(diff, diff, 0, 255, cv::NORM_MINMAX);
-            diff.convertTo(diff, CV_8U);
-            cv::applyColorMap(diff, diff, cv::COLORMAP_JET);
-            DebugOutputManager::getInstance().saveDebugImage("spatial_diff_map", diff);
-        }
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     if (!result.edgeMap.empty()) {
+        //         DebugOutputManager::getInstance().saveDebugImage("spatial_edge_map", result.edgeMap);
+        //     }
+        //
+        //     // Create difference map for visualization
+        //     cv::Mat diff;
+        //     cv::absdiff(depthMap, result.filtered, diff);
+        //     cv::normalize(diff, diff, 0, 255, cv::NORM_MINMAX);
+        //     diff.convertTo(diff, CV_8U);
+        //     cv::applyColorMap(diff, diff, cv::COLORMAP_JET);
+        //     DebugOutputManager::getInstance().saveDebugImage("spatial_diff_map", diff);
+        // }
 
     } catch (const cv::Exception& e) {
         result.success = false;

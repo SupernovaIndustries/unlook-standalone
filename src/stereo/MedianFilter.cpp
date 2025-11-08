@@ -97,10 +97,10 @@ MedianFilter::Result MedianFilter::filterDepth(const cv::Mat& depthMap) {
             logger_->info("  Processing time: " + std::to_string(result.processingTime.count()) + " µs");
         }
 
-        // Save debug output
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            DebugOutputManager::getInstance().saveDebugImage("median_speckle_mask", result.speckleMask);
-        }
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     DebugOutputManager::getInstance().saveDebugImage("median_speckle_mask", result.speckleMask);
+        // }
 
     } catch (const cv::Exception& e) {
         result.success = false;

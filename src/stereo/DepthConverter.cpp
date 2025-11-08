@@ -220,22 +220,22 @@ DepthConverter::Result DepthConverter::convertWithQ(const cv::Mat& disparity, co
         result.validPixels = validCount;
         calculateStatistics(result.depthMap, result.validMask, result);
 
-        // Save debug output if enabled
-        if (DebugOutputManager::getInstance().isEnabled()) {
-            // Normalize depth for visualization
-            cv::Mat depthVis;
-            cv::Mat validDepth;
-            result.depthMap.copyTo(validDepth, result.validMask);
+        // TODO: Save debug output when DebugOutputManager singleton is available
+        // if (DebugOutputManager::getInstance().isEnabled()) {
+        //     // Normalize depth for visualization
+        //     cv::Mat depthVis;
+        //     cv::Mat validDepth;
+        //     result.depthMap.copyTo(validDepth, result.validMask);
 
-            double minVal, maxVal;
-            cv::minMaxLoc(validDepth, &minVal, &maxVal, nullptr, nullptr, result.validMask);
+        //     double minVal, maxVal;
+        //     cv::minMaxLoc(validDepth, &minVal, &maxVal, nullptr, nullptr, result.validMask);
 
-            validDepth.convertTo(depthVis, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-            cv::applyColorMap(depthVis, depthVis, cv::COLORMAP_TURBO);
+        //     validDepth.convertTo(depthVis, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
+        //     cv::applyColorMap(depthVis, depthVis, cv::COLORMAP_TURBO);
 
-            DebugOutputManager::getInstance().saveDebugImage("depth_map", depthVis);
-            DebugOutputManager::getInstance().saveDebugImage("depth_valid_mask", result.validMask);
-        }
+        //     DebugOutputManager::getInstance().saveDebugImage("depth_map", depthVis);
+        //     DebugOutputManager::getInstance().saveDebugImage("depth_valid_mask", result.validMask);
+        // }
 
         result.success = true;
 
