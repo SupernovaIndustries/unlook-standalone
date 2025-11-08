@@ -21,6 +21,54 @@ VulkanSGMAccelerator::~VulkanSGMAccelerator() {
     cleanup();
 }
 
+void VulkanSGMAccelerator::setConfig(const Config& config) {
+    config_ = config;
+}
+
+VulkanSGMAccelerator::Result VulkanSGMAccelerator::process(
+    const cv::Mat& leftRect,
+    const cv::Mat& rightRect)
+{
+    Result result;
+
+    if (!initialized_) {
+        result.success = false;
+        result.errorMessage = "VulkanSGMAccelerator not initialized";
+        return result;
+    }
+
+    auto startTime = high_resolution_clock::now();
+
+    try {
+        // For now, fall back to CPU implementation
+        // TODO: Implement full GPU pipeline with census transform and SGM
+
+        result.success = false;
+        result.errorMessage = "GPU processing not yet fully implemented";
+
+        // Report timing
+        result.gpuTime = duration_cast<milliseconds>(high_resolution_clock::now() - startTime);
+
+        // Report memory usage (simplified)
+        VkPhysicalDeviceMemoryProperties memProps;
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memProps);
+        size_t totalMemory = 0;
+        for (uint32_t i = 0; i < memProps.memoryHeapCount; ++i) {
+            if (memProps.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+                totalMemory = memProps.memoryHeaps[i].size;
+                break;
+            }
+        }
+        result.memoryUsedMB = totalMemory / (1024 * 1024);
+
+    } catch (const std::exception& e) {
+        result.success = false;
+        result.errorMessage = "GPU processing exception: " + std::string(e.what());
+    }
+
+    return result;
+}
+
 bool VulkanSGMAccelerator::initialize() {
     if (initialized_) return true;
 

@@ -13,6 +13,7 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <chrono>
 
 namespace unlook {
 namespace stereo {
@@ -25,6 +26,38 @@ namespace stereo {
  */
 class VulkanSGMAccelerator {
 public:
+    /**
+     * @brief Configuration for GPU-accelerated SGM
+     */
+    struct Config {
+        int minDisparity = 0;
+        int numDisparities = 128;
+        int P1 = 4;                      // Small penalty
+        int P2 = 24;                     // Large penalty
+        int pathCount = 4;               // 4 or 8 paths
+        bool useSubpixel = true;
+        bool leftRightCheck = true;
+
+        // AD-Census parameters for GPU
+        int censusWindowSize = 9;
+        int censusThreshold = 4;
+    };
+
+    /**
+     * @brief Result from GPU processing
+     */
+    struct Result {
+        cv::Mat disparity;               // Disparity map (CV_16S)
+        cv::Mat confidence;              // Confidence map (CV_8U)
+
+        bool success;
+        std::string errorMessage;
+
+        // Performance metrics
+        std::chrono::milliseconds gpuTime;
+        size_t memoryUsedMB;
+    };
+
     VulkanSGMAccelerator();
     ~VulkanSGMAccelerator();
 
@@ -38,6 +71,20 @@ public:
      * @brief Check if Vulkan GPU is available
      */
     bool isAvailable() const { return initialized_; }
+
+    /**
+     * @brief Set configuration
+     */
+    void setConfig(const Config& config) { config_ = config; }
+
+    /**
+     * @brief Process stereo pair on GPU
+     *
+     * @param leftRect Rectified left image
+     * @param rightRect Rectified right image
+     * @return Processing result with disparity and metrics
+     */
+    Result process(const cv::Mat& leftRect, const cv::Mat& rightRect);
 
     /**
      * @brief Perform GPU-accelerated SGM aggregation
@@ -65,6 +112,8 @@ public:
     GPUStats getLastStats() const { return lastStats_; }
 
 private:
+    Config config_;
+
     // Vulkan objects
     VkInstance instance_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;

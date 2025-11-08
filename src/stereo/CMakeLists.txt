@@ -13,6 +13,14 @@ set(STEREO_SOURCES
     VulkanSGMAccelerator.cpp
     RectificationEngine.cpp
     DebugOutputManager.cpp
+    PointCloudGenerator.cpp
+    # New PHASE 2 and PHASE 3 implementations
+    DisparityComputer.cpp
+    DepthConverter.cpp
+    MedianFilter.cpp
+    SpatialFilter.cpp
+    TemporalFilter.cpp
+    HoleFiller.cpp
 )
 
 # NEON optimized sources
