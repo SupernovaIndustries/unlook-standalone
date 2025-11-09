@@ -4,22 +4,28 @@
  *
  * Optimized for Raspberry Pi 5 VideoCore VII GPU (Vulkan 1.2+)
  * Processes entire scanlines in parallel for maximum GPU utilization.
+ *
+ * Uses fixed-point integer atomics (compatible with VideoCore VII)
+ * instead of float atomics (which require unsupported GL_EXT_shader_atomic_float).
  */
 
 #version 450
-#extension GL_EXT_shader_atomic_float : enable
 
 // Workgroup size optimized for VideoCore VII
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// Fixed-point scale factor (costs are multiplied by this for integer precision)
+// Using 256 gives us 1/256 precision (~0.004), sufficient for stereo matching
+const float FIXED_POINT_SCALE = 256.0;
 
 // Input: fused cost volume (H×W×D)
 layout(binding = 0) readonly buffer CostVolumeIn {
     float costs[];
 } costIn;
 
-// Output: aggregated cost volume (H×W×D)
+// Output: aggregated cost volume (H×W×D) - stored as fixed-point integers
 layout(binding = 1) buffer CostVolumeOut {
-    float costs[];
+    uint costs[];  // Fixed-point: divide by FIXED_POINT_SCALE to get float
 } costOut;
 
 // Push constants for parameters
@@ -91,7 +97,9 @@ void main() {
             prevCosts[d] = aggCost;
 
             // Accumulate to output (atomic add for multiple paths)
-            atomicAdd(costOut.costs[idx], aggCost);
+            // Convert to fixed-point integer for atomic operation
+            uint aggCostFixed = uint(aggCost * FIXED_POINT_SCALE);
+            atomicAdd(costOut.costs[idx], aggCostFixed);
         }
 
         barrier();  // Sync threads before next pixel

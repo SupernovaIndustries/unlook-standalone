@@ -392,6 +392,7 @@ void VCSELStereoMatcher::sgmAggregation(const cv::Mat& costVolume,
         );
 
         if (vulkanAccelerator_->aggregateSGM(costVolume, aggregatedCost,
+                                             adCensusParams_.numDisparities,
                                              static_cast<float>(adCensusParams_.P1),
                                              static_cast<float>(adCensusParams_.P2))) {
             // GPU success - log performance

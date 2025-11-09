@@ -21,6 +21,8 @@ set(STEREO_SOURCES
     SpatialFilter.cpp
     TemporalFilter.cpp
     HoleFiller.cpp
+    # ARM NEON SIMD optimization
+    SGM_NEON.cpp
 )
 
 # NEON optimized sources
@@ -105,6 +107,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64" OR CMAKE_SYSTEM_PROCESSOR MATCHES "a
         neon/census_neon.cpp
         neon/hamming_neon.cpp
         neon/ad_cost_neon.cpp
+        SGM_NEON.cpp
         PROPERTIES COMPILE_FLAGS "-march=armv8-a+simd -O3 -ftree-vectorize -ffast-math"
     )
 

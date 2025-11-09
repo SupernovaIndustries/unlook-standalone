@@ -191,8 +191,7 @@ RectificationEngine::Result RectificationEngine::rectify(
             map1Left_,
             map2Left_,
             config_.interpolation,
-            cv::BORDER_CONSTANT,
-            config_.borderValue);
+            cv::BORDER_REPLICATE);  // Changed from BORDER_CONSTANT to preserve brightness
 
         cv::remap(
             rightInput,
@@ -200,8 +199,7 @@ RectificationEngine::Result RectificationEngine::rectify(
             map1Right_,
             map2Right_,
             config_.interpolation,
-            cv::BORDER_CONSTANT,
-            config_.borderValue);
+            cv::BORDER_REPLICATE);  // Changed from BORDER_CONSTANT to preserve brightness
 
         result.outputSize = result.leftRectified.size();
         result.success = true;

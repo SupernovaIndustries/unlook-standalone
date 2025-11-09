@@ -217,6 +217,11 @@ void HandheldScanWidget::onStartScan() {
         qWarning() << "[HandheldScanWidget] LED controller not available - proceeding without LED control";
     }
 
+    // CRITICAL: Wait 200ms for VCSEL to fully stabilize before capturing
+    // The LED needs time to reach full brightness and stable output
+    qDebug() << "[HandheldScanWidget] Waiting 200ms for VCSEL to stabilize...";
+    QThread::msleep(200);
+
     qDebug() << "[HandheldScanWidget] LED controller ready, starting scan...";
 
     // Reset state - SKIP stability wait (bugged) and go directly to CAPTURING
@@ -596,13 +601,47 @@ void HandheldScanWidget::startScanThread() {
             };
 
             // CRITICAL: Stop any existing capture first (from preview or other widgets)
-            // startCapture() returns false if capture is already running
             qDebug() << "[HandheldScanWidget::ScanThread] Stopping any existing capture...";
             camera_system_->stopCapture();
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Brief delay for cleanup
 
-            // Start continuous capture with our callback
-            qDebug() << "[HandheldScanWidget::ScanThread] Starting continuous capture...";
+            // ========== CRITICAL FIX: Use auto-calibrated camera parameters ==========
+            // PROBLEM: Previously hardcoded exp=10000us, gain=2.07x
+            // SOLUTION: Read from auto-calibration (performAutoCalibration() found exp=16900us, gain=1.9x)
+
+            qDebug() << "[HandheldScanWidget::ScanThread] Reading auto-calibrated camera parameters...";
+            auto left_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
+            double calib_exposure = left_config.exposure_time_us;
+            double calib_gain = left_config.gain;
+
+            qDebug() << "[HandheldScanWidget::ScanThread] Auto-calibrated params:"
+                     << "exposure=" << calib_exposure << "us, gain=" << calib_gain << "x";
+
+            // CRITICAL: Disable auto-exposure and auto-gain FIRST to prevent override
+            qDebug() << "[HandheldScanWidget::ScanThread] Disabling auto-exposure/auto-gain...";
+            camera_system_->setAutoExposure(core::CameraId::LEFT, false);
+            camera_system_->setAutoExposure(core::CameraId::RIGHT, false);
+            camera_system_->setAutoGain(core::CameraId::LEFT, false);
+            camera_system_->setAutoGain(core::CameraId::RIGHT, false);
+
+            // Apply auto-calibrated parameters (NOT hardcoded!)
+            qDebug() << "[HandheldScanWidget::ScanThread] Applying auto-calibrated parameters...";
+            camera_system_->setExposureTime(core::CameraId::LEFT, calib_exposure);
+            camera_system_->setExposureTime(core::CameraId::RIGHT, calib_exposure);
+            camera_system_->setGain(core::CameraId::LEFT, calib_gain);
+            camera_system_->setGain(core::CameraId::RIGHT, calib_gain);
+
+            // Wait for camera parameters to stabilize (300ms recommended for IMX296)
+            qDebug() << "[HandheldScanWidget::ScanThread] Waiting 300ms for parameter stabilization...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+            // Verify parameters were applied correctly
+            auto verify_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
+            qDebug() << "[HandheldScanWidget::ScanThread] Verified params:"
+                     << "exposure=" << verify_config.exposure_time_us << "us, gain=" << verify_config.gain << "x";
+
+            // NOW start continuous capture with stabilized parameters
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting continuous capture with calibrated params...";
             if (!camera_system_->startCapture(frame_callback)) {
                 qCritical() << "[HandheldScanWidget::ScanThread] Failed to start continuous capture";
                 return false;

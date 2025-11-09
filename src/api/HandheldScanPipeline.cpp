@@ -145,23 +145,30 @@ public:
                         std::to_string(Q_.cols));
         }
 
-        // Initialize disparity computer configuration
+        // Initialize disparity computer configuration - VCSEL OPTIMIZED
         disparityConfig_.method = stereo::DisparityMethod::AUTO;  // Auto-select GPU if available
         disparityConfig_.minDisparity = 0;
         disparityConfig_.numDisparities = 256;  // Full range for close to far
         disparityConfig_.blockSize = 7;
-        disparityConfig_.P1 = 8;
-        disparityConfig_.P2 = 32;
-        disparityConfig_.uniquenessRatio = 15;
-        disparityConfig_.speckleWindowSize = 100;
-        disparityConfig_.speckleRange = 16;
-        disparityConfig_.disp12MaxDiff = 2;
+
+        // CRITICAL FIX: Use OpenCV standard formula for P1/P2
+        // Formula: P1 = 8 * channels * blockSize²,  P2 = 32 * channels * blockSize²
+        // With blockSize=7, channels=1 (grayscale): P1=392, P2=1568
+        disparityConfig_.P1 = 8 * 1 * 7 * 7;   // = 392 (was 8 - 49x increase!)
+        disparityConfig_.P2 = 32 * 1 * 7 * 7;  // = 1568 (was 32 - 49x increase!)
+
+        // Quality parameters - optimized for industrial precision
+        disparityConfig_.uniquenessRatio = 10;      // More strict than default 15% (reduce false matches)
+        disparityConfig_.speckleWindowSize = 200;   // Larger window (was 100) for better speckle removal
+        disparityConfig_.speckleRange = 2;          // Tighter range (was 16) for cleaner disparity
+        disparityConfig_.disp12MaxDiff = 1;         // Strict L-R consistency (was 2)
         disparityConfig_.preFilterCap = 63;
         disparityConfig_.mode = cv::StereoSGBM::MODE_HH4;  // High quality mode
 
-        // AD-Census parameters for VCSEL
-        disparityConfig_.lambdaAD = 0.3f;
-        disparityConfig_.lambdaCensus = 0.7f;
+        // AD-Census parameters - OPTIMIZED FOR VCSEL STRUCTURED LIGHT
+        // VCSEL dots have low gradient → reduce AD weight, increase Census weight
+        disparityConfig_.lambdaAD = 0.25f;          // Reduced from 0.3 (VCSEL has sparse dots)
+        disparityConfig_.lambdaCensus = 0.75f;      // Increased from 0.7 (better for dot patterns)
         disparityConfig_.censusWindowSize = 9;
         disparityConfig_.censusThreshold = 4;
 
@@ -170,6 +177,15 @@ public:
         disparityConfig_.useWLSFilter = true;
         disparityConfig_.wlsLambda = 8000.0;
         disparityConfig_.wlsSigma = 1.5;
+
+        // Log disparity configuration
+        logger_.info("Disparity configuration initialized:");
+        logger_.info("  - Method: AUTO (GPU if available, else NEON CPU)");
+        logger_.info("  - Block size: " + std::to_string(disparityConfig_.blockSize));
+        logger_.info("  - P1 (smoothness): " + std::to_string(disparityConfig_.P1));
+        logger_.info("  - P2 (smoothness): " + std::to_string(disparityConfig_.P2));
+        logger_.info("  - lambdaAD: " + std::to_string(disparityConfig_.lambdaAD));
+        logger_.info("  - lambdaCensus: " + std::to_string(disparityConfig_.lambdaCensus));
 
         // Initialize debug configuration
         debugConfig_.enabled = false;  // Will be enabled when needed

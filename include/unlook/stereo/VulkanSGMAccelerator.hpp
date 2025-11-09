@@ -89,14 +89,16 @@ public:
     /**
      * @brief Perform GPU-accelerated SGM aggregation
      *
-     * @param costVolume Input fused cost volume (H×W×D, CV_32F)
-     * @param aggregatedCost Output aggregated cost (H×W×D, CV_32F)
+     * @param costVolume Input fused cost volume (H × W*D, CV_32F) - 2D format!
+     * @param aggregatedCost Output aggregated cost (H × W*D, CV_32F)
+     * @param numDisparities Number of disparity levels D
      * @param P1 Small disparity penalty
      * @param P2 Large disparity penalty
      * @return true if successful
      */
     bool aggregateSGM(const cv::Mat& costVolume,
                       cv::Mat& aggregatedCost,
+                      int numDisparities,
                       float P1, float P2);
 
     /**
@@ -144,7 +146,12 @@ private:
     uint32_t height_ = 0;
     uint32_t disparities_ = 0;
 
-    // Helper methods
+    // Helper methods for hybrid CPU/GPU processing
+    void computeCensusTransform(const cv::Mat& image, cv::Mat& census);
+    cv::Mat computeCostVolume(const cv::Mat& leftCensus, const cv::Mat& rightCensus, int numDisparities);
+    cv::Mat selectDisparityWTA(const cv::Mat& aggregatedCost, int numDisparities, int minDisparity);
+
+    // Vulkan setup helpers
     bool createInstance();
     bool selectPhysicalDevice();
     bool createDevice();
