@@ -598,7 +598,6 @@ void HandheldScanWidget::startScanThread() {
             camera_system_->setExposureTime(core::CameraId::RIGHT, current_exposure);
             camera_system_->setGain(core::CameraId::LEFT, current_gain);
             camera_system_->setGain(core::CameraId::RIGHT, current_gain);
-            std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Stabilization
 
             // Per-frame capture loop with scene-specific optimization
             for (int frame_idx = 0; frame_idx < TARGET_FRAMES; frame_idx++) {
@@ -610,6 +609,14 @@ void HandheldScanWidget::startScanThread() {
                     camera_system_->stopCapture();
                     return false;
                 }
+
+                // CRITICAL FIX: Reapply parameters before EACH frame to prevent drift/override
+                qDebug() << "[HandheldScanWidget::ScanThread] Reapplying params before frame capture: exp=" << current_exposure << "us, gain=" << current_gain << "x";
+                camera_system_->setExposureTime(core::CameraId::LEFT, current_exposure);
+                camera_system_->setExposureTime(core::CameraId::RIGHT, current_exposure);
+                camera_system_->setGain(core::CameraId::LEFT, current_gain);
+                camera_system_->setGain(core::CameraId::RIGHT, current_gain);
+                std::this_thread::sleep_for(std::chrono::milliseconds(250)); // Stabilization DOPO riapply
 
                 // STEP 1: Capture test frame for histogram analysis
                 qDebug() << "[HandheldScanWidget::ScanThread] Capturing test frame for scene analysis...";
