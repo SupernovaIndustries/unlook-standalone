@@ -59,7 +59,7 @@ CameraPreviewWidget::~CameraPreviewWidget() {
 void CameraPreviewWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
     widget_visible_ = true;
-    
+
     // Do NOT auto-start capture in showEvent - causes immediate start/stop cycle
     // Let user manually control capture with START/STOP buttons
 }
@@ -67,7 +67,7 @@ void CameraPreviewWidget::showEvent(QShowEvent* event) {
 void CameraPreviewWidget::hideEvent(QHideEvent* event) {
     QWidget::hideEvent(event);
     widget_visible_ = false;
-    
+
     // Do NOT auto-stop capture in hideEvent - causes immediate start/stop cycle
     // Let capture continue until user clicks STOP button or explicit navigation
 }
@@ -288,9 +288,10 @@ void CameraPreviewWidget::onLEDTestOn() {
         }
     }
 
-    // Activate BOTH LED1 and LED2 at 280mA (VCSEL requires minimum 250mA, VERIFIED)
+    // Activate ONLY LED1 (VCSEL) at 280mA (LED2 disabled - too much current)
     bool led1_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 280);
-    bool led2_success = as1170->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 280);
+
+    qDebug() << "[CameraPreview] LED2 (Flood) DISABLED - too much current consumption";
 
     if (led1_success) {
         qDebug() << "[CameraPreview] LED1 activated successfully at 280mA (VCSEL minimum)";
@@ -298,11 +299,7 @@ void CameraPreviewWidget::onLEDTestOn() {
         qWarning() << "[CameraPreview] LED1 activation failed";
     }
 
-    if (led2_success) {
-        qDebug() << "[CameraPreview] LED2 activated successfully at 280mA (VCSEL minimum)";
-    } else {
-        qWarning() << "[CameraPreview] LED2 activation failed";
-    }
+    bool led2_success = false;  // LED2 disabled
 
     if (led1_success || led2_success) {
         // Sync slider to reflect LED state (150mA)

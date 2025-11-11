@@ -150,8 +150,8 @@ void SwipeGestureDetector::handleTouchEnd(const QTouchEvent* event) {
 
         float progress = calculateGestureProgress(m_gestureCurrentPoint);
 
-        // Require at least 50% progress to complete gesture
-        if (progress >= 0.5f) {
+        // Require at least 30% progress to complete gesture (more permissive)
+        if (progress >= 0.3f) {
             updateGestureState(GestureState::Completed, 1.0f);
             completeGesture();
         } else {
@@ -219,7 +219,8 @@ void SwipeGestureDetector::handleMouseRelease(const QMouseEvent* event) {
 
         float progress = calculateGestureProgress(m_gestureCurrentPoint);
 
-        if (progress >= 0.5f) {
+        // Require at least 30% progress to complete gesture (more permissive)
+        if (progress >= 0.3f) {
             updateGestureState(GestureState::Completed, 1.0f);
             completeGesture();
         } else {

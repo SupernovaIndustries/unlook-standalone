@@ -342,16 +342,25 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
 
         // Quality validation
         if (leftDetected && rightDetected) {
-            // Check corner count match
-            if (cornersLeft.size() != cornersRight.size()) {
+            // Check corner count match with tolerance for ChArUco partial detection
+            // Allow ±6 corners difference (~11% of 54) for robustness
+            // (48-54 corners range = 6 corner tolerance)
+            int cornerDiff = std::abs(static_cast<int>(cornersLeft.size()) - static_cast<int>(cornersRight.size()));
+            if (cornerDiff > 6) {
                 std::string reason = "Corner count mismatch (L:" +
                     std::to_string(cornersLeft.size()) + " vs R:" +
                     std::to_string(cornersRight.size()) +
+                    " - diff:" + std::to_string(cornerDiff) +
                     " - expected: " + std::to_string(expectedCorners) + ")";
                 core::Logger::getInstance().warning("SKIP Pair " + std::to_string(i) + ": " + reason);
                 result.warnings.push_back("Image pair " + std::to_string(i) + ": " + reason);
                 skippedCornerMismatch++;
                 continue;
+            } else if (cornerDiff > 0) {
+                // Log warning but ACCEPT image with small mismatch
+                core::Logger::getInstance().warning("Pair " + std::to_string(i) +
+                    " - Small corner mismatch (L:" + std::to_string(cornersLeft.size()) +
+                    " vs R:" + std::to_string(cornersRight.size()) + ") - ACCEPTED");
             }
 
             // Check minimum corners
@@ -471,12 +480,16 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     // 7. Compute rectification
     reportProgress("Step 7/9: Computing rectification transforms...");
     core::Logger::getInstance().info("Computing rectification transforms...");
+    // ALPHA PARAMETER FIX:
+    // Changed from -1 (full ROI) to 0.0 (crop distorted regions)
+    // This eliminates spherical distortion artifacts in rectified images
+    // caused by high k3 coefficients (k3_left=0.19, k3_right=0.33)
     cv::stereoRectify(
         result.cameraMatrixLeft, result.distCoeffsLeft,
         result.cameraMatrixRight, result.distCoeffsRight,
         result.imageSize, result.R, result.T,
         result.R1, result.R2, result.P1, result.P2, result.Q,
-        cv::CALIB_ZERO_DISPARITY, -1, result.imageSize
+        cv::CALIB_ZERO_DISPARITY, 0.0, result.imageSize  // alpha=0.0 (was -1)
     );
     reportProgress("Rectification transforms computed");
 

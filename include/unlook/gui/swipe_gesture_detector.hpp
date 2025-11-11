@@ -210,9 +210,9 @@ private:
 
     // Configuration
     bool m_enabled{false};
-    int m_edgeZoneWidth{30};          ///< Width of edge zone in pixels
-    int m_minSwipeDistance{80};        ///< Minimum swipe distance to trigger
-    int m_maxVerticalDeviation{50};    ///< Maximum vertical movement for horizontal swipe
+    int m_edgeZoneWidth{80};          ///< Width of edge zone in pixels (more permissive)
+    int m_minSwipeDistance{50};        ///< Minimum swipe distance to trigger (easier to trigger)
+    int m_maxVerticalDeviation{120};    ///< Maximum vertical movement for horizontal swipe (more tolerance)
     bool m_visualFeedback{true};       ///< Show visual feedback overlay
 
     // State tracking

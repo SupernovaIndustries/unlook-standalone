@@ -409,7 +409,49 @@ public:
                 calibData.imageSize, CV_32FC1,
                 calibData.map1Right, calibData.map2Right
             );
-            
+
+            // CRITICAL FIX: Recalculate Q matrix for swapped geometry
+            // When we swap L↔R, the baseline changes sign (negative → positive)
+            // Original file has T[0] negative (cameras inverted during calibration)
+            // After swap, geometry is corrected and baseline becomes positive
+            std::cout << "[CalibrationManager] Recalculating Q matrix for swapped geometry..." << std::endl;
+
+            // Get baseline from original P2 (was RIGHT in file, negative Tx)
+            double Tx_old = calibData.P2.at<double>(0, 3);  // e.g., -107580
+            std::cout << "  Original Tx (from P2): " << Tx_old << std::endl;
+
+            // After swap, baseline changes sign (geometry inversion)
+            double Tx_new = -Tx_old;  // e.g., +107580
+            std::cout << "  New Tx (inverted): " << Tx_new << std::endl;
+
+            // Get camera parameters from NEW LEFT (P2 in file)
+            double fx = calibData.P2.at<double>(0, 0);
+            double fy = calibData.P2.at<double>(1, 1);
+            double cx = calibData.P2.at<double>(0, 2);
+            double cy = calibData.P2.at<double>(1, 2);
+
+            std::cout << "  Using NEW LEFT params: fx=" << fx << ", cx=" << cx << ", cy=" << cy << std::endl;
+
+            // Rebuild Q matrix for corrected geometry
+            // Q matrix formula (OpenCV stereoRectify output):
+            //   [1  0  0  -cx    ]
+            //   [0  1  0  -cy    ]
+            //   [0  0  0   f     ]
+            //   [0  0 -1/Tx  0   ]  (with CALIB_ZERO_DISPARITY)
+
+            calibData.Q = cv::Mat::zeros(4, 4, CV_64F);
+            calibData.Q.at<double>(0, 0) = 1.0;
+            calibData.Q.at<double>(1, 1) = 1.0;
+            calibData.Q.at<double>(0, 3) = -cx;
+            calibData.Q.at<double>(1, 3) = -cy;
+            calibData.Q.at<double>(2, 3) = fx;
+            calibData.Q.at<double>(3, 2) = -fx / Tx_new;  // CRITICAL: now negative for positive Tx
+            calibData.Q.at<double>(3, 3) = 0.0;  // CALIB_ZERO_DISPARITY (cx_left = cx_right)
+
+            std::cout << "  NEW Q[3,2] = " << calibData.Q.at<double>(3, 2)
+                      << " (was " << (fx / Tx_old) << " before)" << std::endl;
+            std::cout << "[CalibrationManager] ✓ Q matrix recalculated successfully" << std::endl;
+
             calibData.rectificationMapsComputed = true;
             
             std::cout << "[CalibrationManager] Rectification maps computed successfully (alpha=" << alpha << ")" << std::endl;

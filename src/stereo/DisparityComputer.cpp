@@ -742,13 +742,13 @@ DisparityComputer::Result DisparityComputer::computeADCensus(
         start = high_resolution_clock::now();
         if (logger_) logger_->info("  Applying post-processing filters...");
 
-        // 6a. Median filter 5x5 (removes salt-and-pepper noise)
-        cv::Mat disparity_filtered;
-        cv::medianBlur(result.disparity, disparity_filtered, 5);
-        result.disparity = disparity_filtered;
+        // 6a. Median filter 5x5 (removes salt-and-pepper noise) - DISABLED FOR TESTING
+        // cv::Mat disparity_filtered;
+        // cv::medianBlur(result.disparity, disparity_filtered, 5);
+        // result.disparity = disparity_filtered;
 
         // 6b. Confidence thresholding (invalidate low-confidence pixels)
-        const uint8_t CONFIDENCE_THRESHOLD = 100;  // ~40% of 255 (lowered from 70% to reduce over-filtering)
+        const uint8_t CONFIDENCE_THRESHOLD = 25;  // ~10% of 255 (TESTING: reduced from 100/40% to reduce filtering)
         int invalidated_count = 0;
         for (int y = 0; y < result.disparity.rows; y++) {
             int16_t* disp_row = result.disparity.ptr<int16_t>(y);
@@ -766,8 +766,8 @@ DisparityComputer::Result DisparityComputer::computeADCensus(
             auto elapsed = duration_cast<milliseconds>(high_resolution_clock::now() - start);
             double invalidated_percent = (100.0 * invalidated_count) / (result.disparity.rows * result.disparity.cols);
             logger_->info("  Post-processing: " + std::to_string(elapsed.count()) + "ms");
-            logger_->info("    - Median filter: 5x5 applied");
-            logger_->info("    - Confidence threshold: 40% (invalidated " +
+            logger_->info("    - Median filter: DISABLED (testing)");
+            logger_->info("    - Confidence threshold: 10% (invalidated " +
                          std::to_string(invalidated_percent) + "% pixels)");
         }
 

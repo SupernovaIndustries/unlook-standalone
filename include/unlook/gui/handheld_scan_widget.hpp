@@ -225,6 +225,11 @@ private:
     float achieved_precision_mm_;          // Final precision achieved
     int point_count_;                      // Number of points in cloud
 
+    // Calibrated Camera Parameters (saved from auto-calibration)
+    bool has_calibrated_params_;           // True if auto-calibration was run
+    double calibrated_exposure_us_;        // Calibrated exposure time
+    double calibrated_gain_;               // Calibrated gain
+
     // FPS Calculation
     std::chrono::steady_clock::time_point last_frame_time_;
     std::chrono::steady_clock::time_point scan_start_time_;

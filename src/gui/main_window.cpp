@@ -285,16 +285,17 @@ void UnlookMainWindow::updateSystemStatus() {
     bool left_ready = camera_system_->getCameraState(core::CameraId::LEFT) == core::CameraState::READY;
     bool right_ready = camera_system_->getCameraState(core::CameraId::RIGHT) == core::CameraState::READY;
     
-    if (left_ready && right_ready) {
-        ui->camera_status_label->setText("Cameras: Ready");
-        ui->camera_status_label->setStyleSheet("color: #00FF00;");
-    } else if (left_ready || right_ready) {
-        ui->camera_status_label->setText("Cameras: Partial Connection");
-        ui->camera_status_label->setStyleSheet("color: #FFA500;");
-    } else {
-        ui->camera_status_label->setText("Cameras: Disconnected");
-        ui->camera_status_label->setStyleSheet("color: #FF0000;");
-    }
+    // Status bar removed to save screen space
+    // if (left_ready && right_ready) {
+    //     ui->camera_status_label->setText("Cameras: Ready");
+    //     ui->camera_status_label->setStyleSheet("color: #00FF00;");
+    // } else if (left_ready || right_ready) {
+    //     ui->camera_status_label->setText("Cameras: Partial Connection");
+    //     ui->camera_status_label->setStyleSheet("color: #FFA500;");
+    // } else {
+    //     ui->camera_status_label->setText("Cameras: Disconnected");
+    //     ui->camera_status_label->setStyleSheet("color: #FF0000;");
+    // }
 }
 
 void UnlookMainWindow::initializeAdditionalComponents() {
@@ -305,20 +306,21 @@ void UnlookMainWindow::initializeAdditionalComponents() {
     // connect(ui->face_enrollment_button, &QPushButton::clicked, this, &UnlookMainWindow::showFaceEnrollment);  // Temporarily disabled
     connect(ui->options_button, &QPushButton::clicked, this, &UnlookMainWindow::showOptions);
     connect(ui->exit_button, &QPushButton::clicked, this, &UnlookMainWindow::exitApplication);
-    connect(ui->back_button, &QPushButton::clicked, this, &UnlookMainWindow::showMainMenu);
+    // Back button removed to save screen space
+    // connect(ui->back_button, &QPushButton::clicked, this, &UnlookMainWindow::showMainMenu);
     // fullscreen_toggle_button removed from UI
-    
+
     // Initialize status displays (these will be custom widgets)
     system_status_ = new widgets::StatusDisplay("System");
     system_status_->setCompactMode(true);
     system_status_->setStatus("Initializing...", widgets::StatusDisplay::StatusType::INFO);
-    
+
     camera_status_ = new widgets::StatusDisplay("Cameras");
     camera_status_->setCompactMode(true);
     camera_status_->setStatus("Disconnected", widgets::StatusDisplay::StatusType::WARNING);
-    
-    // Set initial screen visibility
-    ui->back_button->setVisible(false);
+
+    // Title bar and back button removed to save screen space
+    // ui->back_button->setVisible(false);
 }
 
 // UI creation methods removed - now using .ui file
@@ -363,32 +365,33 @@ void UnlookMainWindow::initializeCameraSystem() {
             camera_system_initialized_ = success;
             
             if (success) {
-                ui->system_status_label->setText("System: Ready");
-                ui->system_status_label->setStyleSheet("color: #00FF00;");
-                
+                // Status bar removed to save screen space
+                // ui->system_status_label->setText("System: Ready");
+                // ui->system_status_label->setStyleSheet("color: #00FF00;");
+
                 // UX IMPROVEMENT: Auto-start camera capture for better user experience
                 qDebug() << "[MainWindow] Auto-starting camera capture for better UX...";
-                
+
                 // Create a dummy callback for continuous capture
                 auto dummy_callback = [](const core::StereoFramePair& /*frame_pair*/) {
                     // Frame received but not processed - just keeps cameras running
                 };
-                
+
                 if (camera_system_->startCapture(dummy_callback)) {
-                    ui->system_status_label->setText("System: Ready & Capturing");
+                    // ui->system_status_label->setText("System: Ready & Capturing");
                     qDebug() << "[MainWindow] Camera auto-start successful";
                 } else {
                     qDebug() << "[MainWindow] Camera auto-start failed - will remain in Ready state";
                 }
             } else {
-                ui->system_status_label->setText("System: Initialization Failed");
-                ui->system_status_label->setStyleSheet("color: #FF0000;");
+                // ui->system_status_label->setText("System: Initialization Failed");
+                // ui->system_status_label->setStyleSheet("color: #FF0000;");
             }
         });
-        
+
     } catch (const std::exception& e) {
-        ui->system_status_label->setText("System Error: " + QString::fromStdString(e.what()));
-        ui->system_status_label->setStyleSheet("color: #FF0000;");
+        // ui->system_status_label->setText("System Error: " + QString::fromStdString(e.what()));
+        // ui->system_status_label->setStyleSheet("color: #FF0000;");
         qCritical() << "Camera system initialization error:" << e.what();
     }
 }
@@ -399,31 +402,31 @@ void UnlookMainWindow::setupNavigation() {
 }
 
 void UnlookMainWindow::navigateToScreen(Screen screen) {
-    // Hide/show back button based on screen
-    ui->back_button->setVisible(screen != Screen::MAIN_MENU);
-    
+    // Title bar removed to save screen space
+    // ui->back_button->setVisible(screen != Screen::MAIN_MENU);
+
     switch (screen) {
         case Screen::MAIN_MENU:
             ui->screen_stack->setCurrentWidget(ui->main_menu_screen);
-            ui->title_label->setText("UNLOOK SCANNER");
+            // ui->title_label->setText("UNLOOK SCANNER");
             break;
-            
+
         case Screen::CAMERA_PREVIEW:
             if (!camera_preview_widget_) {
                 camera_preview_widget_ = std::make_unique<CameraPreviewWidget>(camera_system_);
                 ui->screen_stack->addWidget(camera_preview_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(camera_preview_widget_.get());
-            ui->title_label->setText("CAMERA PREVIEW");
+            // ui->title_label->setText("CAMERA PREVIEW");
             break;
-            
+
         case Screen::HANDHELD_SCAN:
             if (!handheld_scan_widget_) {
                 handheld_scan_widget_ = std::make_unique<HandheldScanWidget>(camera_system_);
                 ui->screen_stack->addWidget(handheld_scan_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(handheld_scan_widget_.get());
-            ui->title_label->setText("HANDHELD SCAN");
+            // ui->title_label->setText("HANDHELD SCAN");
             break;
 
         case Screen::CALIBRATION:
@@ -432,7 +435,7 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
                 ui->screen_stack->addWidget(calibration_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(calibration_widget_.get());
-            ui->title_label->setText("CALIBRATION");
+            // ui->title_label->setText("CALIBRATION");
             break;
 
         // case Screen::FACE_ENROLLMENT:
@@ -450,7 +453,7 @@ void UnlookMainWindow::navigateToScreen(Screen screen) {
                 ui->screen_stack->addWidget(options_widget_.get());
             }
             ui->screen_stack->setCurrentWidget(options_widget_.get());
-            ui->title_label->setText("OPTIONS");
+            // ui->title_label->setText("OPTIONS");
             break;
     }
     

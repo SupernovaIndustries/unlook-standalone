@@ -40,6 +40,9 @@ HandheldScanWidget::HandheldScanWidget(std::shared_ptr<camera::gui::CameraSystem
     , current_stability_(0.0f)
     , achieved_precision_mm_(0.0f)
     , point_count_(0)
+    , has_calibrated_params_(false)
+    , calibrated_exposure_us_(10000.0)
+    , calibrated_gain_(1.0)
     , last_frame_time_(std::chrono::steady_clock::now())
     , scan_start_time_(std::chrono::steady_clock::now())
     , scan_watcher_(nullptr)
@@ -190,25 +193,18 @@ void HandheldScanWidget::onStartScan() {
     // CRITICAL: Enable VCSEL for AD-CENSUS stereo matching
     // AS1170 already initialized in showEvent(), just enable LED here
     if (led_controller_) {
-        // CRITICAL: ENABLE VCSEL for AD-CENSUS stereo matching!
-        // AD-CENSUS requires structured light pattern from VCSEL for texture on smooth surfaces
-        // LED1 (VCSEL): ENABLED at 280mA for structured light projection
-        // LED2 (Flood): DISABLED (not needed for structured light)
+        // CRITICAL: ENABLE VCSEL ONLY for scanning
+        // LED2 (Flood): DISABLED - too much current, causes Raspberry Pi shutdown
+        // LED1 (VCSEL): 340mA - safe power for VCSEL dots without overloading power supply
 
-        // Disable flood LED first
-        bool led2_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
-        if (led2_success) {
-            qDebug() << "[HandheldScanWidget] LED2 (Flood) disabled";
-        } else {
-            qWarning() << "[HandheldScanWidget] Failed to disable LED2 (Flood)";
-        }
+        qDebug() << "[HandheldScanWidget] LED2 (Flood) DISABLED - too much current";
 
-        // ENABLE VCSEL at 350mA for structured light (max safe current - increased from 300mA)
-        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
+        // ENABLE VCSEL at 340mA (safe limit to prevent Raspberry Pi shutdown)
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 340);
         if (led1_success) {
-            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 350mA for AD-CENSUS structured light";
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 340mA (safe power)";
         } else {
-            qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - AD-CENSUS will fail!";
+            qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - scan may fail!";
     // HIDDEN:             ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
     // HIDDEN:             ui->statusLabel->setStyleSheet("font-size: 14pt; color: #FF4444;");
             return;  // Abort scan if VCSEL fails
@@ -217,9 +213,9 @@ void HandheldScanWidget::onStartScan() {
         qWarning() << "[HandheldScanWidget] LED controller not available - proceeding without LED control";
     }
 
-    // CRITICAL: Wait 200ms for VCSEL to fully stabilize before capturing
-    // The LED needs time to reach full brightness and stable output
-    qDebug() << "[HandheldScanWidget] Waiting 200ms for VCSEL to stabilize...";
+    // CRITICAL: Wait 200ms for LEDs to fully stabilize before capturing
+    // The LEDs need time to reach full brightness and stable output
+    qDebug() << "[HandheldScanWidget] Waiting 200ms for LEDs to stabilize...";
     QThread::msleep(200);
 
     qDebug() << "[HandheldScanWidget] LED controller ready, starting scan...";
@@ -572,100 +568,184 @@ void HandheldScanWidget::startScanThread() {
         qDebug() << "[HandheldScanWidget::ScanThread] Starting frame capture with continuous callback...";
 
         try {
-            // Atomic counter and mutex for thread-safe frame collection
-            std::atomic<int> frames_received{0};
-            std::mutex frames_mutex;
-            std::condition_variable frames_cv;
-            std::vector<core::StereoFramePair> captured_frames;
-            captured_frames.reserve(TARGET_FRAMES);
-
-            // Frame callback to collect frames
-            auto frame_callback = [&](const core::StereoFramePair& frame) {
-                std::lock_guard<std::mutex> lock(frames_mutex);
-
-                if (captured_frames.size() < TARGET_FRAMES) {
-                    captured_frames.push_back(frame);
-                    int count = captured_frames.size();
-                    frames_received = count;
-
-                    qDebug() << "[HandheldScanWidget::ScanThread] Received frame" << count << "/" << TARGET_FRAMES;
-
-                    // Update UI progress
-                    frames_captured_ = count;
-
-                    // Notify if we have enough frames
-                    if (count >= TARGET_FRAMES) {
-                        frames_cv.notify_one();
-                    }
-                }
-            };
-
             // CRITICAL: Stop any existing capture first (from preview or other widgets)
             qDebug() << "[HandheldScanWidget::ScanThread] Stopping any existing capture...";
             camera_system_->stopCapture();
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Brief delay for cleanup
 
-            // ========== CRITICAL FIX: Use auto-calibrated camera parameters ==========
-            // PROBLEM: Previously hardcoded exp=10000us, gain=2.07x
-            // SOLUTION: Read from auto-calibration (performAutoCalibration() found exp=16900us, gain=1.9x)
+            // ========== PER-FRAME AUTO-CALIBRATION ==========
+            // For each frame, analyze scene and optimize exposure/gain for that specific object position
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting PER-FRAME calibrated capture for" << TARGET_FRAMES << "frames";
 
-            qDebug() << "[HandheldScanWidget::ScanThread] Reading auto-calibrated camera parameters...";
+            std::vector<core::StereoFramePair> captured_frames;
+            captured_frames.reserve(TARGET_FRAMES);
+
+            // Initial camera parameters from previous auto-calibration
             auto left_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
-            double calib_exposure = left_config.exposure_time_us;
-            double calib_gain = left_config.gain;
+            double current_exposure = left_config.exposure_time_us;
+            double current_gain = left_config.gain;
 
-            qDebug() << "[HandheldScanWidget::ScanThread] Auto-calibrated params:"
-                     << "exposure=" << calib_exposure << "us, gain=" << calib_gain << "x";
+            qDebug() << "[HandheldScanWidget::ScanThread] Initial params: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
 
-            // CRITICAL: Disable auto-exposure and auto-gain FIRST to prevent override
-            qDebug() << "[HandheldScanWidget::ScanThread] Disabling auto-exposure/auto-gain...";
+            // CRITICAL: Disable auto-exposure and auto-gain FIRST
             camera_system_->setAutoExposure(core::CameraId::LEFT, false);
             camera_system_->setAutoExposure(core::CameraId::RIGHT, false);
             camera_system_->setAutoGain(core::CameraId::LEFT, false);
             camera_system_->setAutoGain(core::CameraId::RIGHT, false);
 
-            // Apply auto-calibrated parameters (NOT hardcoded!)
-            qDebug() << "[HandheldScanWidget::ScanThread] Applying auto-calibrated parameters...";
-            camera_system_->setExposureTime(core::CameraId::LEFT, calib_exposure);
-            camera_system_->setExposureTime(core::CameraId::RIGHT, calib_exposure);
-            camera_system_->setGain(core::CameraId::LEFT, calib_gain);
-            camera_system_->setGain(core::CameraId::RIGHT, calib_gain);
+            // Per-frame capture loop with scene-specific optimization
+            for (int frame_idx = 0; frame_idx < TARGET_FRAMES; frame_idx++) {
+                qDebug() << "[HandheldScanWidget::ScanThread] ========== FRAME" << (frame_idx + 1) << "/" << TARGET_FRAMES << "==========";
 
-            // Wait for camera parameters to stabilize (300ms recommended for IMX296)
-            qDebug() << "[HandheldScanWidget::ScanThread] Waiting 300ms for parameter stabilization...";
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-            // Verify parameters were applied correctly
-            auto verify_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
-            qDebug() << "[HandheldScanWidget::ScanThread] Verified params:"
-                     << "exposure=" << verify_config.exposure_time_us << "us, gain=" << verify_config.gain << "x";
-
-            // NOW start continuous capture with stabilized parameters
-            qDebug() << "[HandheldScanWidget::ScanThread] Starting continuous capture with calibrated params...";
-            if (!camera_system_->startCapture(frame_callback)) {
-                qCritical() << "[HandheldScanWidget::ScanThread] Failed to start continuous capture";
-                return false;
-            }
-
-            qDebug() << "[HandheldScanWidget::ScanThread] Continuous capture started, waiting for" << TARGET_FRAMES << "frames...";
-
-            // Wait for TARGET_FRAMES frames (with timeout)
-            {
-                std::unique_lock<std::mutex> lock(frames_mutex);
-                bool success = frames_cv.wait_for(lock, std::chrono::seconds(10), [&]() {
-                    return captured_frames.size() >= TARGET_FRAMES ||
-                           QThread::currentThread()->isInterruptionRequested();
-                });
-
-                if (!success) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Timeout waiting for frames, got"
-                              << captured_frames.size() << "/" << TARGET_FRAMES;
+                // Check for cancellation
+                if (QThread::currentThread()->isInterruptionRequested()) {
+                    qDebug() << "[HandheldScanWidget::ScanThread] Scan cancelled by user";
+                    camera_system_->stopCapture();
+                    return false;
                 }
+
+                // STEP 1: Capture test frame for histogram analysis
+                qDebug() << "[HandheldScanWidget::ScanThread] Capturing test frame for scene analysis...";
+
+                std::mutex test_mutex;
+                std::condition_variable test_cv;
+                core::StereoFramePair test_frame;
+                bool test_captured = false;
+
+                auto test_callback = [&](const core::StereoFramePair& frame) {
+                    std::lock_guard<std::mutex> lock(test_mutex);
+                    if (!test_captured) {
+                        test_frame = frame;
+                        test_captured = true;
+                        test_cv.notify_one();
+                    }
+                };
+
+                if (!camera_system_->startCapture(test_callback)) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Failed to start test capture";
+                    return false;
+                }
+
+                // Wait for test frame
+                {
+                    std::unique_lock<std::mutex> lock(test_mutex);
+                    test_cv.wait_for(lock, std::chrono::milliseconds(500), [&]() { return test_captured; });
+                }
+                camera_system_->stopCapture();
+
+                if (!test_captured) {
+                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture test frame";
+                    continue;
+                }
+
+                // STEP 2: Analyze histogram of BOTH cameras
+                // CRITICAL: Check if already grayscale (YUV420 frames are 1-channel)
+                cv::Mat gray_left, gray_right;
+
+                if (test_frame.left_frame.image.channels() == 1) {
+                    gray_left = test_frame.left_frame.image;
+                } else {
+                    cv::cvtColor(test_frame.left_frame.image, gray_left, cv::COLOR_BGR2GRAY);
+                }
+
+                if (test_frame.right_frame.image.channels() == 1) {
+                    gray_right = test_frame.right_frame.image;
+                } else {
+                    cv::cvtColor(test_frame.right_frame.image, gray_right, cv::COLOR_BGR2GRAY);
+                }
+
+                double mean_left = cv::mean(gray_left)[0];
+                double mean_right = cv::mean(gray_right)[0];
+                double mean_combined = (mean_left + mean_right) / 2.0;
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Scene brightness: LEFT=" << mean_left
+                         << ", RIGHT=" << mean_right << ", COMBINED=" << mean_combined;
+
+                // STEP 3: Calculate optimal exposure for THIS scene
+                const double TARGET_BRIGHTNESS = 60.0;
+                const double MIN_BRIGHTNESS = 50.0;
+                const double MAX_BRIGHTNESS = 70.0;
+
+                double new_exposure = current_exposure;
+                bool needs_adjustment = false;
+
+                if (mean_combined < MIN_BRIGHTNESS) {
+                    // Scene too dark - increase exposure
+                    double factor = TARGET_BRIGHTNESS / std::max(mean_combined, 20.0);
+                    factor = std::min(factor, 1.5);  // Max 50% increase per step
+                    new_exposure = current_exposure * factor;
+                    needs_adjustment = true;
+                    qDebug() << "[HandheldScanWidget::ScanThread] Scene too dark, increasing exposure by" << (factor * 100 - 100) << "%";
+                } else if (mean_combined > MAX_BRIGHTNESS) {
+                    // Scene too bright - decrease exposure
+                    double factor = TARGET_BRIGHTNESS / mean_combined;
+                    factor = std::max(factor, 0.7);  // Max 30% decrease per step
+                    new_exposure = current_exposure * factor;
+                    needs_adjustment = true;
+                    qDebug() << "[HandheldScanWidget::ScanThread] Scene too bright, decreasing exposure by" << (100 - factor * 100) << "%";
+                } else {
+                    qDebug() << "[HandheldScanWidget::ScanThread] Scene brightness optimal, no adjustment needed";
+                }
+
+                // STEP 4: Apply optimized parameters if needed
+                if (needs_adjustment && std::abs(new_exposure - current_exposure) > 500) {
+                    qDebug() << "[HandheldScanWidget::ScanThread] Applying new exposure:" << current_exposure << "→" << new_exposure << "us";
+
+                    camera_system_->setExposureTime(core::CameraId::LEFT, new_exposure);
+                    camera_system_->setExposureTime(core::CameraId::RIGHT, new_exposure);
+                    current_exposure = new_exposure;
+
+                    // Wait for stabilization
+                    qDebug() << "[HandheldScanWidget::ScanThread] Stabilizing for 250ms...";
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                }
+
+                // STEP 5: Capture final optimized frame
+                qDebug() << "[HandheldScanWidget::ScanThread] Capturing final optimized frame...";
+
+                std::mutex final_mutex;
+                std::condition_variable final_cv;
+                core::StereoFramePair final_frame;
+                bool final_captured = false;
+
+                auto final_callback = [&](const core::StereoFramePair& frame) {
+                    std::lock_guard<std::mutex> lock(final_mutex);
+                    if (!final_captured) {
+                        final_frame = frame;
+                        final_captured = true;
+                        final_cv.notify_one();
+                    }
+                };
+
+                if (!camera_system_->startCapture(final_callback)) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Failed to start final capture";
+                    return false;
+                }
+
+                // Wait for final frame
+                {
+                    std::unique_lock<std::mutex> lock(final_mutex);
+                    final_cv.wait_for(lock, std::chrono::milliseconds(500), [&]() { return final_captured; });
+                }
+                camera_system_->stopCapture();
+
+                if (!final_captured) {
+                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture final frame";
+                    continue;
+                }
+
+                // Add to captured frames
+                captured_frames.push_back(final_frame);
+                frames_captured_ = captured_frames.size();
+
+                qDebug() << "[HandheldScanWidget::ScanThread] Frame" << (frame_idx + 1) << "/" << TARGET_FRAMES
+                         << "captured successfully (exposure=" << current_exposure << "us)";
+
+                // Brief delay between frames for user positioning
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
 
-            // Stop capture
-            camera_system_->stopCapture();
-            qDebug() << "[HandheldScanWidget::ScanThread] Capture stopped";
+            qDebug() << "[HandheldScanWidget::ScanThread] Per-frame capture complete, captured" << captured_frames.size() << "frames";
 
             // Check if cancelled
             if (QThread::currentThread()->isInterruptionRequested()) {
@@ -962,6 +1042,25 @@ void HandheldScanWidget::startCameraPreview() {
 
     qDebug() << "[HandheldScanWidget] Starting camera preview...";
 
+    // CRITICAL: Reapply calibrated parameters if available
+    if (has_calibrated_params_) {
+        qDebug() << "[HandheldScanWidget] Reapplying calibrated parameters: exposure=" << calibrated_exposure_us_ << "us, gain=" << calibrated_gain_ << "x";
+
+        // Disable auto-exposure/auto-gain
+        camera_system_->setAutoExposure(core::CameraId::LEFT, false);
+        camera_system_->setAutoExposure(core::CameraId::RIGHT, false);
+        camera_system_->setAutoGain(core::CameraId::LEFT, false);
+        camera_system_->setAutoGain(core::CameraId::RIGHT, false);
+
+        // Apply calibrated parameters
+        camera_system_->setExposureTime(core::CameraId::LEFT, calibrated_exposure_us_);
+        camera_system_->setExposureTime(core::CameraId::RIGHT, calibrated_exposure_us_);
+        camera_system_->setGain(core::CameraId::LEFT, calibrated_gain_);
+        camera_system_->setGain(core::CameraId::RIGHT, calibrated_gain_);
+
+        qDebug() << "[HandheldScanWidget] Calibrated parameters reapplied successfully";
+    }
+
     // Register callback with camera system
     bool success = camera_system_->startCapture([this](const core::StereoFramePair& frame) {
         // Use QMetaObject::invokeMethod to safely call from camera thread to GUI thread
@@ -1036,21 +1135,28 @@ void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
 
 // Auto-calibration for VCSEL structured light
 void HandheldScanWidget::onAutoCalibrate() {
-    qDebug() << "[HandheldScanWidget] Auto-calibration requested...";
+    qDebug() << "============================================";
+    qDebug() << "[HandheldScanWidget] AUTO-CALIBRATION BUTTON CLICKED!";
+    qDebug() << "============================================";
 
     // Disable calibrate button during calibration
     ui->calibrateButton->setEnabled(false);
     ui->calibrateButton->setText("⚙ CALIBRATING...");
+    qDebug() << "[HandheldScanWidget] Button disabled and text updated";
 
     // Show status message
     ui->cameraPreviewLabel->setText("Auto-Calibrating Camera\nfor VCSEL Dots...\n\nPlease wait...");
     ui->cameraPreviewLabel->setStyleSheet("font-size: 18pt; color: #FFAA00; background-color: #0a0a0a;");
+    qDebug() << "[HandheldScanWidget] Status message displayed";
 
     // Force GUI update
     QApplication::processEvents();
+    qDebug() << "[HandheldScanWidget] GUI update forced";
 
     // Perform calibration
+    qDebug() << "[HandheldScanWidget] About to call performAutoCalibration()...";
     bool success = performAutoCalibration();
+    qDebug() << "[HandheldScanWidget] performAutoCalibration() returned: " << success;
 
     // Re-enable button
     ui->calibrateButton->setEnabled(true);
@@ -1080,8 +1186,8 @@ void HandheldScanWidget::onAutoCalibrate() {
         ui->cameraPreviewLabel->setStyleSheet("font-size: 18pt; color: #FF4444; background-color: #0a0a0a;");
     }
 
-    // Reset preview after 3 seconds
-    QTimer::singleShot(3000, this, [this]() {
+    // Reset preview after 5 seconds (give user time to read results)
+    QTimer::singleShot(5000, this, [this]() {
         startCameraPreview();
     });
 }
@@ -1104,24 +1210,31 @@ bool HandheldScanWidget::performAutoCalibration() {
     // Stop preview temporarily
     stopCameraPreview();
 
-    // STEP 1: Enable VCSEL LED1 at 350mA for structured light (max safe current)
-    qDebug() << "[AutoCalibration] Enabling VCSEL LED1 at 350mA...";
-    bool led_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 350);
+    // STEP 1: Enable ONLY VCSEL LED1 for calibration
+    // LED2 (flood) DISABLED - too much current, causes Raspberry Pi shutdown
+    // LED1 at 340mA (safe power to prevent Raspberry Pi shutdown)
+
+    qDebug() << "[AutoCalibration] LED2 (Flood) DISABLED - too much current";
+
+    qDebug() << "[AutoCalibration] Enabling VCSEL LED1 at 340mA (safe power)...";
+    bool led_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 340);
+    qDebug() << "[AutoCalibration] LED1 result: " << (led_success ? "SUCCESS" : "FAILED");
     if (!led_success) {
         qCritical() << "[AutoCalibration] Failed to enable VCSEL LED1";
+        // Ensure all LEDs are off before returning
+        led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
         return false;
     }
 
-    // Wait for VCSEL to stabilize
-    QThread::msleep(100);
+    // Wait for LEDs to stabilize
+    QThread::msleep(200);
 
     // STEP 2: Iterative calibration loop
-    // NOTE: VCSEL structured light produces sparse dots, not full illumination
-    // Target brightness is lower than normal scene (30-50 instead of 100-120)
+    // NOTE: VCSEL ONLY (380mA), no flood LED2
     const int MAX_ITERATIONS = 7;
-    const int TARGET_MEAN_MIN = 30;   // Lower target for VCSEL dots
-    const int TARGET_MEAN_MAX = 50;   // Lower target for VCSEL dots
-    const float MAX_SATURATED_PERCENT = 1.0f;  // 1% max saturated pixels
+    const int TARGET_MEAN_MIN = 50;   // Lower target with VCSEL only (no flood)
+    const int TARGET_MEAN_MAX = 75;   // VCSEL dots should be clearly visible
+    const float MAX_SATURATED_PERCENT = 2.0f;  // 2% max saturated pixels
 
     // Get current camera parameters from config
     auto left_config = camera_system_->getCameraConfig(CameraId::LEFT);
@@ -1165,47 +1278,81 @@ bool HandheldScanWidget::performAutoCalibration() {
         QThread::msleep(100);  // Wait for one frame
         camera_system_->stopCapture();
 
-        if (!capture_success || test_frame.left_frame.image.empty()) {
+        if (!capture_success || test_frame.left_frame.image.empty() || test_frame.right_frame.image.empty()) {
             qWarning() << "[AutoCalibration] Failed to capture test frame";
             continue;
         }
 
-        // STEP 3: Analyze histogram
-        cv::Mat gray_image;
+        // STEP 3: Analyze histogram of BOTH left and right frames
+        // CRITICAL FIX: Optimize for both cameras, not just left!
+        cv::Mat gray_left, gray_right;
         if (test_frame.left_frame.image.channels() == 3) {
-            cv::cvtColor(test_frame.left_frame.image, gray_image, cv::COLOR_BGR2GRAY);
+            cv::cvtColor(test_frame.left_frame.image, gray_left, cv::COLOR_BGR2GRAY);
+            cv::cvtColor(test_frame.right_frame.image, gray_right, cv::COLOR_BGR2GRAY);
         } else {
-            gray_image = test_frame.left_frame.image;
+            gray_left = test_frame.left_frame.image;
+            gray_right = test_frame.right_frame.image;
         }
 
-        // Calculate statistics
-        int saturated_count = 0;
-        long long sum = 0;
-        int total_pixels = gray_image.rows * gray_image.cols;
+        // Calculate statistics for LEFT camera
+        int saturated_count_left = 0;
+        long long sum_left = 0;
+        int total_pixels_left = gray_left.rows * gray_left.cols;
 
-        for (int y = 0; y < gray_image.rows; y++) {
-            const uint8_t* row = gray_image.ptr<uint8_t>(y);
-            for (int x = 0; x < gray_image.cols; x++) {
+        for (int y = 0; y < gray_left.rows; y++) {
+            const uint8_t* row = gray_left.ptr<uint8_t>(y);
+            for (int x = 0; x < gray_left.cols; x++) {
                 uint8_t val = row[x];
-                sum += val;
-                if (val >= 250) {  // Saturated pixels
-                    saturated_count++;
-                }
+                sum_left += val;
+                if (val >= 250) saturated_count_left++;
             }
         }
 
-        double mean_brightness = static_cast<double>(sum) / total_pixels;
-        float saturated_percent = 100.0f * saturated_count / total_pixels;
+        double mean_brightness_left = static_cast<double>(sum_left) / total_pixels_left;
+        float saturated_percent_left = 100.0f * saturated_count_left / total_pixels_left;
 
-        qDebug() << "[AutoCalibration]   Mean brightness:" << mean_brightness;
-        qDebug() << "[AutoCalibration]   Saturated pixels:" << saturated_percent << "%";
+        // Calculate statistics for RIGHT camera
+        int saturated_count_right = 0;
+        long long sum_right = 0;
+        int total_pixels_right = gray_right.rows * gray_right.cols;
+
+        for (int y = 0; y < gray_right.rows; y++) {
+            const uint8_t* row = gray_right.ptr<uint8_t>(y);
+            for (int x = 0; x < gray_right.cols; x++) {
+                uint8_t val = row[x];
+                sum_right += val;
+                if (val >= 250) saturated_count_right++;
+            }
+        }
+
+        double mean_brightness_right = static_cast<double>(sum_right) / total_pixels_right;
+        float saturated_percent_right = 100.0f * saturated_count_right / total_pixels_right;
+
+        // COMBINED metrics: average of both cameras for optimization
+        double mean_brightness = (mean_brightness_left + mean_brightness_right) / 2.0;
+        float saturated_percent = (saturated_percent_left + saturated_percent_right) / 2.0f;
+
+        qDebug() << "[AutoCalibration]   LEFT:  mean=" << mean_brightness_left << ", saturated=" << saturated_percent_left << "%";
+        qDebug() << "[AutoCalibration]   RIGHT: mean=" << mean_brightness_right << ", saturated=" << saturated_percent_right << "%";
+        qDebug() << "[AutoCalibration]   COMBINED: mean=" << mean_brightness << ", saturated=" << saturated_percent << "%";
 
         // STEP 4: Check if calibration target achieved
-        if (mean_brightness >= TARGET_MEAN_MIN &&
-            mean_brightness <= TARGET_MEAN_MAX &&
-            saturated_percent < MAX_SATURATED_PERCENT) {
-            qDebug() << "[AutoCalibration] ✓ Target achieved! Mean:" << mean_brightness
-                     << ", Saturated:" << saturated_percent << "%";
+        // CRITICAL: Both cameras must be in acceptable range, not just the average!
+        bool left_in_range = (mean_brightness_left >= TARGET_MEAN_MIN - 10 &&
+                              mean_brightness_left <= TARGET_MEAN_MAX + 10 &&
+                              saturated_percent_left < MAX_SATURATED_PERCENT);
+        bool right_in_range = (mean_brightness_right >= TARGET_MEAN_MIN - 10 &&
+                               mean_brightness_right <= TARGET_MEAN_MAX + 10 &&
+                               saturated_percent_right < MAX_SATURATED_PERCENT);
+        bool combined_in_range = (mean_brightness >= TARGET_MEAN_MIN &&
+                                  mean_brightness <= TARGET_MEAN_MAX &&
+                                  saturated_percent < MAX_SATURATED_PERCENT);
+
+        if (left_in_range && right_in_range && combined_in_range) {
+            qDebug() << "[AutoCalibration] ✓ Target achieved for BOTH cameras!";
+            qDebug() << "[AutoCalibration]   LEFT:  mean=" << mean_brightness_left << ", saturated=" << saturated_percent_left << "%";
+            qDebug() << "[AutoCalibration]   RIGHT: mean=" << mean_brightness_right << ", saturated=" << saturated_percent_right << "%";
+            qDebug() << "[AutoCalibration]   COMBINED: mean=" << mean_brightness << ", saturated=" << saturated_percent << "%";
             calibration_success = true;
             break;
         }
@@ -1240,6 +1387,12 @@ bool HandheldScanWidget::performAutoCalibration() {
         qDebug() << "[AutoCalibration]   Final exposure:" << current_exposure << "us";
         qDebug() << "[AutoCalibration]   Final gain:" << current_gain << "x";
 
+        // SAVE calibrated parameters for later use
+        has_calibrated_params_ = true;
+        calibrated_exposure_us_ = current_exposure;
+        calibrated_gain_ = current_gain;
+        qDebug() << "[AutoCalibration] Parameters SAVED for automatic reapplication";
+
         // CRITICAL: Disable auto-exposure and auto-gain FIRST to prevent override
         qDebug() << "[AutoCalibration] Disabling auto-exposure and auto-gain...";
         camera_system_->setAutoExposure(CameraId::LEFT, false);
@@ -1270,9 +1423,10 @@ bool HandheldScanWidget::performAutoCalibration() {
         qWarning() << "[AutoCalibration]   Best parameters: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
     }
 
-    // STEP 7: Now disable VCSEL
-    qDebug() << "[AutoCalibration] Disabling VCSEL LED1...";
+    // STEP 7: Now disable all LEDs (VCSEL and flood)
+    qDebug() << "[AutoCalibration] Disabling all LEDs...";
     led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, false, 0);
+    led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, false, 0);
 
     return calibration_success;
 }

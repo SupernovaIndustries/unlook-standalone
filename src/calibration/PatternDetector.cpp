@@ -78,30 +78,23 @@ bool PatternDetector::detectCheckerboard(const cv::Mat& image,
         std::to_string(boardSize.width) + "x" + std::to_string(boardSize.height) +
         " inner corners (" + std::to_string(config_.cols) + "x" + std::to_string(config_.rows) + " pattern)");
 
-    // Find checkerboard corners with multiple attempts for robustness
+    // Find checkerboard corners (single attempt for RPi performance)
+    // OPTIMIZED: Removed second attempt to prevent doubling CPU load on failure
     bool found = cv::findChessboardCorners(
         gray, boardSize, corners,
         cv::CALIB_CB_ADAPTIVE_THRESH |
-        cv::CALIB_CB_NORMALIZE_IMAGE
-        // Note: CALIB_CB_FAST_CHECK removed - can miss valid patterns
+        cv::CALIB_CB_NORMALIZE_IMAGE |
+        cv::CALIB_CB_FAST_CHECK  // Re-enabled for performance on RPi
     );
 
-    // If not found, try again without normalization
-    if (!found) {
-        core::Logger::getInstance().debug("First attempt failed, trying without normalization...");
-        found = cv::findChessboardCorners(
-            gray, boardSize, corners,
-            cv::CALIB_CB_ADAPTIVE_THRESH
-        );
-    }
-
     if (found) {
-        // Refine corner positions with high precision (like MATLAB)
+        // Refine corner positions (optimized for RPi performance)
+        // OPTIMIZED: Reduced iterations from 100 to 30 for real-time performance
         cv::TermCriteria criteria(
             cv::TermCriteria::EPS + cv::TermCriteria::COUNT,
-            100, 0.001  // More iterations and tighter epsilon for MATLAB-like precision
+            30, 0.01  // Reduced iterations for RPi - still good precision
         );
-        cv::cornerSubPix(gray, corners, cv::Size(11, 11),
+        cv::cornerSubPix(gray, corners, cv::Size(5, 5),  // Smaller window (5x5 instead of 11x11)
                         cv::Size(-1, -1), criteria);
 
         // Calculate confidence based on corner detection quality
