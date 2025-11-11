@@ -624,13 +624,24 @@ void HandheldScanWidget::startScanThread() {
                 std::mutex test_mutex;
                 std::condition_variable test_cv;
                 core::StereoFramePair test_frame;
-                bool test_captured = false;
+                int frames_received = 0;
+                const int FRAMES_TO_SKIP = 3; // Skip first 3 frames (old parameters)
 
                 auto test_callback = [&](const core::StereoFramePair& frame) {
                     std::lock_guard<std::mutex> lock(test_mutex);
-                    if (!test_captured) {
+                    frames_received++;
+
+                    // CRITICAL: Skip first 3 frames - they have OLD parameters!
+                    // New parameters need 2-3 frames to take effect
+                    if (frames_received <= FRAMES_TO_SKIP) {
+                        qDebug() << "[HandheldScanWidget::ScanThread] Skipping frame" << frames_received << "(old parameters)";
+                        return;
+                    }
+
+                    // Take the 4th frame - this has NEW parameters applied
+                    if (frames_received == FRAMES_TO_SKIP + 1) {
+                        qDebug() << "[HandheldScanWidget::ScanThread] Taking frame" << frames_received << "(new parameters)";
                         test_frame = frame;
-                        test_captured = true;
                         test_cv.notify_one();
                     }
                 };
@@ -640,15 +651,15 @@ void HandheldScanWidget::startScanThread() {
                     return false;
                 }
 
-                // Wait for test frame
+                // Wait for stabilized frame (4th frame)
                 {
                     std::unique_lock<std::mutex> lock(test_mutex);
-                    test_cv.wait_for(lock, std::chrono::milliseconds(500), [&]() { return test_captured; });
+                    test_cv.wait_for(lock, std::chrono::milliseconds(1000), [&]() { return frames_received > FRAMES_TO_SKIP; });
                 }
                 camera_system_->stopCapture();
 
-                if (!test_captured) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture test frame";
+                if (frames_received <= FRAMES_TO_SKIP || test_frame.left_frame.image.empty()) {
+                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture stabilized test frame (received" << frames_received << "frames)";
                     continue;
                 }
 
@@ -720,13 +731,22 @@ void HandheldScanWidget::startScanThread() {
                 std::mutex final_mutex;
                 std::condition_variable final_cv;
                 core::StereoFramePair final_frame;
-                bool final_captured = false;
+                int final_frames_received = 0;
 
                 auto final_callback = [&](const core::StereoFramePair& frame) {
                     std::lock_guard<std::mutex> lock(final_mutex);
-                    if (!final_captured) {
+                    final_frames_received++;
+
+                    // CRITICAL: Skip first 3 frames (old parameters)
+                    if (final_frames_received <= FRAMES_TO_SKIP) {
+                        qDebug() << "[HandheldScanWidget::ScanThread] Skipping final frame" << final_frames_received << "(old parameters)";
+                        return;
+                    }
+
+                    // Take the 4th frame (new parameters)
+                    if (final_frames_received == FRAMES_TO_SKIP + 1) {
+                        qDebug() << "[HandheldScanWidget::ScanThread] Taking final frame" << final_frames_received << "(new parameters)";
                         final_frame = frame;
-                        final_captured = true;
                         final_cv.notify_one();
                     }
                 };
@@ -736,15 +756,15 @@ void HandheldScanWidget::startScanThread() {
                     return false;
                 }
 
-                // Wait for final frame
+                // Wait for stabilized final frame (4th frame)
                 {
                     std::unique_lock<std::mutex> lock(final_mutex);
-                    final_cv.wait_for(lock, std::chrono::milliseconds(500), [&]() { return final_captured; });
+                    final_cv.wait_for(lock, std::chrono::milliseconds(1000), [&]() { return final_frames_received > FRAMES_TO_SKIP; });
                 }
                 camera_system_->stopCapture();
 
-                if (!final_captured) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture final frame";
+                if (final_frames_received <= FRAMES_TO_SKIP || final_frame.left_frame.image.empty()) {
+                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture stabilized final frame (received" << final_frames_received << "frames)";
                     continue;
                 }
 
