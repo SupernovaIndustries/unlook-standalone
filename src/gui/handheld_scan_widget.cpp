@@ -580,18 +580,25 @@ void HandheldScanWidget::startScanThread() {
             std::vector<core::StereoFramePair> captured_frames;
             captured_frames.reserve(TARGET_FRAMES);
 
-            // Initial camera parameters from previous auto-calibration
-            auto left_config = camera_system_->getCameraConfig(core::CameraId::LEFT);
-            double current_exposure = left_config.exposure_time_us;
-            double current_gain = left_config.gain;
+            // CRITICAL: Use saved calibrated parameters from performAutoCalibration()
+            double current_exposure = calibrated_exposure_us_;
+            double current_gain = calibrated_gain_;
 
-            qDebug() << "[HandheldScanWidget::ScanThread] Initial params: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
+            qDebug() << "[HandheldScanWidget::ScanThread] Initial calibrated params: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
 
             // CRITICAL: Disable auto-exposure and auto-gain FIRST
             camera_system_->setAutoExposure(core::CameraId::LEFT, false);
             camera_system_->setAutoExposure(core::CameraId::RIGHT, false);
             camera_system_->setAutoGain(core::CameraId::LEFT, false);
             camera_system_->setAutoGain(core::CameraId::RIGHT, false);
+
+            // Apply calibrated parameters to BOTH cameras before starting per-frame loop
+            qDebug() << "[HandheldScanWidget::ScanThread] Applying calibrated params to BOTH cameras...";
+            camera_system_->setExposureTime(core::CameraId::LEFT, current_exposure);
+            camera_system_->setExposureTime(core::CameraId::RIGHT, current_exposure);
+            camera_system_->setGain(core::CameraId::LEFT, current_gain);
+            camera_system_->setGain(core::CameraId::RIGHT, current_gain);
+            std::this_thread::sleep_for(std::chrono::milliseconds(200)); // Stabilization
 
             // Per-frame capture loop with scene-specific optimization
             for (int frame_idx = 0; frame_idx < TARGET_FRAMES; frame_idx++) {
