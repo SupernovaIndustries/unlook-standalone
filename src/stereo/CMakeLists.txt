@@ -4,6 +4,7 @@ set(STEREO_SOURCES
     StereoMatcher.cpp
     SGBMStereoMatcher.cpp
     CensusStereoMatcher.cpp
+    SGMCensus.cpp  # Production SGM-Census implementation
     ProgressiveStereoMatcher.cpp
     DisparityFilter.cpp
     ParameterManager.cpp

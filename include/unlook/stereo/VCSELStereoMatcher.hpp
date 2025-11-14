@@ -131,9 +131,9 @@ private:
         // SGM parameters optimized for VCSEL
         int minDisparity = 48;        // Minimum disparity for 70mm baseline
         int numDisparities = 256;     // Range optimized for 100-800mm depth
-        int P1 = 4;                   // Small penalty (preserve VCSEL dots)
-        int P2 = 24;                  // Large penalty (moderate smoothing)
-        int uniquenessRatio = 25;     // Strict matching for precision
+        int P1 = 200;                 // Small penalty - INCREASED to reject noise/false matches
+        int P2 = 1000;                // Large penalty - INCREASED for strong smoothness
+        int uniquenessRatio = 30;     // Strict matching - INCREASED to filter ambiguous matches
 
         // Subpixel refinement
         bool useSubpixel = true;

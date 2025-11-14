@@ -195,14 +195,22 @@ void HandheldScanWidget::onStartScan() {
     if (led_controller_) {
         // CRITICAL: ENABLE VCSEL ONLY for scanning
         // LED2 (Flood): DISABLED - too much current, causes Raspberry Pi shutdown
-        // LED1 (VCSEL): 340mA - safe power for VCSEL dots without overloading power supply
+        // LED1 (VCSEL): 420mA - high power for maximum pattern visibility + CLAHE enhancement
 
-        qDebug() << "[HandheldScanWidget] LED2 (Flood) DISABLED - too much current";
+        qDebug() << "[HandheldScanWidget] LED2 (Flood) ENABLED at 100mA + LED1 (VCSEL) at 420mA";
 
-        // ENABLE VCSEL at 340mA (safe limit to prevent Raspberry Pi shutdown)
-        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 340);
+        // ENABLE FLOOD LED2 at 100mA first (conservative current, helps feature matching)
+        bool led2_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED2, true, 100);
+        if (led2_success) {
+            qDebug() << "[HandheldScanWidget] LED2 (Flood) ENABLED at 100mA (helps stereo matching)";
+        } else {
+            qWarning() << "[HandheldScanWidget] WARNING: Failed to enable LED2 (Flood) - continuing with VCSEL only";
+        }
+
+        // ENABLE VCSEL at 420mA (high power + CLAHE 4.0 for maximum visibility on all surfaces)
+        bool led1_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 420);
         if (led1_success) {
-            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 340mA (safe power)";
+            qDebug() << "[HandheldScanWidget] LED1 (VCSEL) ENABLED at 420mA (maximum visibility + CLAHE 4.0)";
         } else {
             qCritical() << "[HandheldScanWidget] CRITICAL: Failed to enable LED1 (VCSEL) - scan may fail!";
     // HIDDEN:             ui->statusLabel->setText("ERROR: Failed to enable VCSEL");
@@ -826,9 +834,15 @@ void HandheldScanWidget::startScanThread() {
                 for (size_t i = 0; i < captured_frames.size(); i++) {
                     const auto& gui_frame = captured_frames[i];
 
+                    // CAMERA MAPPING (DIRECT - NO SWAP):
+                    // Physical setup: Camera 0 (SLAVE) on right, Camera 1 (MASTER) on left (scanner POV)
+                    // Software maps: Camera 1 → left_frame, Camera 0 → right_frame
+                    // CORRECT MAPPING (matches calibration + physical setup):
+                    //   - Camera 1 (MASTER, left_frame) → leftImage (LEFT)
+                    //   - Camera 0 (SLAVE, right_frame) → rightImage (RIGHT)
                     api::HandheldScanPipeline::StereoFrame api_frame;
-                    api_frame.leftImage = gui_frame.left_frame.image.clone();
-                    api_frame.rightImage = gui_frame.right_frame.image.clone();
+                    api_frame.leftImage = gui_frame.left_frame.image.clone();    // Camera 1 MASTER → LEFT ✓
+                    api_frame.rightImage = gui_frame.right_frame.image.clone();  // Camera 0 SLAVE → RIGHT ✓
                     api_frame.timestampUs = gui_frame.left_frame.timestamp_ns / 1000;
                     api_frame.leftVCSEL = api_frame.leftImage;   // VCSEL is same as main image
                     api_frame.rightVCSEL = api_frame.rightImage;
@@ -859,7 +873,7 @@ void HandheldScanWidget::startScanThread() {
                     api_frames.push_back(api_frame);
                 }
 
-                qDebug() << "[HandheldScanWidget::ScanThread] Processing" << api_frames.size() << "frames with VCSELStereoMatcher...";
+                qDebug() << "[HandheldScanWidget::ScanThread] Processing" << api_frames.size() << "frames with SGMCensus...";
 
                 // Show progress frame on main thread
                 QMetaObject::invokeMethod(this, [this]() {
@@ -876,8 +890,8 @@ void HandheldScanWidget::startScanThread() {
                 std::atomic<int> frames_completed{0};
                 const int total_frames = api_frames.size();
 
-                // Process frames to depth maps using AD-Census with progress callback
-                auto depth_maps = pipeline->processFrames(api_frames, stereo_params,
+                // Process frames to disparity maps using SGM-Census with progress callback
+                auto disparity_maps = pipeline->processFrames(api_frames, stereo_params,
                     [this, &processing_start, &frames_completed, total_frames](float progress, const std::string& message) {
                         // Called from background thread - use QMetaObject::invokeMethod for thread safety
                         frames_completed++;
@@ -911,33 +925,56 @@ void HandheldScanWidget::startScanThread() {
                     }
                 );
 
-                if (depth_maps.empty()) {
-                    qCritical() << "[HandheldScanWidget::ScanThread] No depth maps generated";
+                if (disparity_maps.empty()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] No disparity maps generated";
                     return false;
                 }
 
-                qDebug() << "[HandheldScanWidget::ScanThread] Generated" << depth_maps.size() << "depth maps, fusing...";
+                qDebug() << "[HandheldScanWidget::ScanThread] Generated" << disparity_maps.size() << "disparity maps, fusing...";
 
-                // Fuse depth maps with outlier rejection
-                cv::Mat fused_depth = pipeline->fuseDepthMaps(depth_maps, 2.5f);
+                // Fuse disparity maps with outlier rejection (OPTIMIZED: no depth conversion!)
+                cv::Mat fused_disparity = pipeline->fuseDisparityMaps(disparity_maps, 2.5f);
 
-                if (fused_depth.empty()) {
-                    qCritical() << "[HandheldScanWidget::ScanThread] Depth map fusion failed";
+                if (fused_disparity.empty()) {
+                    qCritical() << "[HandheldScanWidget::ScanThread] Disparity map fusion failed";
                     return false;
                 }
 
-                qDebug() << "[HandheldScanWidget::ScanThread] Depth fusion complete, generating point cloud...";
+                qDebug() << "[HandheldScanWidget::ScanThread] Disparity fusion complete, generating point cloud...";
 
-                // Generate point cloud
-                cv::Mat point_cloud = pipeline->generatePointCloud(fused_depth, api_frames[0].leftImage);
+                // Generate point cloud directly from disparity (OPTIMIZED: eliminates depth→disparity conversion!)
+                cv::Mat point_cloud = pipeline->generatePointCloud(fused_disparity, api_frames[0].leftImage);
 
                 if (point_cloud.empty()) {
                     qCritical() << "[HandheldScanWidget::ScanThread] Point cloud generation failed";
                     return false;
                 }
 
-                // Calculate achieved precision
-                achieved_precision_mm_ = pipeline->calculatePrecision(depth_maps);
+                // Calculate achieved precision (convert disparity to depth for variance calculation)
+                // Note: This is temporary - we could optimize calculatePrecision to work with disparity directly
+                std::vector<cv::Mat> depth_maps_for_precision;
+                depth_maps_for_precision.reserve(disparity_maps.size());
+                for (const auto& disp_map : disparity_maps) {
+                    // Use internal P2 matrix to get fx*baseline
+                    // This is a temporary conversion just for precision calculation
+                    const float fxBaseline = std::abs(pipeline->getP2().at<double>(0, 3));
+                    const float disparityScale = 16.0f;
+
+                    cv::Mat depth_temp(disp_map.size(), CV_32F, cv::Scalar(0));
+                    for (int y = 0; y < disp_map.rows; y++) {
+                        const int16_t* dispRow = disp_map.ptr<int16_t>(y);
+                        float* depthRow = depth_temp.ptr<float>(y);
+                        for (int x = 0; x < disp_map.cols; x++) {
+                            int16_t d = dispRow[x];
+                            if (d > 0) {
+                                float disparity_real = static_cast<float>(std::abs(d)) / disparityScale;
+                                depthRow[x] = fxBaseline / disparity_real;
+                            }
+                        }
+                    }
+                    depth_maps_for_precision.push_back(depth_temp);
+                }
+                achieved_precision_mm_ = pipeline->calculatePrecision(depth_maps_for_precision);
                 point_count_ = point_cloud.rows;  // Number of points
 
                 qDebug() << "[HandheldScanWidget::ScanThread] Scan completed successfully!";
@@ -947,11 +984,55 @@ void HandheldScanWidget::startScanThread() {
                 // CRITICAL: Save all debug output (rectified, epipolar, disparity, depth, point cloud)
                 qDebug() << "[HandheldScanWidget] Saving comprehensive debug output to" << debug_dir;
                 try {
+                    // Note: saveDebugOutput still expects depth maps for now (backward compatibility)
+                    // Convert disparity to depth temporarily for debug output
+                    std::vector<cv::Mat> depth_maps_for_debug;
+                    depth_maps_for_debug.reserve(disparity_maps.size());
+                    const float fxBaseline_debug = std::abs(pipeline->getP2().at<double>(0, 3));
+                    const float disparityScale_debug = 16.0f;
+                    for (const auto& disp_map : disparity_maps) {
+                        cv::Mat depth_temp(disp_map.size(), CV_32F, cv::Scalar(0));
+                        for (int y = 0; y < disp_map.rows; y++) {
+                            const int16_t* dispRow = disp_map.ptr<int16_t>(y);
+                            float* depthRow = depth_temp.ptr<float>(y);
+                            for (int x = 0; x < disp_map.cols; x++) {
+                                int16_t d = dispRow[x];
+                                if (d > 0) {
+                                    float disparity_real = static_cast<float>(std::abs(d)) / disparityScale_debug;
+                                    depthRow[x] = fxBaseline_debug / disparity_real;
+                                }
+                            }
+                        }
+                        depth_maps_for_debug.push_back(depth_temp);
+                    }
+
+                    // CRITICAL: Save fused disparity as image for debugging!
+                    cv::Mat fused_disp_8u;
+                    fused_disparity.convertTo(fused_disp_8u, CV_8U, 255.0 / (384.0 * 16.0));
+                    cv::imwrite(debug_dir.toStdString() + "/04_fused_disparity.png", fused_disp_8u);
+
+                    // Also save raw fused disparity (CV_16S) for analysis
+                    cv::imwrite(debug_dir.toStdString() + "/04_fused_disparity_raw.tiff", fused_disparity);
+
+                    // Convert fused disparity to depth for debug
+                    cv::Mat fused_depth_debug(fused_disparity.size(), CV_32F, cv::Scalar(0));
+                    for (int y = 0; y < fused_disparity.rows; y++) {
+                        const int16_t* dispRow = fused_disparity.ptr<int16_t>(y);
+                        float* depthRow = fused_depth_debug.ptr<float>(y);
+                        for (int x = 0; x < fused_disparity.cols; x++) {
+                            int16_t d = dispRow[x];
+                            if (d > 0) {
+                                float disparity_real = static_cast<float>(std::abs(d)) / disparityScale_debug;
+                                depthRow[x] = fxBaseline_debug / disparity_real;
+                            }
+                        }
+                    }
+
                     bool debug_saved = pipeline->saveDebugOutput(
                         debug_dir.toStdString(),
                         api_frames,
-                        depth_maps,
-                        fused_depth,
+                        depth_maps_for_debug,
+                        fused_depth_debug,
                         point_cloud
                     );
 
@@ -1246,12 +1327,12 @@ bool HandheldScanWidget::performAutoCalibration() {
 
     // STEP 1: Enable ONLY VCSEL LED1 for calibration
     // LED2 (flood) DISABLED - too much current, causes Raspberry Pi shutdown
-    // LED1 at 340mA (safe power to prevent Raspberry Pi shutdown)
+    // LED1 at 420mA (high power for maximum pattern visibility + CLAHE enhancement)
 
     qDebug() << "[AutoCalibration] LED2 (Flood) DISABLED - too much current";
 
-    qDebug() << "[AutoCalibration] Enabling VCSEL LED1 at 340mA (safe power)...";
-    bool led_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 340);
+    qDebug() << "[AutoCalibration] Enabling VCSEL LED1 at 420mA (maximum visibility + CLAHE)...";
+    bool led_success = led_controller_->setLEDState(hardware::AS1170Controller::LEDChannel::LED1, true, 420);
     qDebug() << "[AutoCalibration] LED1 result: " << (led_success ? "SUCCESS" : "FAILED");
     if (!led_success) {
         qCritical() << "[AutoCalibration] Failed to enable VCSEL LED1";
@@ -1264,7 +1345,7 @@ bool HandheldScanWidget::performAutoCalibration() {
     QThread::msleep(200);
 
     // STEP 2: Iterative calibration loop
-    // NOTE: VCSEL ONLY (380mA), no flood LED2
+    // NOTE: VCSEL ONLY (420mA + CLAHE), no flood LED2
     const int MAX_ITERATIONS = 7;
     const int TARGET_MEAN_MIN = 50;   // Lower target with VCSEL only (no flood)
     const int TARGET_MEAN_MAX = 75;   // VCSEL dots should be clearly visible

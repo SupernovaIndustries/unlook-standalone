@@ -74,7 +74,7 @@ public:
             i2c_bus(1),                           // I2C bus number (FINAL CONFIG: bus 1)
             i2c_address(0x30),                    // I2C address (FINAL CONFIG: 0x30)
             strobe_gpio(17),                      // GPIO pin for strobe control (physical GPIO 17)
-            target_current_ma(400),               // Increased to 400mA to support VCSEL (380mA) + Flood (150mA), safe limit (vs 446mA max)
+            target_current_ma(420),               // Increased to 420mA for maximum VCSEL visibility (safe: 420 < 446mA limit)
             flash_mode(FlashMode::FLASH_MODE),    // FLASH MODE: GPIO HIGH = LED ON, GPIO LOW = LED OFF (VERIFIED WORKING)
             strobe_type(StrobeType::LEVEL_SENSITIVE),
             flash_timeout_ms(129),                // Flash timeout in ms

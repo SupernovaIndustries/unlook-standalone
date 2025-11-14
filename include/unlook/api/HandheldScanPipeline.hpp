@@ -180,11 +180,15 @@ public:
                                                ProgressCallback progressCallback = nullptr);
 
     /**
-     * @brief Process frames to generate depth maps
+     * @brief Process frames to generate disparity maps
+     *
+     * NOTE: Changed to return disparity maps (CV_16S) instead of depth maps to avoid
+     * redundant disparity→depth→disparity conversions in the 3D reconstruction pipeline.
+     *
      * @param frames Vector of stereo frames
      * @param params Stereo matching parameters
      * @param progressCallback Optional progress callback for GUI updates
-     * @return Vector of depth maps
+     * @return Vector of disparity maps (CV_16S, subpixel precision ×16)
      */
     std::vector<cv::Mat> processFrames(const std::vector<StereoFrame>& frames,
                                        const stereo::StereoMatchingParams& params,
@@ -207,6 +211,25 @@ public:
                          float outlierSigma = 2.5f);
 
     /**
+     * @brief Fuse multiple disparity maps with outlier rejection
+     *
+     * Similar to fuseDepthMaps but optimized for CV_16S disparity maps.
+     * Avoids disparity→depth→disparity conversions during fusion.
+     *
+     * Algorithm:
+     * - For each pixel, collect disparity values from all frames
+     * - Calculate mean and standard deviation
+     * - Reject outliers beyond sigma threshold
+     * - Compute median of inliers for robustness
+     *
+     * @param disparityMaps Vector of disparity maps to fuse (CV_16S, subpixel ×16)
+     * @param outlierSigma Number of standard deviations for outlier rejection
+     * @return Fused disparity map (CV_16S)
+     */
+    cv::Mat fuseDisparityMaps(const std::vector<cv::Mat>& disparityMaps,
+                             float outlierSigma = 2.5f);
+
+    /**
      * @brief Apply WLS filter for edge-preserving smoothing
      * @param depthMap Input depth map
      * @param guideImage Guide image (typically left camera image)
@@ -220,12 +243,16 @@ public:
                      double sigma = 1.5);
 
     /**
-     * @brief Generate 3D point cloud from depth map
-     * @param depthMap Depth map in millimeters
+     * @brief Generate 3D point cloud from disparity map
+     *
+     * OPTIMIZED: Now accepts disparity map directly (CV_16S) instead of depth (CV_32F).
+     * This eliminates the redundant disparity→depth→disparity conversion in the pipeline.
+     *
+     * @param disparityMap Disparity map (CV_16S, subpixel precision ×16)
      * @param colorImage Optional color image for point colors
      * @return 3D point cloud (CV_32FC3 or CV_32FC6 with colors)
      */
-    cv::Mat generatePointCloud(const cv::Mat& depthMap,
+    cv::Mat generatePointCloud(const cv::Mat& disparityMap,
                                const cv::Mat& colorImage = cv::Mat());
 
     /**
@@ -252,6 +279,12 @@ public:
      * @param params New parameters
      */
     void setStereoParams(const stereo::StereoMatchingParams& params);
+
+    /**
+     * @brief Get P2 projection matrix from stereo calibration
+     * @return Right camera projection matrix (P2)
+     */
+    cv::Mat getP2() const;
 
     /**
      * @brief Enable/disable VCSEL projection

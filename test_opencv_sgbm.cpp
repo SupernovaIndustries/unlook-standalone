@@ -1,118 +1,147 @@
 /**
  * @file test_opencv_sgbm.cpp
- * @brief Quick test using OpenCV StereoSGBM on rectified images
+ * @brief Test OpenCV's standard SGBM instead of Census
  *
- * This test uses standard OpenCV SGBM instead of AD-Census to diagnose
- * whether the problem is in the algorithm or in the images/calibration.
+ * This test compares OpenCV's built-in StereoSGBM against our SGM-Census
+ * to determine if Census Transform is the problem or if it's something else.
  */
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/calib3d.hpp>
 #include <iostream>
-#include <string>
 
-int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <left_rectified.png> <right_rectified.png>" << std::endl;
+int main() {
+    std::cout << "\n=== TESTING OPENCV STANDARD SGBM VS CENSUS ===\n" << std::endl;
+
+    // Load rectified + CLAHE images
+    std::string leftPath = "/home/alessandro/unlook_debug/scan_20251114_205404/01b_clahe_frame0_left.png";
+    std::string rightPath = "/home/alessandro/unlook_debug/scan_20251114_205404/01b_clahe_frame0_right.png";
+
+    cv::Mat left = cv::imread(leftPath, cv::IMREAD_GRAYSCALE);
+    cv::Mat right = cv::imread(rightPath, cv::IMREAD_GRAYSCALE);
+
+    if (left.empty() || right.empty()) {
+        std::cerr << "ERROR: Could not load images" << std::endl;
         return 1;
     }
 
-    std::string leftPath = argv[1];
-    std::string rightPath = argv[2];
+    std::cout << "Loaded images: " << left.cols << "x" << left.rows << std::endl;
 
-    // Load rectified images
-    cv::Mat leftRect = cv::imread(leftPath, cv::IMREAD_GRAYSCALE);
-    cv::Mat rightRect = cv::imread(rightPath, cv::IMREAD_GRAYSCALE);
+    // Configure OpenCV SGBM with parameters optimized for VCSEL dots
+    const int numDisparities = 384;  // Must be divisible by 16
+    const int blockSize = 5;         // 5x5 window (smaller than Census 9x9)
 
-    if (leftRect.empty() || rightRect.empty()) {
-        std::cerr << "ERROR: Could not load images!" << std::endl;
-        return 1;
-    }
-
-    std::cout << "Images loaded:" << std::endl;
-    std::cout << "  Left: " << leftRect.size() << ", type: " << leftRect.type() << std::endl;
-    std::cout << "  Right: " << rightRect.size() << ", type: " << rightRect.type() << std::endl;
-
-    // Enhance contrast (CLAHE)
-    cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
-    cv::Mat leftEnhanced, rightEnhanced;
-    clahe->apply(leftRect, leftEnhanced);
-    clahe->apply(rightRect, rightEnhanced);
-
-    std::cout << "\nContrast enhanced with CLAHE" << std::endl;
-
-    // Save enhanced images
-    cv::imwrite("test_left_enhanced.png", leftEnhanced);
-    cv::imwrite("test_right_enhanced.png", rightEnhanced);
-
-    // Create StereoSGBM matcher
-    int minDisparity = 0;
-    int numDisparities = 256;  // Must be divisible by 16
-    int blockSize = 7;
-    int P1 = 8 * blockSize * blockSize;
-    int P2 = 32 * blockSize * blockSize;
-    int disp12MaxDiff = 2;
-    int preFilterCap = 63;
-    int uniquenessRatio = 15;
-    int speckleWindowSize = 100;
-    int speckleRange = 16;
-
-    cv::Ptr<cv::StereoSGBM> sgbm = cv::StereoSGBM::create(
-        minDisparity, numDisparities, blockSize,
-        P1, P2, disp12MaxDiff, preFilterCap, uniquenessRatio,
-        speckleWindowSize, speckleRange, cv::StereoSGBM::MODE_SGBM_3WAY
+    auto sgbm = cv::StereoSGBM::create(
+        0,                  // minDisparity
+        numDisparities,     // numDisparities (384 like our Census)
+        blockSize,          // blockSize (5x5)
+        8 * blockSize * blockSize,   // P1 (small penalty)
+        32 * blockSize * blockSize,  // P2 (large penalty)
+        1,                  // disp12MaxDiff (consistency check)
+        10,                 // preFilterCap
+        10,                 // uniquenessRatio (15% in Census, trying 10%)
+        100,                // speckleWindowSize (remove small regions)
+        32,                 // speckleRange
+        cv::StereoSGBM::MODE_SGBM_3WAY  // Full-DP SGM (most accurate)
     );
 
-    std::cout << "\nStereoSGBM parameters:" << std::endl;
-    std::cout << "  minDisparity: " << minDisparity << std::endl;
-    std::cout << "  numDisparities: " << numDisparities << std::endl;
-    std::cout << "  blockSize: " << blockSize << std::endl;
-    std::cout << "  P1: " << P1 << std::endl;
-    std::cout << "  P2: " << P2 << std::endl;
+    std::cout << "\nOpenCV SGBM parameters:" << std::endl;
+    std::cout << "  NumDisparities: " << numDisparities << std::endl;
+    std::cout << "  BlockSize: " << blockSize << std::endl;
+    std::cout << "  P1: " << sgbm->getP1() << std::endl;
+    std::cout << "  P2: " << sgbm->getP2() << std::endl;
+    std::cout << "  UniquenessRatio: " << sgbm->getUniquenessRatio() << std::endl;
+    std::cout << "  Mode: MODE_SGBM_3WAY (full 8-path)" << std::endl;
 
-    // Compute disparity on original images
-    cv::Mat disparity16_orig, disparity_orig;
-    sgbm->compute(leftRect, rightRect, disparity16_orig);
-    disparity16_orig.convertTo(disparity_orig, CV_32F, 1.0/16.0);
+    // Compute disparity
+    std::cout << "\nComputing disparity with OpenCV SGBM..." << std::endl;
+    cv::Mat disparity;
+    sgbm->compute(left, right, disparity);
 
-    std::cout << "\nDisparity computed on ORIGINAL images:" << std::endl;
-    double minVal, maxVal;
-    cv::minMaxLoc(disparity_orig, &minVal, &maxVal);
-    std::cout << "  Min: " << minVal << ", Max: " << maxVal << std::endl;
-    int validPixels_orig = cv::countNonZero(disparity_orig > 0);
-    std::cout << "  Valid pixels: " << validPixels_orig << " / " << disparity_orig.total()
-              << " = " << (100.0 * validPixels_orig / disparity_orig.total()) << "%" << std::endl;
+    std::cout << "Disparity computed, analyzing results..." << std::endl;
 
-    // Normalize and save
-    cv::Mat disparityVis_orig;
-    disparity_orig.convertTo(disparityVis_orig, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-    cv::imwrite("test_disparity_opencv_sgbm_original.png", disparityVis_orig);
-    cv::imwrite("test_disparity_opencv_sgbm_original_raw.tiff", disparity_orig);
+    // Analyze disparity
+    std::cout << "\n=== DISPARITY ANALYSIS ===" << std::endl;
+    std::cout << "Type: " << disparity.type() << " (CV_16S = 3)" << std::endl;
+    std::cout << "Size: " << disparity.cols << "x" << disparity.rows << std::endl;
 
-    // Compute disparity on enhanced images
-    cv::Mat disparity16_enh, disparity_enh;
-    sgbm->compute(leftEnhanced, rightEnhanced, disparity16_enh);
-    disparity16_enh.convertTo(disparity_enh, CV_32F, 1.0/16.0);
+    // Count valid disparities
+    int totalPixels = disparity.rows * disparity.cols;
+    int validPixels = 0;
+    double minDisp = 1e9, maxDisp = -1e9;
 
-    std::cout << "\nDisparity computed on ENHANCED images:" << std::endl;
-    cv::minMaxLoc(disparity_enh, &minVal, &maxVal);
-    std::cout << "  Min: " << minVal << ", Max: " << maxVal << std::endl;
-    int validPixels_enh = cv::countNonZero(disparity_enh > 0);
-    std::cout << "  Valid pixels: " << validPixels_enh << " / " << disparity_enh.total()
-              << " = " << (100.0 * validPixels_enh / disparity_enh.total()) << "%" << std::endl;
+    for (int y = 0; y < disparity.rows; y++) {
+        const int16_t* row = disparity.ptr<int16_t>(y);
+        for (int x = 0; x < disparity.cols; x++) {
+            int16_t d = row[x];
+            if (d > 0) {  // Valid disparity (CV_16S, ×16)
+                validPixels++;
+                double realDisp = d / 16.0;
+                minDisp = std::min(minDisp, realDisp);
+                maxDisp = std::max(maxDisp, realDisp);
+            }
+        }
+    }
 
-    // Normalize and save
-    cv::Mat disparityVis_enh;
-    disparity_enh.convertTo(disparityVis_enh, CV_8U, 255.0 / (maxVal - minVal), -minVal * 255.0 / (maxVal - minVal));
-    cv::imwrite("test_disparity_opencv_sgbm_enhanced.png", disparityVis_enh);
-    cv::imwrite("test_disparity_opencv_sgbm_enhanced_raw.tiff", disparity_enh);
+    std::cout << "Valid pixels: " << validPixels << "/" << totalPixels
+              << " (" << (100.0 * validPixels / totalPixels) << "%)" << std::endl;
 
-    std::cout << "\n=== Test completed successfully! ===" << std::endl;
-    std::cout << "Output files:" << std::endl;
-    std::cout << "  test_disparity_opencv_sgbm_original.png" << std::endl;
-    std::cout << "  test_disparity_opencv_sgbm_enhanced.png" << std::endl;
-    std::cout << "  test_left_enhanced.png" << std::endl;
-    std::cout << "  test_right_enhanced.png" << std::endl;
+    if (validPixels > 0) {
+        std::cout << "Disparity range: [" << minDisp << ", " << maxDisp << "] pixels" << std::endl;
+    } else {
+        std::cout << "❌ NO VALID DISPARITIES FOUND!" << std::endl;
+    }
+
+    // Compare with Census result
+    std::cout << "\n=== COMPARISON WITH CENSUS ===" << std::endl;
+    cv::Mat censusDis = cv::imread("/home/alessandro/unlook_debug/scan_20251114_205404/02_disparity_frame0.png", cv::IMREAD_GRAYSCALE);
+
+    if (!censusDis.empty()) {
+        // Census disparity is saved as 8-bit normalized
+        // We need to count non-zero pixels
+        int censusValid = cv::countNonZero(censusDis);
+        std::cout << "Census valid pixels: " << censusValid << "/" << totalPixels
+                  << " (" << (100.0 * censusValid / totalPixels) << "%)" << std::endl;
+
+        double censusPercent = 100.0 * censusValid / totalPixels;
+        double sgbmPercent = 100.0 * validPixels / totalPixels;
+
+        if (sgbmPercent > censusPercent * 1.5) {
+            std::cout << "\n✓ OpenCV SGBM found " << (sgbmPercent / censusPercent)
+                      << "x MORE matches than Census!" << std::endl;
+            std::cout << "   → Census Transform may be the problem" << std::endl;
+        } else if (sgbmPercent < censusPercent * 0.5) {
+            std::cout << "\n✓ Census found " << (censusPercent / sgbmPercent)
+                      << "x MORE matches than SGBM!" << std::endl;
+            std::cout << "   → Census is actually working better" << std::endl;
+        } else {
+            std::cout << "\n≈ Similar performance between Census and SGBM" << std::endl;
+            std::cout << "   → Algorithm choice is not the main issue" << std::endl;
+        }
+    }
+
+    // Save OpenCV SGBM result for comparison
+    cv::Mat disparity8;
+    disparity.convertTo(disparity8, CV_8U, 255.0 / (numDisparities * 16.0));
+    cv::imwrite("/tmp/opencv_sgbm_disparity.png", disparity8);
+    std::cout << "\nSaved OpenCV SGBM disparity to: /tmp/opencv_sgbm_disparity.png" << std::endl;
+
+    // Save disparity as colormap for better visualization
+    cv::Mat disparityColor;
+    cv::applyColorMap(disparity8, disparityColor, cv::COLORMAP_JET);
+    cv::imwrite("/tmp/opencv_sgbm_disparity_color.png", disparityColor);
+    std::cout << "Saved colormap to: /tmp/opencv_sgbm_disparity_color.png" << std::endl;
+
+    std::cout << "\n=== TEST COMPLETE ===" << std::endl;
+    std::cout << "\nRECOMMENDATION:" << std::endl;
+    if (validPixels > totalPixels * 0.7) {
+        std::cout << "✓ OpenCV SGBM works well - consider switching from Census" << std::endl;
+    } else if (validPixels > totalPixels * 0.3) {
+        std::cout << "⚠  OpenCV SGBM has moderate success - may need parameter tuning" << std::endl;
+    } else {
+        std::cout << "❌ OpenCV SGBM also fails - problem is NOT the matching algorithm" << std::endl;
+        std::cout << "   Likely causes: calibration, rectification, or image quality" << std::endl;
+    }
 
     return 0;
 }

@@ -492,9 +492,14 @@ void DatasetCaptureWidget::captureAndSaveFrame() {
         framePair = latestFramePair_;
     }
 
-    // Extract frames (already in BGRA format)
-    cv::Mat leftFrame = framePair.left_frame.image.clone();
-    cv::Mat rightFrame = framePair.right_frame.image.clone();
+    // CAMERA MAPPING FIX: Swap left_frame ↔ right_frame to match stereo convention
+    // Physical setup: Camera 0 (SLAVE) on right, Camera 1 (MASTER) on left (looking forward)
+    // Software maps: Camera 1 → left_frame, Camera 0 → right_frame
+    // For stereo convention (RIGHT camera at physical right):
+    //   - Camera 0 (SLAVE, right_frame) → /left/ directory
+    //   - Camera 1 (MASTER, left_frame) → /right/ directory
+    cv::Mat leftFrame = framePair.right_frame.image.clone();   // Camera 0 SLAVE → LEFT
+    cv::Mat rightFrame = framePair.left_frame.image.clone();   // Camera 1 MASTER → RIGHT
 
     // Log sync quality (timestamp_ns is in nanoseconds, convert to milliseconds)
     double syncErrorMs = std::abs(static_cast<double>(framePair.left_frame.timestamp_ns) -

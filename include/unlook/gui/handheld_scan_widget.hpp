@@ -239,7 +239,7 @@ private:
     QFutureWatcher<bool>* scan_watcher_;   // Monitors background scan thread
 
     // Constants
-    static constexpr int TARGET_FRAMES = 10;
+    static constexpr int TARGET_FRAMES = 3;  // Reduced from 10 to 3 for faster testing
     static constexpr float STABILITY_THRESHOLD = 0.90f;  // 90% stability required
     static constexpr int UI_UPDATE_HZ = 30;
     static constexpr int FPS_SAMPLE_COUNT = 10;
