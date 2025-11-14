@@ -156,31 +156,8 @@ public:
 
             fs.release();
 
-            // CRITICAL TEST: Swap rectification parameters
-            // Calibration may have been done with opposite camera order
-            logger_.warning("[HandheldScanPipeline] TESTING: Swapping L↔R rectification (calibration camera order fix)");
-
-            // Swap camera matrices
-            cv::Mat tempCameraMatrix = cameraMatrixLeft_.clone();
-            cameraMatrixLeft_ = cameraMatrixRight_.clone();
-            cameraMatrixRight_ = tempCameraMatrix;
-
-            // Swap distortion coefficients
-            cv::Mat tempDistCoeffs = distCoeffsLeft_.clone();
-            distCoeffsLeft_ = distCoeffsRight_.clone();
-            distCoeffsRight_ = tempDistCoeffs;
-
-            // Swap rectification transforms
-            cv::Mat tempR = R1_.clone();
-            R1_ = R2_.clone();
-            R2_ = tempR;
-
-            cv::Mat tempP = P1_.clone();
-            P1_ = P2_.clone();
-            P2_ = tempP;
-
             // Precompute rectification maps for fast remapping
-            logger_.info("[HandheldScanPipeline] Computing SWAPPED rectification maps...");
+            logger_.info("[HandheldScanPipeline] Computing rectification maps...");
             cv::initUndistortRectifyMap(
                 cameraMatrixLeft_, distCoeffsLeft_, R1_, P1_,
                 imageSize_, CV_32FC1, map1Left_, map2Left_
