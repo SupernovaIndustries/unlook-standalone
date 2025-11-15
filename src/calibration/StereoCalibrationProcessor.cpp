@@ -479,16 +479,13 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     // 7. Compute rectification
     reportProgress("Step 7/9: Computing rectification transforms...");
     core::Logger::getInstance().info("Computing rectification transforms...");
-    // FIX #5: Use alpha=1 as per OpenCV official sample
-    // Alpha=1 retains all pixels from original images (no cropping)
-    // Alpha=0 crops to only valid pixels
-    // OpenCV official uses alpha=1 for better epipolar alignment
+    // Use alpha=1 as per OpenCV official sample (exact match for comparison)
     cv::stereoRectify(
         result.cameraMatrixLeft, result.distCoeffsLeft,
         result.cameraMatrixRight, result.distCoeffsRight,
         result.imageSize, result.R, result.T,
         result.R1, result.R2, result.P1, result.P2, result.Q,
-        cv::CALIB_ZERO_DISPARITY, 1.0, result.imageSize  // alpha=1.0 (OpenCV official)
+        cv::CALIB_ZERO_DISPARITY, 1, result.imageSize  // alpha=1 (OpenCV sample)
     );
     reportProgress("Rectification transforms computed");
 
@@ -704,14 +701,19 @@ bool StereoCalibrationProcessor::calibrateStereo(
     core::Logger::getInstance().debug("Starting stereo calibration with " +
                                      std::to_string(objectPoints.size()) + " views");
 
-    // FIX #4: Use OpenCV official flags - CALIB_USE_INTRINSIC_GUESS instead of CALIB_FIX_INTRINSIC
-    // This allows stereoCalibrate to refine intrinsics using the initCameraMatrix2D guess
+    // CRITICAL: Enable p1, p2 (tangential) and k3 for M12 6mm wide-angle lenses
+    // Research shows wide-angle lenses (>60° FOV) require tangential distortion modeling
+    // M12 lenses have manufacturing tolerances causing lens misalignment → p1, p2 essential
+    // Reference: "For M12 lenses in embedded vision, tangential distortion coefficients
+    //             are essential due to manufacturing variations in lens element alignment"
     int flags = cv::CALIB_FIX_ASPECT_RATIO +
-                cv::CALIB_ZERO_TANGENT_DIST +
                 cv::CALIB_USE_INTRINSIC_GUESS +
                 cv::CALIB_SAME_FOCAL_LENGTH +
                 cv::CALIB_RATIONAL_MODEL +
-                cv::CALIB_FIX_K3 + cv::CALIB_FIX_K4 + cv::CALIB_FIX_K5;
+                cv::CALIB_FIX_K4 + cv::CALIB_FIX_K5;
+                // Removed CALIB_ZERO_TANGENT_DIST → enables p1, p2 (tangential distortion)
+                // Removed CALIB_FIX_K3 → enables k3 (tertiary radial distortion)
+                // This provides full distortion model for 6mm wide-angle M12 lenses
 
     core::Logger::getInstance().debug("Running cv::stereoCalibrate with " +
                                      std::to_string(objectPoints.size()) + " views (this may take 2-3 minutes)...");

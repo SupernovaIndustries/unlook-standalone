@@ -7,7 +7,18 @@ Replicates the C++ SGMCensus implementation for testing and validation
 import numpy as np
 import cv2
 import sys
-from numba import jit
+
+# Try to import numba for JIT compilation (optional)
+try:
+    from numba import jit
+    HAS_NUMBA = True
+except ImportError:
+    # Fallback: create dummy decorator
+    def jit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    HAS_NUMBA = False
 
 # PLY header template
 ply_header = '''ply
@@ -91,7 +102,7 @@ def create_rectification_maps(calib):
 
     return map1Left, map2Left, map1Right, map2Right
 
-@jit(nopython=True)
+@jit(nopython=True) if HAS_NUMBA else lambda f: f
 def compute_census_transform(image, census_window=7):
     """
     Compute Census Transform (7x7 window, 64-bit descriptor)
@@ -124,7 +135,6 @@ def compute_census_transform(image, census_window=7):
 
     return census
 
-@jit(nopython=True)
 def hamming_distance(a, b):
     """Compute Hamming distance between two 64-bit integers"""
     xor = a ^ b

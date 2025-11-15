@@ -92,14 +92,22 @@ def create_rectification_maps(calib):
 def main():
     # Check if opencv_contrib stereo module is available
     try:
-        # Test if cv2.stereo exists
-        _ = cv2.stereo.StereoBinarySGBM_create
-        print('✓ OpenCV contrib stereo module is available')
+        # Test if cv2.stereo exists (API changed in newer OpenCV)
+        if hasattr(cv2, 'stereo'):
+            stereo_module = cv2.stereo
+        else:
+            # Try legacy location
+            stereo_module = cv2
+
+        if hasattr(stereo_module, 'StereoBinarySGBM_create'):
+            print('✓ OpenCV contrib stereo module is available')
+        else:
+            print('✗ StereoBinarySGBM not found in opencv_contrib')
+            print('  Using standard SGBM as fallback')
+            stereo_module = None
     except AttributeError:
         print('✗ OpenCV contrib stereo module NOT available')
-        print('  StereoBinarySGBM (Census-based) requires opencv-contrib-python')
-        print('  Install with: pip3 install opencv-contrib-python==4.6.0.66')
-        sys.exit(1)
+        stereo_module = None
 
     # Paths
     scan_dir = '/home/alessandro/unlook_debug/scan_20251115_033519'

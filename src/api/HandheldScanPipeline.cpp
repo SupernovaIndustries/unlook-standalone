@@ -233,6 +233,19 @@ public:
                 rightGray = rightRect;
             }
 
+            // CRITICAL: Apply CLAHE to enhance VCSEL dot patterns
+            // VCSEL structured light patterns can have low contrast in ambient light
+            // CLAHE (Contrast Limited Adaptive Histogram Equalization) improves local contrast
+            // Clip limit 2-4 recommended for VCSEL enhancement without over-amplifying noise
+            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+            cv::Mat leftEnhanced, rightEnhanced;
+            clahe->apply(leftGray, leftEnhanced);
+            clahe->apply(rightGray, rightEnhanced);
+
+            // Use enhanced images for stereo matching
+            leftGray = leftEnhanced;
+            rightGray = rightEnhanced;
+
             // Compute disparity with SGMCensus
             auto result = sgmCensus_->compute(leftGray, rightGray);
 
