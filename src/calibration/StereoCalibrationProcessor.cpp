@@ -707,19 +707,28 @@ bool StereoCalibrationProcessor::calibrateStereo(
     core::Logger::getInstance().debug("Starting stereo calibration with " +
                                      std::to_string(objectPoints.size()) + " views");
 
-    // CRITICAL: Enable p1, p2 (tangential) and k3 for M12 6mm wide-angle lenses
-    // Research shows wide-angle lenses (>60° FOV) require tangential distortion modeling
-    // M12 lenses have manufacturing tolerances causing lens misalignment → p1, p2 essential
-    // Reference: "For M12 lenses in embedded vision, tangential distortion coefficients
-    //             are essential due to manufacturing variations in lens element alignment"
+    // CRITICAL FIX: Simplified distortion model for M12 6mm lenses (48° FOV)
+    // RESEARCH FINDINGS (CALIBRATION_RESEARCH_FINDINGS.md):
+    // - M12 6mm 1/2.7" has 48° diagonal FOV (wide-angle but NOT fisheye)
+    // - CALIB_RATIONAL_MODEL (14 params: k1-k6, p1-p2) causes OVERFITTING
+    // - OpenCV doesn't enforce monotonicity → converges to non-physical params
+    // - Works perfect at center (r small) but diverges at edges (r large)
+    // - GitHub Issue #15992: "reprojection error low at center, artifacts at edges"
+    //
+    // SOLUTION: Use polynomial model (8 params: k1-k3, p1-p2)
+    // - k1, k2, k3: radial distortion (polynomial, always monotonic)
+    // - p1, p2: tangential distortion (ESSENTIAL for M12 manufacturing tolerances)
+    // - NO k4-k6 (rational model): prevents overfitting + non-monotonic convergence
+    //
+    // Expected improvement: 58px ORB error → 2-5px with 100 frames + edge coverage
     int flags = cv::CALIB_FIX_ASPECT_RATIO +
                 cv::CALIB_USE_INTRINSIC_GUESS +
                 cv::CALIB_SAME_FOCAL_LENGTH +
-                cv::CALIB_RATIONAL_MODEL +
-                cv::CALIB_FIX_K4 + cv::CALIB_FIX_K5;
-                // Removed CALIB_ZERO_TANGENT_DIST → enables p1, p2 (tangential distortion)
-                // Removed CALIB_FIX_K3 → enables k3 (tertiary radial distortion)
-                // This provides full distortion model for 6mm wide-angle M12 lenses
+                cv::CALIB_FIX_K4 + cv::CALIB_FIX_K5 + cv::CALIB_FIX_K6;
+                // REMOVED: cv::CALIB_RATIONAL_MODEL (was causing overfitting)
+                // REMOVED: cv::CALIB_ZERO_TANGENT_DIST (enables p1, p2 for M12 tolerances)
+                // REMOVED: cv::CALIB_FIX_K3 (enables k3 for wide-angle 48° FOV)
+                // This gives 8 parameters (k1-k3, p1-p2) vs 14 (rational model)
 
     core::Logger::getInstance().debug("Running cv::stereoCalibrate with " +
                                      std::to_string(objectPoints.size()) + " views (this may take 2-3 minutes)...");
