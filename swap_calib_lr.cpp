@@ -48,8 +48,8 @@ int main(int argc, char** argv) {
 
     fsIn["camera_matrix_left"] >> camMatL;
     fsIn["camera_matrix_right"] >> camMatR;
-    fsIn["distortion_coefficients_left"] >> distL;
-    fsIn["distortion_coefficients_right"] >> distR;
+    fsIn["distortion_coeffs_left"] >> distL;
+    fsIn["distortion_coeffs_right"] >> distR;
 
     fsIn["rotation_matrix"] >> R;
     fsIn["translation_vector"] >> T;
@@ -103,8 +103,8 @@ int main(int argc, char** argv) {
     // Swapped camera parameters
     fsOut << "camera_matrix_left" << camMatL;      // Was camMatR
     fsOut << "camera_matrix_right" << camMatR;     // Was camMatL
-    fsOut << "distortion_coefficients_left" << distL;  // Was distR
-    fsOut << "distortion_coefficients_right" << distR; // Was distL
+    fsOut << "distortion_coeffs_left" << distL;  // Was distR
+    fsOut << "distortion_coeffs_right" << distR; // Was distL
 
     // Inverted stereo transform
     fsOut << "rotation_matrix" << R_inv;           // Was R

@@ -117,41 +117,150 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named test_offline_scan
+# Target rules for targets named test_census_variants
 
 # Build rule for target.
-test_offline_scan: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_offline_scan
-.PHONY : test_offline_scan
+test_census_variants: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_census_variants
+.PHONY : test_census_variants
 
 # fast build rule for target.
-test_offline_scan/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/build
-.PHONY : test_offline_scan/fast
+test_census_variants/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/build
+.PHONY : test_census_variants/fast
 
-test_offline_scan.o: test_offline_scan.cpp.o
-.PHONY : test_offline_scan.o
+#=============================================================================
+# Target rules for targets named test_reference_sgm
+
+# Build rule for target.
+test_reference_sgm: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_reference_sgm
+.PHONY : test_reference_sgm
+
+# fast build rule for target.
+test_reference_sgm/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/build
+.PHONY : test_reference_sgm/fast
+
+hybrid_census_matcher.o: hybrid_census_matcher.cpp.o
+.PHONY : hybrid_census_matcher.o
 
 # target to build an object file
-test_offline_scan.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o
-.PHONY : test_offline_scan.cpp.o
+hybrid_census_matcher.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/hybrid_census_matcher.cpp.o
+.PHONY : hybrid_census_matcher.cpp.o
 
-test_offline_scan.i: test_offline_scan.cpp.i
-.PHONY : test_offline_scan.i
+hybrid_census_matcher.i: hybrid_census_matcher.cpp.i
+.PHONY : hybrid_census_matcher.i
 
 # target to preprocess a source file
-test_offline_scan.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.i
-.PHONY : test_offline_scan.cpp.i
+hybrid_census_matcher.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/hybrid_census_matcher.cpp.i
+.PHONY : hybrid_census_matcher.cpp.i
 
-test_offline_scan.s: test_offline_scan.cpp.s
-.PHONY : test_offline_scan.s
+hybrid_census_matcher.s: hybrid_census_matcher.cpp.s
+.PHONY : hybrid_census_matcher.s
 
 # target to generate assembly for a file
-test_offline_scan.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.s
-.PHONY : test_offline_scan.cpp.s
+hybrid_census_matcher.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/hybrid_census_matcher.cpp.s
+.PHONY : hybrid_census_matcher.cpp.s
+
+opencv_census_matcher.o: opencv_census_matcher.cpp.o
+.PHONY : opencv_census_matcher.o
+
+# target to build an object file
+opencv_census_matcher.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/opencv_census_matcher.cpp.o
+.PHONY : opencv_census_matcher.cpp.o
+
+opencv_census_matcher.i: opencv_census_matcher.cpp.i
+.PHONY : opencv_census_matcher.i
+
+# target to preprocess a source file
+opencv_census_matcher.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/opencv_census_matcher.cpp.i
+.PHONY : opencv_census_matcher.cpp.i
+
+opencv_census_matcher.s: opencv_census_matcher.cpp.s
+.PHONY : opencv_census_matcher.s
+
+# target to generate assembly for a file
+opencv_census_matcher.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/opencv_census_matcher.cpp.s
+.PHONY : opencv_census_matcher.cpp.s
+
+reference_sgm_census.o: reference_sgm_census.cpp.o
+.PHONY : reference_sgm_census.o
+
+# target to build an object file
+reference_sgm_census.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/reference_sgm_census.cpp.o
+.PHONY : reference_sgm_census.cpp.o
+
+reference_sgm_census.i: reference_sgm_census.cpp.i
+.PHONY : reference_sgm_census.i
+
+# target to preprocess a source file
+reference_sgm_census.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/reference_sgm_census.cpp.i
+.PHONY : reference_sgm_census.cpp.i
+
+reference_sgm_census.s: reference_sgm_census.cpp.s
+.PHONY : reference_sgm_census.s
+
+# target to generate assembly for a file
+reference_sgm_census.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/reference_sgm_census.cpp.s
+.PHONY : reference_sgm_census.cpp.s
+
+test_census_variants.o: test_census_variants.cpp.o
+.PHONY : test_census_variants.o
+
+# target to build an object file
+test_census_variants.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/test_census_variants.cpp.o
+.PHONY : test_census_variants.cpp.o
+
+test_census_variants.i: test_census_variants.cpp.i
+.PHONY : test_census_variants.i
+
+# target to preprocess a source file
+test_census_variants.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/test_census_variants.cpp.i
+.PHONY : test_census_variants.cpp.i
+
+test_census_variants.s: test_census_variants.cpp.s
+.PHONY : test_census_variants.s
+
+# target to generate assembly for a file
+test_census_variants.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/test_census_variants.cpp.s
+.PHONY : test_census_variants.cpp.s
+
+test_reference_sgm.o: test_reference_sgm.cpp.o
+.PHONY : test_reference_sgm.o
+
+# target to build an object file
+test_reference_sgm.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/test_reference_sgm.cpp.o
+.PHONY : test_reference_sgm.cpp.o
+
+test_reference_sgm.i: test_reference_sgm.cpp.i
+.PHONY : test_reference_sgm.i
+
+# target to preprocess a source file
+test_reference_sgm.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/test_reference_sgm.cpp.i
+.PHONY : test_reference_sgm.cpp.i
+
+test_reference_sgm.s: test_reference_sgm.cpp.s
+.PHONY : test_reference_sgm.s
+
+# target to generate assembly for a file
+test_reference_sgm.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/test_reference_sgm.cpp.s
+.PHONY : test_reference_sgm.cpp.s
 
 # Help Target
 help:
@@ -161,10 +270,23 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... test_offline_scan"
-	@echo "... test_offline_scan.o"
-	@echo "... test_offline_scan.i"
-	@echo "... test_offline_scan.s"
+	@echo "... test_census_variants"
+	@echo "... test_reference_sgm"
+	@echo "... hybrid_census_matcher.o"
+	@echo "... hybrid_census_matcher.i"
+	@echo "... hybrid_census_matcher.s"
+	@echo "... opencv_census_matcher.o"
+	@echo "... opencv_census_matcher.i"
+	@echo "... opencv_census_matcher.s"
+	@echo "... reference_sgm_census.o"
+	@echo "... reference_sgm_census.i"
+	@echo "... reference_sgm_census.s"
+	@echo "... test_census_variants.o"
+	@echo "... test_census_variants.i"
+	@echo "... test_census_variants.s"
+	@echo "... test_reference_sgm.o"
+	@echo "... test_reference_sgm.i"
+	@echo "... test_reference_sgm.s"
 .PHONY : help
 
 

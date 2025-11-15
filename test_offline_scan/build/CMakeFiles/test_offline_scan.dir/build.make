@@ -83,23 +83,66 @@ CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/alessandro/unlook-standalone/test_offline_scan/test_offline_scan.cpp -o CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.s
 
+CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o: CMakeFiles/test_offline_scan.dir/flags.make
+CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o: /home/alessandro/unlook-standalone/test_offline_scan/opencv_census_matcher.cpp
+CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o: CMakeFiles/test_offline_scan.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o -MF CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o.d -o CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o -c /home/alessandro/unlook-standalone/test_offline_scan/opencv_census_matcher.cpp
+
+CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/alessandro/unlook-standalone/test_offline_scan/opencv_census_matcher.cpp > CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.i
+
+CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/alessandro/unlook-standalone/test_offline_scan/opencv_census_matcher.cpp -o CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.s
+
+CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o: CMakeFiles/test_offline_scan.dir/flags.make
+CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o: /home/alessandro/unlook-standalone/test_offline_scan/hybrid_census_matcher.cpp
+CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o: CMakeFiles/test_offline_scan.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o -MF CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o.d -o CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o -c /home/alessandro/unlook-standalone/test_offline_scan/hybrid_census_matcher.cpp
+
+CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/alessandro/unlook-standalone/test_offline_scan/hybrid_census_matcher.cpp > CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.i
+
+CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/alessandro/unlook-standalone/test_offline_scan/hybrid_census_matcher.cpp -o CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.s
+
 # Object files for target test_offline_scan
 test_offline_scan_OBJECTS = \
-"CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o"
+"CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o" \
+"CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o" \
+"CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o"
 
 # External object files for target test_offline_scan
 test_offline_scan_EXTERNAL_OBJECTS =
 
 test_offline_scan: CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o
+test_offline_scan: CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o
+test_offline_scan: CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o
 test_offline_scan: CMakeFiles/test_offline_scan.dir/build.make
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_stereo.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_ximgproc.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_tracking.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_plot.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_datasets.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_text.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_ml.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_highgui.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_videoio.so.4.6.0
 test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_imgcodecs.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_video.so.4.6.0
 test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_calib3d.so.4.6.0
 test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_features2d.so.4.6.0
-test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.4.6.0
 test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_flann.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_dnn.so.4.6.0
+test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_imgproc.so.4.6.0
 test_offline_scan: /usr/lib/aarch64-linux-gnu/libopencv_core.so.4.6.0
 test_offline_scan: CMakeFiles/test_offline_scan.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX executable test_offline_scan"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Linking CXX executable test_offline_scan"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/test_offline_scan.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

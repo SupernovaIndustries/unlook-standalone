@@ -8,6 +8,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/home/alessandro/unlook-standalone/test_offline_scan/hybrid_census_matcher.cpp" "CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o" "gcc" "CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o.d"
+  "/home/alessandro/unlook-standalone/test_offline_scan/opencv_census_matcher.cpp" "CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o" "gcc" "CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o.d"
   "/home/alessandro/unlook-standalone/test_offline_scan/test_offline_scan.cpp" "CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o" "gcc" "CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o.d"
   )
 

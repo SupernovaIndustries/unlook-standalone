@@ -1,3 +1,4 @@
-/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles/test_offline_scan.dir
+/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles/test_census_variants.dir
+/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles/test_reference_sgm.dir
 /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles/edit_cache.dir
 /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles/rebuild_cache.dir

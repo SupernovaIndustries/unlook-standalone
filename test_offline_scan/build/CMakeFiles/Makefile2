@@ -63,7 +63,8 @@ CMAKE_BINARY_DIR = /home/alessandro/unlook-standalone/test_offline_scan/build
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/test_offline_scan.dir/all
+all: CMakeFiles/test_census_variants.dir/all
+all: CMakeFiles/test_reference_sgm.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -71,34 +72,61 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/test_offline_scan.dir/clean
+clean: CMakeFiles/test_census_variants.dir/clean
+clean: CMakeFiles/test_reference_sgm.dir/clean
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/test_offline_scan.dir
+# Target rules for target CMakeFiles/test_census_variants.dir
 
 # All Build rule for target.
-CMakeFiles/test_offline_scan.dir/all:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/depend
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=1,2 "Built target test_offline_scan"
-.PHONY : CMakeFiles/test_offline_scan.dir/all
+CMakeFiles/test_census_variants.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=1,2,3,4 "Built target test_census_variants"
+.PHONY : CMakeFiles/test_census_variants.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/test_offline_scan.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_offline_scan.dir/all
+CMakeFiles/test_census_variants.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_census_variants.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles 0
-.PHONY : CMakeFiles/test_offline_scan.dir/rule
+.PHONY : CMakeFiles/test_census_variants.dir/rule
 
 # Convenience name for target.
-test_offline_scan: CMakeFiles/test_offline_scan.dir/rule
-.PHONY : test_offline_scan
+test_census_variants: CMakeFiles/test_census_variants.dir/rule
+.PHONY : test_census_variants
 
 # clean rule for target.
-CMakeFiles/test_offline_scan.dir/clean:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_offline_scan.dir/build.make CMakeFiles/test_offline_scan.dir/clean
-.PHONY : CMakeFiles/test_offline_scan.dir/clean
+CMakeFiles/test_census_variants.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_census_variants.dir/build.make CMakeFiles/test_census_variants.dir/clean
+.PHONY : CMakeFiles/test_census_variants.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/test_reference_sgm.dir
+
+# All Build rule for target.
+CMakeFiles/test_reference_sgm.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles --progress-num=5,6,7 "Built target test_reference_sgm"
+.PHONY : CMakeFiles/test_reference_sgm.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/test_reference_sgm.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles 3
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/test_reference_sgm.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/alessandro/unlook-standalone/test_offline_scan/build/CMakeFiles 0
+.PHONY : CMakeFiles/test_reference_sgm.dir/rule
+
+# Convenience name for target.
+test_reference_sgm: CMakeFiles/test_reference_sgm.dir/rule
+.PHONY : test_reference_sgm
+
+# clean rule for target.
+CMakeFiles/test_reference_sgm.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/test_reference_sgm.dir/build.make CMakeFiles/test_reference_sgm.dir/clean
+.PHONY : CMakeFiles/test_reference_sgm.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

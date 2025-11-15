@@ -1,4 +1,8 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o"
+  "CMakeFiles/test_offline_scan.dir/hybrid_census_matcher.cpp.o.d"
+  "CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o"
+  "CMakeFiles/test_offline_scan.dir/opencv_census_matcher.cpp.o.d"
   "CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o"
   "CMakeFiles/test_offline_scan.dir/test_offline_scan.cpp.o.d"
   "test_offline_scan"

@@ -49,5 +49,6 @@ set(CMAKE_MAKEFILE_PRODUCTS
 
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
-  "CMakeFiles/test_offline_scan.dir/DependInfo.cmake"
+  "CMakeFiles/test_census_variants.dir/DependInfo.cmake"
+  "CMakeFiles/test_reference_sgm.dir/DependInfo.cmake"
   )
