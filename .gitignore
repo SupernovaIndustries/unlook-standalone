@@ -108,3 +108,6 @@ local_config.yaml
 user_settings.yaml
 .env
 .local
+
+#Privati
+INVESTOR_DEMO_PREPARATION.md
