@@ -106,8 +106,8 @@ public:
             // Load camera matrices
             fs["camera_matrix_left"] >> cameraMatrixLeft_;
             fs["camera_matrix_right"] >> cameraMatrixRight_;
-            fs["distortion_coefficients_left"] >> distCoeffsLeft_;
-            fs["distortion_coefficients_right"] >> distCoeffsRight_;
+            fs["distortion_coeffs_left"] >> distCoeffsLeft_;   // FIX: Correct YAML key name
+            fs["distortion_coeffs_right"] >> distCoeffsRight_; // FIX: Correct YAML key name
 
             // Load stereo transform
             fs["rotation_matrix"] >> R_;
@@ -149,7 +149,7 @@ public:
                     R_, T_,
                     R1_, R2_, P1_, P2_, Q_,
                     cv::CALIB_ZERO_DISPARITY,
-                    1.0,  // FIX: alpha=1.0 (retain all pixels, matching calibration)
+                    1,  // alpha=1 (matching OpenCV sample)
                     imageSize_
                 );
             }
