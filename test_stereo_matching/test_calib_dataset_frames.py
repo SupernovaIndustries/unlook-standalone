@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 import sys
 
-def load_calibration(calib_path='/unlook_calib/default.yaml'):
+def load_calibration(calib_path='/unlook_calib/calib-20251115_193237.yaml'):
     """Load calibration parameters"""
     fs = cv2.FileStorage(calib_path, cv2.FILE_STORAGE_READ)
     if not fs.isOpened():
@@ -40,8 +40,8 @@ def load_calibration(calib_path='/unlook_calib/default.yaml'):
 
 def test_frame(calib, frame_idx):
     """Test rectification on a calibration dataset frame"""
-    left_path = f'/unlook_calib_dataset/dataset_20251110_112023/left/frame_{frame_idx:03d}.png'
-    right_path = f'/unlook_calib_dataset/dataset_20251110_112023/right/frame_{frame_idx:03d}.png'
+    left_path = f'/unlook_calib_dataset/dataset_20251115_192752/left/frame_{frame_idx:03d}.png'
+    right_path = f'/unlook_calib_dataset/dataset_20251115_192752/right/frame_{frame_idx:03d}.png'
 
     print(f'\nTesting frame_{frame_idx:03d}.png...')
 
@@ -125,8 +125,8 @@ def main():
 
     calib = load_calibration()
 
-    # Test several frames
-    test_indices = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+    # Test several frames (50 frames total in this dataset)
+    test_indices = [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
 
     errors = []
     for idx in test_indices:

@@ -166,11 +166,17 @@ void computeEpipolarErrors(
         }
 
         for (int j = 0; j < npt; j++) {
-            // CRITICAL: Use ORIGINAL distorted points for distance calculation
-            double errij = std::abs(leftPoints[i][j].x * lines[1][j][0] +
-                                   leftPoints[i][j].y * lines[1][j][1] + lines[1][j][2]) +
-                          std::abs(rightPoints[i][j].x * lines[0][j][0] +
-                                   rightPoints[i][j].y * lines[0][j][1] + lines[0][j][2]);
+            // FIX: Use UNDISTORTED points (imgpt) for distance calculation
+            // The epipolar lines were computed from undistorted points (line 165),
+            // so we must use the same undistorted points to measure distances.
+            // Mixing distorted points with lines from undistorted points is geometrically wrong!
+            cv::Point2f ptLeft(imgpt[0].at<float>(j, 0), imgpt[0].at<float>(j, 1));
+            cv::Point2f ptRight(imgpt[1].at<float>(j, 0), imgpt[1].at<float>(j, 1));
+
+            double errij = std::abs(ptLeft.x * lines[1][j][0] +
+                                   ptLeft.y * lines[1][j][1] + lines[1][j][2]) +
+                          std::abs(ptRight.x * lines[0][j][0] +
+                                   ptRight.y * lines[0][j][1] + lines[0][j][2]);
             meanError += errij;
             maxError = std::max(maxError, errij);
         }

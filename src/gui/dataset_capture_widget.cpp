@@ -30,7 +30,7 @@ DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSy
     , isCapturing_(false)
     , previewActive_(false)
     , captureCount_(0)
-    , targetCaptures_(50)
+    , targetCaptures_(100)
 {
     // Get LED controller singleton instance (same as camera_preview_widget)
     ledController_ = hardware::AS1170Controller::getInstance();
@@ -301,7 +301,7 @@ void DatasetCaptureWidget::onStartCapture() {
         captureTimer_->stop();
         countdownTimer_->stop();
         isCapturing_ = false;
-        startCaptureButton_->setText("Start Dataset Capture (50 pairs)");
+        startCaptureButton_->setText("Start Dataset Capture (100 pairs)");
         startCaptureButton_->setStyleSheet(
             "QPushButton { background-color: #059669; color: white; font-size: 14pt; "
             "padding: 12px; border-radius: 8px; font-weight: bold; }");
@@ -368,7 +368,7 @@ void DatasetCaptureWidget::onStartCapture() {
     datasetInfo_["capture_config"]["image_width"] = 1280;
     datasetInfo_["capture_config"]["image_height"] = 720;
     datasetInfo_["capture_config"]["capture_delay_seconds"] = 5;
-    datasetInfo_["capture_config"]["target_image_pairs"] = 50;
+    datasetInfo_["capture_config"]["target_image_pairs"] = 100;
     datasetInfo_["capture_config"]["led1_vcsel_enabled"] = false;
     datasetInfo_["capture_config"]["led2_flood_enabled"] = false;
     datasetInfo_["capture_config"]["lighting"] = "ambient_only";
@@ -411,7 +411,7 @@ void DatasetCaptureWidget::onStartCapture() {
 
     // Start capture
     captureCount_ = 0;
-    targetCaptures_ = 50;
+    targetCaptures_ = 100;
     isCapturing_ = true;
 
     startCaptureButton_->setText("Stop Capture");
@@ -452,7 +452,7 @@ void DatasetCaptureWidget::onCaptureFrame() {
         // Clear countdown display
         countdownLabel_->setText("");
 
-        startCaptureButton_->setText("Start Dataset Capture (50 pairs)");
+        startCaptureButton_->setText("Start Dataset Capture (100 pairs)");
         startCaptureButton_->setStyleSheet(
             "QPushButton { background-color: #059669; color: white; font-size: 14pt; "
             "padding: 12px; border-radius: 8px; font-weight: bold; }");
