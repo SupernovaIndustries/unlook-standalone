@@ -136,6 +136,7 @@ static void saveRectificationMaps(const CalibrationResult& result,
 }
 
 // Helper function for computing epipolar errors (moved here before first use)
+// FIX: EXACT copy of OpenCV official sample algorithm (lines 241-264)
 void computeEpipolarErrors(
     const CalibrationResult& result,
     const std::vector<std::vector<cv::Point2f>>& leftPoints,
@@ -147,34 +148,33 @@ void computeEpipolarErrors(
     maxError = 0.0;
     int totalPoints = 0;
 
+    std::vector<cv::Vec3f> lines[2];
+
     for (size_t i = 0; i < leftPoints.size() && i < rightPoints.size(); ++i) {
-        if (leftPoints[i].size() != rightPoints[i].size()) continue;
+        int npt = (int)leftPoints[i].size();
+        if (npt != (int)rightPoints[i].size()) continue;
 
-        // Sample subset of points for efficiency
-        size_t step = std::max(size_t(1), leftPoints[i].size() / 10);
+        cv::Mat imgpt[2];
+        for (int k = 0; k < 2; k++) {
+            const auto& points = (k == 0) ? leftPoints[i] : rightPoints[i];
+            const auto& camMat = (k == 0) ? result.cameraMatrixLeft : result.cameraMatrixRight;
+            const auto& distCoeffs = (k == 0) ? result.distCoeffsLeft : result.distCoeffsRight;
 
-        for (size_t j = 0; j < leftPoints[i].size(); j += step) {
-            // Convert to homogeneous coordinates
-            cv::Mat pt1 = (cv::Mat_<double>(3, 1) <<
-                          leftPoints[i][j].x, leftPoints[i][j].y, 1.0);
-            cv::Mat pt2 = (cv::Mat_<double>(3, 1) <<
-                          rightPoints[i][j].x, rightPoints[i][j].y, 1.0);
-
-            // Compute epipolar line in second image
-            cv::Mat epiline2 = result.F * pt1;
-
-            // Distance from point to epipolar line
-            double a = epiline2.at<double>(0, 0);
-            double b = epiline2.at<double>(1, 0);
-            double c = epiline2.at<double>(2, 0);
-
-            double distance = std::abs(a * rightPoints[i][j].x + b * rightPoints[i][j].y + c) /
-                            std::sqrt(a * a + b * b);
-
-            meanError += distance;
-            maxError = std::max(maxError, distance);
-            totalPoints++;
+            imgpt[k] = cv::Mat(points);
+            cv::undistortPoints(imgpt[k], imgpt[k], camMat, distCoeffs, cv::Mat(), camMat);
+            cv::computeCorrespondEpilines(imgpt[k], k + 1, result.F, lines[k]);
         }
+
+        for (int j = 0; j < npt; j++) {
+            // CRITICAL: Use ORIGINAL distorted points for distance calculation
+            double errij = std::abs(leftPoints[i][j].x * lines[1][j][0] +
+                                   leftPoints[i][j].y * lines[1][j][1] + lines[1][j][2]) +
+                          std::abs(rightPoints[i][j].x * lines[0][j][0] +
+                                   rightPoints[i][j].y * lines[0][j][1] + lines[0][j][2]);
+            meanError += errij;
+            maxError = std::max(maxError, errij);
+        }
+        totalPoints += npt;
     }
 
     if (totalPoints > 0) {
@@ -340,6 +340,16 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
         bool leftDetected = detector.detect(leftImages[i], cornersLeft, overlayLeft);
         bool rightDetected = detector.detect(rightImages[i], cornersRight, overlayRight);
 
+        // FIX #1: Refine corners with cornerSubPix for checkerboard (OpenCV official sample)
+        if (leftDetected && result.patternConfig.type == PatternType::CHECKERBOARD) {
+            cv::cornerSubPix(grayLeft, cornersLeft, cv::Size(11, 11), cv::Size(-1, -1),
+                cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01));
+        }
+        if (rightDetected && result.patternConfig.type == PatternType::CHECKERBOARD) {
+            cv::cornerSubPix(grayRight, cornersRight, cv::Size(11, 11), cv::Size(-1, -1),
+                cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 0.01));
+        }
+
         // Quality validation
         if (leftDetected && rightDetected) {
             // Check corner count match with tolerance for ChArUco partial detection
@@ -441,29 +451,18 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     core::Logger::getInstance().info("Valid image pairs: " + std::to_string(validPairs) +
                                     "/" + std::to_string(result.numImagePairs));
 
-    // 4. Calibrate left camera intrinsics
-    reportProgress("Step 4/9: Calibrating LEFT camera intrinsics...");
-    core::Logger::getInstance().info("Calibrating left camera intrinsics...");
-    bool leftCalibSuccess = calibrateIntrinsics(leftImagePoints, objectPoints, result.imageSize,
-                                                result.cameraMatrixLeft, result.distCoeffsLeft);
-    if (!leftCalibSuccess) {
-        result.warnings.push_back("Left camera intrinsic calibration RMS is high - results may be less accurate");
-        result.qualityPassed = false;
-        core::Logger::getInstance().warning("Left camera calibration RMS > 5.0 px - quality may be poor");
-    }
-    reportProgress("LEFT camera calibrated successfully");
+    // FIX #2 & #3: Initialize camera matrices with initCameraMatrix2D (OpenCV official method)
+    // Instead of separate calibrateCamera calls, use initial guess for stereoCalibrate
+    reportProgress("Step 4/9: Initializing camera matrices...");
+    core::Logger::getInstance().info("Initializing camera intrinsics with initCameraMatrix2D...");
 
-    // 5. Calibrate right camera intrinsics
-    reportProgress("Step 5/9: Calibrating RIGHT camera intrinsics...");
-    core::Logger::getInstance().info("Calibrating right camera intrinsics...");
-    bool rightCalibSuccess = calibrateIntrinsics(rightImagePoints, objectPoints, result.imageSize,
-                                                 result.cameraMatrixRight, result.distCoeffsRight);
-    if (!rightCalibSuccess) {
-        result.warnings.push_back("Right camera intrinsic calibration RMS is high - results may be less accurate");
-        result.qualityPassed = false;
-        core::Logger::getInstance().warning("Right camera calibration RMS > 5.0 px - quality may be poor");
-    }
-    reportProgress("RIGHT camera calibrated successfully");
+    result.cameraMatrixLeft = cv::initCameraMatrix2D(objectPoints, leftImagePoints, result.imageSize, 0);
+    result.cameraMatrixRight = cv::initCameraMatrix2D(objectPoints, rightImagePoints, result.imageSize, 0);
+    result.distCoeffsLeft = cv::Mat::zeros(5, 1, CV_64F);
+    result.distCoeffsRight = cv::Mat::zeros(5, 1, CV_64F);
+
+    core::Logger::getInstance().info("Camera matrices initialized");
+    reportProgress("Camera matrices initialized with 2D projection");
 
     // 6. Stereo calibration
     reportProgress("Step 6/9: Performing STEREO calibration (computing baseline)...");
@@ -480,30 +479,31 @@ CalibrationResult StereoCalibrationProcessor::calibrateFromDataset(const std::st
     // 7. Compute rectification
     reportProgress("Step 7/9: Computing rectification transforms...");
     core::Logger::getInstance().info("Computing rectification transforms...");
-    // ALPHA PARAMETER FIX:
-    // Changed from -1 (full ROI) to 0.0 (crop distorted regions)
-    // This eliminates spherical distortion artifacts in rectified images
-    // caused by high k3 coefficients (k3_left=0.19, k3_right=0.33)
+    // FIX #5: Use alpha=1 as per OpenCV official sample
+    // Alpha=1 retains all pixels from original images (no cropping)
+    // Alpha=0 crops to only valid pixels
+    // OpenCV official uses alpha=1 for better epipolar alignment
     cv::stereoRectify(
         result.cameraMatrixLeft, result.distCoeffsLeft,
         result.cameraMatrixRight, result.distCoeffsRight,
         result.imageSize, result.R, result.T,
         result.R1, result.R2, result.P1, result.P2, result.Q,
-        cv::CALIB_ZERO_DISPARITY, 0.0, result.imageSize  // alpha=0.0 (was -1)
+        cv::CALIB_ZERO_DISPARITY, 1.0, result.imageSize  // alpha=1.0 (OpenCV official)
     );
     reportProgress("Rectification transforms computed");
 
     // 8. Compute rectification maps
     reportProgress("Step 8/9: Computing rectification maps...");
     core::Logger::getInstance().info("Computing rectification maps...");
+    // FIX: Use CV_16SC2 format as per OpenCV official sample (more efficient)
     cv::initUndistortRectifyMap(
         result.cameraMatrixLeft, result.distCoeffsLeft,
-        result.R1, result.P1, result.imageSize, CV_32FC1,
+        result.R1, result.P1, result.imageSize, CV_16SC2,
         result.map1Left, result.map2Left
     );
     cv::initUndistortRectifyMap(
         result.cameraMatrixRight, result.distCoeffsRight,
-        result.R2, result.P2, result.imageSize, CV_32FC1,
+        result.R2, result.P2, result.imageSize, CV_16SC2,
         result.map1Right, result.map2Right
     );
     reportProgress("Rectification maps computed");
@@ -704,20 +704,26 @@ bool StereoCalibrationProcessor::calibrateStereo(
     core::Logger::getInstance().debug("Starting stereo calibration with " +
                                      std::to_string(objectPoints.size()) + " views");
 
-    // Stereo calibration with fixed intrinsics
-    int flags = cv::CALIB_FIX_INTRINSIC;
+    // FIX #4: Use OpenCV official flags - CALIB_USE_INTRINSIC_GUESS instead of CALIB_FIX_INTRINSIC
+    // This allows stereoCalibrate to refine intrinsics using the initCameraMatrix2D guess
+    int flags = cv::CALIB_FIX_ASPECT_RATIO +
+                cv::CALIB_ZERO_TANGENT_DIST +
+                cv::CALIB_USE_INTRINSIC_GUESS +
+                cv::CALIB_SAME_FOCAL_LENGTH +
+                cv::CALIB_RATIONAL_MODEL +
+                cv::CALIB_FIX_K3 + cv::CALIB_FIX_K4 + cv::CALIB_FIX_K5;
 
     core::Logger::getInstance().debug("Running cv::stereoCalibrate with " +
                                      std::to_string(objectPoints.size()) + " views (this may take 2-3 minutes)...");
 
-    // Use reduced iterations to avoid infinite loops: 30 iterations max, or epsilon convergence
+    // Use same iteration count as OpenCV official sample
     double rms = cv::stereoCalibrate(
         objectPoints, leftPoints, rightPoints,
         result.cameraMatrixLeft, result.distCoeffsLeft,
         result.cameraMatrixRight, result.distCoeffsRight,
         imageSize, result.R, result.T, result.E, result.F,
         flags,
-        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-4)
+        cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 100, 1e-5)
     );
     core::Logger::getInstance().debug("cv::stereoCalibrate completed with RMS: " + std::to_string(rms));
 
@@ -947,15 +953,15 @@ CalibrationResult StereoCalibrationProcessor::loadCalibrationYAML(const std::str
 
     fs.release();
 
-    // Regenerate rectification maps
+    // Regenerate rectification maps with CV_16SC2 format
     cv::initUndistortRectifyMap(
         result.cameraMatrixLeft, result.distCoeffsLeft,
-        result.R1, result.P1, result.imageSize, CV_32FC1,
+        result.R1, result.P1, result.imageSize, CV_16SC2,
         result.map1Left, result.map2Left
     );
     cv::initUndistortRectifyMap(
         result.cameraMatrixRight, result.distCoeffsRight,
-        result.R2, result.P2, result.imageSize, CV_32FC1,
+        result.R2, result.P2, result.imageSize, CV_16SC2,
         result.map1Right, result.map2Right
     );
 
