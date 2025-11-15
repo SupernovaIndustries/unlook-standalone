@@ -149,7 +149,7 @@ public:
                     R_, T_,
                     R1_, R2_, P1_, P2_, Q_,
                     cv::CALIB_ZERO_DISPARITY,
-                    -1,
+                    1.0,  // FIX: alpha=1.0 (retain all pixels, matching calibration)
                     imageSize_
                 );
             }
@@ -158,13 +158,14 @@ public:
 
             // Precompute rectification maps for fast remapping
             logger_.info("[HandheldScanPipeline] Computing rectification maps...");
+            // FIX: Use CV_16SC2 format (more efficient, matching calibration)
             cv::initUndistortRectifyMap(
                 cameraMatrixLeft_, distCoeffsLeft_, R1_, P1_,
-                imageSize_, CV_32FC1, map1Left_, map2Left_
+                imageSize_, CV_16SC2, map1Left_, map2Left_
             );
             cv::initUndistortRectifyMap(
                 cameraMatrixRight_, distCoeffsRight_, R2_, P2_,
-                imageSize_, CV_32FC1, map1Right_, map2Right_
+                imageSize_, CV_16SC2, map1Right_, map2Right_
             );
 
             logger_.info("[HandheldScanPipeline] Calibration loaded successfully");
@@ -460,6 +461,35 @@ public:
         filteredCloud = cv::Mat(validPoints.size(), 1, CV_32FC3);
         for (size_t i = 0; i < validPoints.size(); i++) {
             filteredCloud.at<cv::Vec3f>(i, 0) = validPoints[i];
+        }
+
+        // FIX: Export PLY file for 3D visualization
+        if (saveDebugImages_ && !debugDir_.empty()) {
+            std::string plyPath = debugDir_ + "/point_cloud.ply";
+            std::ofstream plyFile(plyPath);
+
+            if (plyFile.is_open()) {
+                // Write PLY header
+                plyFile << "ply\n";
+                plyFile << "format ascii 1.0\n";
+                plyFile << "element vertex " << validPoints.size() << "\n";
+                plyFile << "property float x\n";
+                plyFile << "property float y\n";
+                plyFile << "property float z\n";
+                plyFile << "end_header\n";
+
+                // Write points (convert mm to meters for standard PLY)
+                for (const auto& pt : validPoints) {
+                    plyFile << (pt[0] / 1000.0f) << " "
+                           << (pt[1] / 1000.0f) << " "
+                           << (pt[2] / 1000.0f) << "\n";
+                }
+
+                plyFile.close();
+                logger_.info("[HandheldScanPipeline] Exported PLY to: " + plyPath);
+            } else {
+                logger_.warning("[HandheldScanPipeline] Failed to create PLY file: " + plyPath);
+            }
         }
 
         return filteredCloud;
