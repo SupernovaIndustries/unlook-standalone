@@ -57,6 +57,18 @@ public:
     float baseline_mm_ = 70.017f;
     cv::Mat Q_;  // Disparity-to-depth matrix
 
+    // ========== CENTER CROP FOR INVESTOR DEMO ==========
+    // Based on MATLAB FINAL calibration analysis:
+    // - Full image (1280x720): 65.45px epipolar error (POOR)
+    // - CENTER crop (680x420): 1.99px epipolar error (EXCELLENT)
+    // Crop parameters tested and validated with MATLAB calibration
+    bool useCenterCrop_ = true;  // Enable for investor demo
+    int cropLeft_ = 300;
+    int cropRight_ = 300;
+    int cropTop_ = 150;
+    int cropBottom_ = 150;
+    cv::Size croppedSize_ = cv::Size(680, 420);  // 31% of original area
+
     // ========== DEBUG & STATISTICS ==========
     bool saveDebugImages_ = false;
     std::string debugDir_;
@@ -77,6 +89,15 @@ public:
         sgmCensus_ = std::make_unique<stereo::SGMCensus>(censusConfig_);
 
         logger_.info("[HandheldScanPipeline] Initialized with SGMCensus (census=9x9, P1=8, P2=32, vertical=±8px, uniqueness=15%)");
+
+        // Log CENTER crop status for investor demo
+        if (useCenterCrop_) {
+            logger_.info("[HandheldScanPipeline] CENTER crop ENABLED for investor demo");
+            logger_.info("[HandheldScanPipeline]   Crop size: " + std::to_string(croppedSize_.width) + "x" + std::to_string(croppedSize_.height));
+            logger_.info("[HandheldScanPipeline]   Expected epipolar error: ~2px (vs 65px full image)");
+        } else {
+            logger_.info("[HandheldScanPipeline] CENTER crop DISABLED (using full image)");
+        }
     }
 
     ~Impl() {
@@ -216,11 +237,43 @@ public:
             cv::Mat leftRect, rightRect;
             rectifyStereoPair(frames[i].leftImage, frames[i].rightImage, leftRect, rightRect);
 
-            // Save debug images if enabled
+            // Save debug images (FULL rectified) if enabled
             if (saveDebugImages_ && !debugDir_.empty()) {
                 std::string frameNum = std::to_string(i);
-                cv::imwrite(debugDir_ + "/01_rectified_frame" + frameNum + "_left.png", leftRect);
-                cv::imwrite(debugDir_ + "/01_rectified_frame" + frameNum + "_right.png", rightRect);
+                cv::imwrite(debugDir_ + "/01_rectified_full_frame" + frameNum + "_left.png", leftRect);
+                cv::imwrite(debugDir_ + "/01_rectified_full_frame" + frameNum + "_right.png", rightRect);
+            }
+
+            // CRITICAL: Apply CENTER crop for investor demo
+            // Tested with MATLAB FINAL calibration:
+            // - Full image: 65.45px epipolar error (POOR - insufficient edge coverage)
+            // - CENTER crop: 1.99px epipolar error (EXCELLENT)
+            if (useCenterCrop_) {
+                cv::Rect cropRoi(cropLeft_, cropTop_,
+                                croppedSize_.width, croppedSize_.height);
+
+                // Crop both rectified images identically
+                leftRect = leftRect(cropRoi).clone();  // clone() to ensure contiguous memory
+                rightRect = rightRect(cropRoi).clone();
+
+                // Log first frame for verification
+                if (i == 0) {
+                    logger_.info("[HandheldScanPipeline] CENTER crop enabled: " +
+                                std::to_string(cropRoi.width) + "x" + std::to_string(cropRoi.height) +
+                                " (from " + std::to_string(imageSize_.width) + "x" + std::to_string(imageSize_.height) + ")");
+                    logger_.info("[HandheldScanPipeline] Crop margins (L,R,T,B): " +
+                                std::to_string(cropLeft_) + ", " +
+                                std::to_string(cropRight_) + ", " +
+                                std::to_string(cropTop_) + ", " +
+                                std::to_string(cropBottom_));
+                }
+            }
+
+            // Save debug images (CROPPED) if enabled
+            if (saveDebugImages_ && !debugDir_.empty() && useCenterCrop_) {
+                std::string frameNum = std::to_string(i);
+                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_left.png", leftRect);
+                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_right.png", rightRect);
             }
 
             // Convert to grayscale if needed
