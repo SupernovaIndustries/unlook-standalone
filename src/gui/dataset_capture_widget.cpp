@@ -16,6 +16,7 @@
 #include <QShowEvent>
 #include <QHideEvent>
 #include <fstream>
+#include <chrono>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/aruco.hpp>
@@ -55,7 +56,7 @@ DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSy
     // Initialize capture timer (not started yet)
     captureTimer_ = new QTimer(this);
     captureTimer_->setSingleShot(true);
-    captureTimer_->setInterval(5000);  // 5 seconds between captures
+    captureTimer_->setInterval(3000);  // 3 seconds countdown after 5s continuous detection
     connect(captureTimer_, &QTimer::timeout, this, &DatasetCaptureWidget::onCaptureFrame);
 
     // Initialize countdown timer (1 second interval)
@@ -64,6 +65,13 @@ DatasetCaptureWidget::DatasetCaptureWidget(std::shared_ptr<camera::gui::CameraSy
     countdownTimer_->setInterval(1000);  // 1 second ticks
     connect(countdownTimer_, &QTimer::timeout, this, &DatasetCaptureWidget::onCountdownTick);
     countdownValue_ = 0;
+
+    // Initialize continuous detection tracking (countdown starts only after 5s continuous detection)
+    isDetectedContinuously_ = false;
+    continuousDetectionSeconds_ = 0.0;
+
+    // Initialize coverage tracking for guided calibration
+    initializeCoverageZones();
 
     // Start camera preview using callback system (same as camera_preview_widget)
     startPreviewCapture();
@@ -162,10 +170,10 @@ void DatasetCaptureWidget::onCountdownTick() {
         countdownLabel_->setText(QString("Next capture in: %1").arg(countdownValue_));
         countdownLabel_->setStyleSheet("font-size: 18pt; color: #f97316; font-weight: bold;");
     } else {
-        // Countdown finished
+        // Countdown finished - capture happens NOW via timer timeout
         countdownTimer_->stop();
-        countdownLabel_->setText("📸 CAPTURING...");
-        countdownLabel_->setStyleSheet("font-size: 18pt; color: #10b981; font-weight: bold;");
+        countdownLabel_->setText("📸");  // Just camera icon - capture imminent
+        countdownLabel_->setStyleSheet("font-size: 24pt; color: #10b981; font-weight: bold;");
     }
 }
 
@@ -217,8 +225,20 @@ void DatasetCaptureWidget::updatePreview(const core::StereoFramePair& frame_pair
     }
 
     // Frame skipping for performance - CRITICAL: checkerboard detection is HEAVY
+    // Adaptive skip factor to avoid lag:
+    // - Preview mode (not capturing): skip 20 frames (~1.5 FPS detection)
+    // - Capturing + countdown active: skip 5 frames (~6 FPS detection - tracking mode)
+    // - Capturing + no countdown: skip 12 frames (~2.5 FPS detection - search mode)
     static int frame_skip_counter = 0;
-    int skip_factor = isCapturing_ ? 3 : 10;  // Preview: skip 10 frames (~3 FPS detection), Capture: skip 3
+    int skip_factor;
+    if (!isCapturing_) {
+        skip_factor = 20;  // Preview mode: very slow detection to avoid lag
+    } else if (captureTimer_->isActive()) {
+        skip_factor = 5;   // Countdown active: faster detection for tracking
+    } else {
+        skip_factor = 12;  // Capturing but searching: moderate detection to avoid lag
+    }
+
     if (++frame_skip_counter % skip_factor != 0) {
         return;
     }
@@ -260,6 +280,61 @@ void DatasetCaptureWidget::updatePreview(const core::StereoFramePair& frame_pair
         cv::resize(overlayRightVGA, overlayRight, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
     } else {
         cv::resize(rightVGA, overlayRight, cv::Size(1280, 720), 0, 0, cv::INTER_LINEAR);
+    }
+
+    // CRITICAL: Continuous detection tracking for countdown trigger
+    // Countdown starts ONLY after 5 seconds of continuous checkerboard detection
+    if (isCapturing_) {
+        if (leftDetected && rightDetected) {
+            // Checkerboard detected on BOTH cameras
+            if (!isDetectedContinuously_) {
+                // First detection - start tracking time
+                firstDetectionTime_ = std::chrono::steady_clock::now();
+                isDetectedContinuously_ = true;
+                continuousDetectionSeconds_ = 0.0;
+                qDebug() << "[Countdown] Checkerboard detected - tracking continuous detection...";
+            } else {
+                // Already detecting - calculate elapsed time
+                auto now = std::chrono::steady_clock::now();
+                continuousDetectionSeconds_ = std::chrono::duration<double>(now - firstDetectionTime_).count();
+
+                // Start countdown ONLY after 5 seconds continuous detection
+                if (continuousDetectionSeconds_ >= 5.0 && !captureTimer_->isActive() && !countdownTimer_->isActive()) {
+                    qDebug() << "[Countdown] 5 seconds continuous detection - STARTING 3 SECOND COUNTDOWN!";
+                    countdownValue_ = 3;  // 3 second countdown
+                    countdownLabel_->setText("Next capture in: 3");
+                    countdownLabel_->setStyleSheet("font-size: 18pt; color: #f97316; font-weight: bold;");
+                    countdownTimer_->start();
+                    captureTimer_->start();
+                }
+            }
+        } else {
+            // Checkerboard NOT detected - reset continuous tracking
+            if (isDetectedContinuously_) {
+                isDetectedContinuously_ = false;
+                continuousDetectionSeconds_ = 0.0;
+                qDebug() << "[Countdown] Checkerboard lost - resetting continuous detection tracking";
+            }
+        }
+    }
+
+    // CRITICAL: Draw coverage tracking overlay on BOTH previews
+    // Shows real-time guided coverage to ensure complete FOV calibration
+    if (isCapturing_) {
+        // Draw coverage zones and current checkerboard position
+        if (leftDetected) {
+            drawCoverageOverlay(overlayLeft, cornersLeft);
+        } else {
+            // Draw zones without checkerboard highlight
+            drawCoverageOverlay(overlayLeft, std::vector<cv::Point2f>());
+        }
+
+        if (rightDetected) {
+            drawCoverageOverlay(overlayRight, cornersRight);
+        } else {
+            // Draw zones without checkerboard highlight
+            drawCoverageOverlay(overlayRight, std::vector<cv::Point2f>());
+        }
     }
 
     // Update detection status
@@ -367,7 +442,7 @@ void DatasetCaptureWidget::onStartCapture() {
     // Capture config
     datasetInfo_["capture_config"]["image_width"] = 1280;
     datasetInfo_["capture_config"]["image_height"] = 720;
-    datasetInfo_["capture_config"]["capture_delay_seconds"] = 5;
+    datasetInfo_["capture_config"]["capture_delay_seconds"] = 3;  // 3 second countdown (after 5s continuous detection)
     datasetInfo_["capture_config"]["target_image_pairs"] = 100;
     datasetInfo_["capture_config"]["led1_vcsel_enabled"] = false;
     datasetInfo_["capture_config"]["led2_flood_enabled"] = false;
@@ -414,6 +489,9 @@ void DatasetCaptureWidget::onStartCapture() {
     targetCaptures_ = 100;
     isCapturing_ = true;
 
+    // Reset coverage tracking for new dataset
+    initializeCoverageZones();
+
     startCaptureButton_->setText("Stop Capture");
     startCaptureButton_->setStyleSheet(
         "QPushButton { background-color: #dc2626; color: white; font-size: 14pt; "
@@ -422,11 +500,10 @@ void DatasetCaptureWidget::onStartCapture() {
     // Save initial JSON file with configuration
     saveDatasetInfo();
 
-    // Start countdown for first capture
-    countdownValue_ = 5;
-    countdownLabel_->setText("Next capture in: 5");
-    countdownTimer_->start();
-    captureTimer_->start();
+    // Countdown will start automatically after 5 seconds of continuous checkerboard detection
+    // (see updatePreview() logic)
+    countdownLabel_->setText("Hold checkerboard steady for 5 seconds to start capture...");
+    countdownLabel_->setStyleSheet("font-size: 16pt; color: #3b82f6; font-weight: bold;");
 }
 
 void DatasetCaptureWidget::onCaptureFrame() {
@@ -470,14 +547,24 @@ void DatasetCaptureWidget::onCaptureFrame() {
     captureCount_++;
     captureProgress_->setValue(captureCount_);
 
+    // Show immediate feedback: CAPTURED!
+    countdownLabel_->setText(QString("✓ CAPTURED! (%1/%2)").arg(captureCount_).arg(targetCaptures_));
+    countdownLabel_->setStyleSheet("font-size: 18pt; color: #10b981; font-weight: bold;");
+
     // Save JSON after each capture (progressive save)
     saveDatasetInfo();
 
-    // Start countdown for next capture
-    countdownValue_ = 5;
-    countdownLabel_->setText("Next capture in: 5");
-    countdownTimer_->start();
-    captureTimer_->start();  // Restart timer for next capture
+    // Brief pause to show "CAPTURED!" message (500ms)
+    QTimer::singleShot(500, this, [this]() {
+        // Reset continuous detection tracking for next capture
+        // User must hold checkerboard steady for 5 seconds again
+        isDetectedContinuously_ = false;
+        continuousDetectionSeconds_ = 0.0;
+        countdownLabel_->setText("Hold checkerboard steady for 5 seconds...");
+        countdownLabel_->setStyleSheet("font-size: 16pt; color: #3b82f6; font-weight: bold;");
+    });
+
+    qDebug() << "[Countdown] Frame" << captureCount_ << "captured - reset detection tracking for next capture";
 }
 
 void DatasetCaptureWidget::captureAndSaveFrame() {
@@ -541,6 +628,21 @@ void DatasetCaptureWidget::captureAndSaveFrame() {
         }
     }
 
+    // CRITICAL: Update coverage tracking when pattern detected on BOTH cameras
+    // This ensures we track which zones of FOV have been covered by calibration
+    if (leftDetected && rightDetected) {
+        // Update using left camera corners (could use either, tracking is per-camera)
+        // Corners are at HD resolution (1280x720), need to scale to VGA for tracking
+        std::vector<cv::Point2f> cornersVGA;
+        for (const auto& corner : cornersLeft) {
+            cornersVGA.push_back(cv::Point2f(corner.x * 0.5f, corner.y * 0.5f));
+        }
+        updateCoverageTracking(cornersVGA);
+
+        qDebug() << "[Coverage] Frame" << captureCount_
+                 << "captured - Coverage:" << QString::fromStdString(getCoverageSummary());
+    }
+
     // Add to dataset info JSON with sync metadata
     nlohmann::json pairInfo;
     pairInfo["index"] = captureCount_;
@@ -590,6 +692,247 @@ void DatasetCaptureWidget::saveDatasetInfo() {
     if (!file.good()) {
         qCritical() << "Error closing dataset info file:" << jsonPath;
     }
+}
+
+// ============================================================================
+// COVERAGE TRACKING IMPLEMENTATION
+// ============================================================================
+// CRITICAL: Guided calibration coverage tracking to ensure complete FOV coverage
+// Research findings (CALIBRATION_RESEARCH_FINDINGS.md):
+// - Coverage insufficiency causes extrapolation failures at image edges
+// - Need < 30px margins on all edges (2-3% of image dimension)
+// - Checkerboard at center = 0.26px epipolar error, but 58px at edges!
+// - Solution: 9-zone coverage tracking with real-time visual guidance
+
+void DatasetCaptureWidget::initializeCoverageZones() {
+    // Initialize for 1280x720 image (HD resolution after downsampling)
+    const int width = 1280;
+    const int height = 720;
+
+    // Divide into 3x3 grid for comprehensive coverage tracking
+    // Each cell is approximately 426x240 pixels
+    const int cellWidth = width / 3;
+    const int cellHeight = height / 3;
+
+    coverageZones_.clear();
+    totalFramesCaptured_ = 0;
+
+    // Define 9 zones: 4 corners + 4 edges + center
+    // Zone naming follows grid layout (scanner POV looking forward)
+    // Target distribution (total 100 frames):
+    // - CENTER: 20 frames (most important for baseline accuracy)
+    // - 4 EDGES: 10 frames each = 40 frames (critical for edge calibration)
+    // - 4 CORNERS: 10 frames each = 40 frames (complete FOV coverage)
+
+    // Row 1: TOP zones
+    coverageZones_.push_back({
+        "TOP-LEFT",
+        cv::Rect(0, 0, cellWidth, cellHeight),
+        0, 10, false  // CORNER: 10 frames target
+    });
+    coverageZones_.push_back({
+        "TOP",
+        cv::Rect(cellWidth, 0, cellWidth, cellHeight),
+        0, 10, false  // EDGE: 10 frames target
+    });
+    coverageZones_.push_back({
+        "TOP-RIGHT",
+        cv::Rect(cellWidth * 2, 0, cellWidth, cellHeight),
+        0, 10, false  // CORNER: 10 frames target
+    });
+
+    // Row 2: MIDDLE zones
+    coverageZones_.push_back({
+        "LEFT",
+        cv::Rect(0, cellHeight, cellWidth, cellHeight),
+        0, 10, false  // EDGE: 10 frames target
+    });
+    coverageZones_.push_back({
+        "CENTER",
+        cv::Rect(cellWidth, cellHeight, cellWidth, cellHeight),
+        0, 20, false  // CENTER: 20 frames target (most important!)
+    });
+    coverageZones_.push_back({
+        "RIGHT",
+        cv::Rect(cellWidth * 2, cellHeight, cellWidth, cellHeight),
+        0, 10, false  // EDGE: 10 frames target
+    });
+
+    // Row 3: BOTTOM zones
+    coverageZones_.push_back({
+        "BOTTOM-LEFT",
+        cv::Rect(0, cellHeight * 2, cellWidth, cellHeight),
+        0, 10, false  // CORNER: 10 frames target
+    });
+    coverageZones_.push_back({
+        "BOTTOM",
+        cv::Rect(cellWidth, cellHeight * 2, cellWidth, cellHeight),
+        0, 10, false  // EDGE: 10 frames target
+    });
+    coverageZones_.push_back({
+        "BOTTOM-RIGHT",
+        cv::Rect(cellWidth * 2, cellHeight * 2, cellWidth, cellHeight),
+        0, 10, false  // CORNER: 10 frames target
+    });
+
+    qDebug() << "[Coverage] Initialized 9 coverage zones for 1280x720 image";
+}
+
+void DatasetCaptureWidget::updateCoverageTracking(const std::vector<cv::Point2f>& corners) {
+    if (corners.empty() || coverageZones_.empty()) {
+        return;
+    }
+
+    // Calculate bounding box of detected checkerboard corners
+    float minX = corners[0].x, maxX = corners[0].x;
+    float minY = corners[0].y, maxY = corners[0].y;
+
+    for (const auto& corner : corners) {
+        minX = std::min(minX, corner.x);
+        maxX = std::max(maxX, corner.x);
+        minY = std::min(minY, corner.y);
+        maxY = std::max(maxY, corner.y);
+    }
+
+    // Create bounding rectangle (convert from VGA 640x360 to HD 1280x720)
+    // corners are detected on VGA, so we need to scale 2x for HD zones
+    cv::Rect checkerboardBounds(
+        static_cast<int>(minX * 2.0f),
+        static_cast<int>(minY * 2.0f),
+        static_cast<int>((maxX - minX) * 2.0f),
+        static_cast<int>((maxY - minY) * 2.0f)
+    );
+
+    // Check which zones overlap with checkerboard bounding box
+    for (auto& zone : coverageZones_) {
+        // Check for intersection between zone and checkerboard bounds
+        cv::Rect intersection = zone.rect & checkerboardBounds;
+
+        if (intersection.area() > 0) {
+            // Zone is covered by this checkerboard position
+            zone.captureCount++;
+
+            // Update adequately covered status (uses targetCount for each zone)
+            if (zone.captureCount >= zone.targetCount) {
+                zone.adequatelyCovered = true;
+            }
+        }
+    }
+
+    totalFramesCaptured_++;
+}
+
+void DatasetCaptureWidget::drawCoverageOverlay(cv::Mat& image, const std::vector<cv::Point2f>& corners) {
+    if (coverageZones_.empty()) {
+        return;
+    }
+
+    // Draw semi-transparent overlay for each zone
+    for (const auto& zone : coverageZones_) {
+        // Determine color based on coverage status
+        cv::Scalar color;
+        if (zone.captureCount == 0) {
+            color = cv::Scalar(0, 0, 255);      // RED - not covered
+        } else if (zone.captureCount < zone.targetCount) {
+            color = cv::Scalar(0, 165, 255);    // ORANGE - partial coverage
+        } else {
+            color = cv::Scalar(0, 255, 0);      // GREEN - adequate coverage (reached target!)
+        }
+
+        // Draw semi-transparent filled rectangle
+        cv::Mat overlay = image.clone();
+        cv::rectangle(overlay, zone.rect, color, -1);  // -1 = filled
+        cv::addWeighted(overlay, 0.15, image, 0.85, 0, image);  // 15% overlay, 85% original
+
+        // Draw zone border
+        cv::rectangle(image, zone.rect, color, 2);
+
+        // Draw capture progress text in zone center: "count/target"
+        std::string countText = std::to_string(zone.captureCount) + "/" + std::to_string(zone.targetCount);
+        int baseline = 0;
+        cv::Size textSize = cv::getTextSize(countText, cv::FONT_HERSHEY_SIMPLEX, 0.6, 2, &baseline);
+
+        cv::Point textPos(
+            zone.rect.x + (zone.rect.width - textSize.width) / 2,
+            zone.rect.y + (zone.rect.height + textSize.height) / 2
+        );
+
+        // Draw text background for readability
+        cv::rectangle(image,
+            cv::Point(textPos.x - 5, textPos.y - textSize.height - 5),
+            cv::Point(textPos.x + textSize.width + 5, textPos.y + 5),
+            cv::Scalar(0, 0, 0), -1);
+
+        cv::putText(image, countText, textPos, cv::FONT_HERSHEY_SIMPLEX, 0.6,
+                   cv::Scalar(255, 255, 255), 2);
+    }
+
+    // If corners provided, draw checkerboard bounding box (scaled from VGA to HD)
+    if (!corners.empty()) {
+        float minX = corners[0].x, maxX = corners[0].x;
+        float minY = corners[0].y, maxY = corners[0].y;
+
+        for (const auto& corner : corners) {
+            minX = std::min(minX, corner.x);
+            maxX = std::max(maxX, corner.x);
+            minY = std::min(minY, corner.y);
+            maxY = std::max(maxY, corner.y);
+        }
+
+        // Scale from VGA (640x360) to HD (1280x720) - 2x
+        cv::Rect checkerboardBounds(
+            static_cast<int>(minX * 2.0f),
+            static_cast<int>(minY * 2.0f),
+            static_cast<int>((maxX - minX) * 2.0f),
+            static_cast<int>((maxY - minY) * 2.0f)
+        );
+
+        // Draw bright yellow bounding box for current checkerboard position
+        cv::rectangle(image, checkerboardBounds, cv::Scalar(0, 255, 255), 3);
+    }
+
+    // Draw coverage summary text at bottom
+    std::string summary = getCoverageSummary();
+    cv::putText(image, summary, cv::Point(10, image.rows - 10),
+               cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1);
+}
+
+std::string DatasetCaptureWidget::getCoverageSummary() const {
+    if (coverageZones_.empty()) {
+        return "Coverage: Not initialized";
+    }
+
+    // Count adequately covered zones
+    int adequatelyCovered = 0;
+    int totalZones = static_cast<int>(coverageZones_.size());
+
+    for (const auto& zone : coverageZones_) {
+        if (zone.adequatelyCovered) {
+            adequatelyCovered++;
+        }
+    }
+
+    // Find zones needing coverage
+    std::vector<std::string> zonesNeedingCoverage;
+    for (const auto& zone : coverageZones_) {
+        if (!zone.adequatelyCovered) {
+            zonesNeedingCoverage.push_back(zone.name);
+        }
+    }
+
+    // Build summary string
+    std::string summary = "Coverage: " + std::to_string(adequatelyCovered) + "/" +
+                         std::to_string(totalZones) + " zones";
+
+    if (!zonesNeedingCoverage.empty() && zonesNeedingCoverage.size() <= 3) {
+        summary += " | Need: ";
+        for (size_t i = 0; i < zonesNeedingCoverage.size(); i++) {
+            if (i > 0) summary += ", ";
+            summary += zonesNeedingCoverage[i];
+        }
+    }
+
+    return summary;
 }
 
 } // namespace gui

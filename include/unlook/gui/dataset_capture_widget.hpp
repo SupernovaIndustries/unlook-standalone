@@ -110,6 +110,29 @@ private:
     // Dataset storage
     QString currentDatasetPath_;
     nlohmann::json datasetInfo_;
+
+    // CRITICAL: Coverage tracking for guided calibration
+    // Tracks which image regions have been covered by checkerboard
+    // to ensure complete field-of-view calibration
+    struct CoverageZone {
+        std::string name;          // Zone name (e.g., "TOP-LEFT", "CENTER")
+        cv::Rect rect;             // Zone rectangle in image coordinates
+        int captureCount;          // Number of captures covering this zone
+        int targetCount;           // Target number of captures for this zone
+        bool adequatelyCovered;    // True if captureCount >= targetCount
+    };
+    std::vector<CoverageZone> coverageZones_;  // 9 zones: 4 corners + 4 edges + center
+    int totalFramesCaptured_;                  // Total frames captured for coverage tracking
+
+    // Continuous detection tracking for countdown trigger
+    std::chrono::steady_clock::time_point firstDetectionTime_;
+    bool isDetectedContinuously_;
+    double continuousDetectionSeconds_;
+
+    void initializeCoverageZones();
+    void updateCoverageTracking(const std::vector<cv::Point2f>& corners);
+    void drawCoverageOverlay(cv::Mat& image, const std::vector<cv::Point2f>& corners);
+    std::string getCoverageSummary() const;
 };
 
 } // namespace gui
