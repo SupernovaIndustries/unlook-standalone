@@ -61,12 +61,12 @@ public:
     // Based on MATLAB FINAL calibration analysis:
     // - Full image (1280x720): 65.45px epipolar error (POOR)
     // - CENTER crop (680x420): 1.99px epipolar error (EXCELLENT)
-    // Crop parameters tested and validated with MATLAB calibration
+    // Crop centered on rectified principal point (656.11, 326.00) for optimal alignment
     bool useCenterCrop_ = true;  // Enable for investor demo
-    int cropLeft_ = 300;
-    int cropRight_ = 300;
-    int cropTop_ = 150;
-    int cropBottom_ = 150;
+    int cropLeft_ = 316;   // Centered on cx_rect=656.11 (was 300)
+    int cropRight_ = 284;  // Asymmetric to maintain center (was 300)
+    int cropTop_ = 116;    // Centered on cy_rect=326.00 (was 150)
+    int cropBottom_ = 184; // Asymmetric to maintain center (was 150)
     cv::Size croppedSize_ = cv::Size(680, 420);  // 31% of original area
 
     // ========== DEBUG & STATISTICS ==========
@@ -94,6 +94,9 @@ public:
         if (useCenterCrop_) {
             logger_.info("[HandheldScanPipeline] CENTER crop ENABLED for investor demo");
             logger_.info("[HandheldScanPipeline]   Crop size: " + std::to_string(croppedSize_.width) + "x" + std::to_string(croppedSize_.height));
+            logger_.info("[HandheldScanPipeline]   Crop centered on principal point (656, 326)");
+            logger_.info("[HandheldScanPipeline]   Margins: L=" + std::to_string(cropLeft_) + ", R=" + std::to_string(cropRight_) +
+                        ", T=" + std::to_string(cropTop_) + ", B=" + std::to_string(cropBottom_));
             logger_.info("[HandheldScanPipeline]   Expected epipolar error: ~2px (vs 65px full image)");
         } else {
             logger_.info("[HandheldScanPipeline] CENTER crop DISABLED (using full image)");
