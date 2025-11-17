@@ -433,77 +433,13 @@ public:
         logger_.info("[HandheldScanPipeline] Disparity range: [" + std::to_string(minDisp/16.0) +
                     ", " + std::to_string(maxDisp/16.0) + "] pixels (subpixel ×16)");
 
-        // CRITICAL: MATLAB calibration has Q(3,2) with WRONG SIGN (must invert!)
-        //
-        // Problem: MATLAB exports Q(3,2) = -1/baseline = -0.01432 (NEGATIVE)
-        // But reprojectImageTo3D formula gives: Z = Q(2,3) / W, where W = Q(3,2) * disparity
-        // With Q(3,2) NEGATIVE and disparity POSITIVE:
-        //   W = -0.01432 * 50 = -0.716 (negative)
-        //   Z = 1561 / -0.716 = -2180mm (NEGATIVE - behind camera!)
-        //
-        // Solution: INVERT Q(3,2) sign to make it POSITIVE
-        // Then: W = +0.01432 * 50 = +0.716 (positive)
-        //       Z = 1561 / +0.716 = +2180mm (POSITIVE - in front of camera!)
-        //
-        // Verified with Python calculation: Q(3,2) MUST be POSITIVE for correct Z sign
-
-        cv::Mat Q_corrected = Q_.clone();
-        double originalQ32 = Q_.at<double>(3, 2);
-        Q_corrected.at<double>(3, 2) = -originalQ32;  // Invert sign!
-
-        logger_.info("[HandheldScanPipeline] Applied Q(3,2) sign fix: " + std::to_string(originalQ32) +
-                    " → " + std::to_string(Q_corrected.at<double>(3, 2)) + " (must be POSITIVE for correct Z)");
-
-        // ============================================================================
-        // CRITICAL FIX: Ricalcola Q matrix con formula OpenCV corretta
-        // ============================================================================
-        // PROBLEMA TROVATO: Q matrix da MATLAB usa CONVENZIONE DIVERSA da OpenCV!
-        //
-        // MATLAB Q matrix (dalla calibrazione):
-        //   Q(2,2) = 0     ← DIVERSO da OpenCV
-        //   Q(2,3) = f     ← Focale in posizione diversa
-        //   Q(3,2) = -1/Tx ← Negativo
-        //
-        // OpenCV formula (da documentazione e codice sorgente):
-        //   Q = [1  0   0      -cx
-        //        0  1   0      -cy
-        //        0  0   0       f
-        //        0  0  -1/Tx   (cx-cx')/Tx]
-        //
-        // Ma in realtà OpenCV reprojectImageTo3D usa:
-        //   Q = [1  0   0      -cx
-        //        0  1   0      -cy
-        //        0  0   1       f       ← Q(2,2) = 1 (non 0!)
-        //        0  0  +1/Tx   0]       ← Q(3,2) = +1/Tx (non negativo!)
-        //
-        // SOLUZIONE: Ricalcola Q da P1 e P2 usando formula OpenCV corretta
-        //
-        double fx = P1_.at<double>(0, 0);
-        double cx = P1_.at<double>(0, 2);
-        double cy = P1_.at<double>(1, 2);
-        double cx_prime = P2_.at<double>(0, 2);
-        double Tx_fx = P2_.at<double>(0, 3);
-        double Tx = -Tx_fx / fx;  // Baseline con segno OpenCV (negativo: Tx = -69.83mm)
-
-        // Crea Q matrix corretta per OpenCV reprojectImageTo3D
-        Q_corrected = cv::Mat::eye(4, 4, CV_64F);
-        Q_corrected.at<double>(0, 3) = -cx;
-        Q_corrected.at<double>(1, 3) = -cy;
-        Q_corrected.at<double>(2, 2) = 1.0;  // CRITICAL: deve essere 1, non 0!
-        Q_corrected.at<double>(2, 3) = fx;   // Focale
-        Q_corrected.at<double>(3, 2) = -1.0 / Tx;  // CRITICAL: -1/(-69.83) = +0.01432 (POSITIVO!)
-        Q_corrected.at<double>(3, 3) = -(cx - cx_prime) / Tx;  // Quasi 0 per CALIB_ZERO_DISPARITY
-
-        logger_.info("[HandheldScanPipeline] RICALCOLATA Q matrix con formula OpenCV corretta:");
-        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_corrected.at<double>(2, 2)) +
-                    " (era 0 in MATLAB, DEVE essere 1 per OpenCV!)");
-        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_corrected.at<double>(3, 2)) +
-                    " (era -" + std::to_string(std::abs(Q_.at<double>(3, 2))) + " in MATLAB, DEVE essere POSITIVO!)");
-        logger_.info("[HandheldScanPipeline]   Baseline Tx = " + std::to_string(Tx) + " mm");
-        logger_.info("[HandheldScanPipeline]   Principal point: cx=" + std::to_string(cx) +
-                    ", cy=" + std::to_string(cy));
-        logger_.info("[HandheldScanPipeline]   Expected result: 🎯 NO MORE CONE with correct Q matrix!");
-        // ============================================================================
+        // USE Q MATRIX DIRECTLY FROM CALIBRATION FILE
+        // (No manual fixes - Q is now from OpenCV stereoRectify, not MATLAB)
+        logger_.info("[HandheldScanPipeline] Using Q matrix from calibration file (OpenCV stereoRectify)");
+        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_.at<double>(2, 2)));
+        logger_.info("[HandheldScanPipeline]   Q(2,3) = " + std::to_string(Q_.at<double>(2, 3)) + " (focal length)");
+        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_.at<double>(3, 2)) + " (-1/baseline)");
+        logger_.info("[HandheldScanPipeline]   Q(3,3) = " + std::to_string(Q_.at<double>(3, 3)));
 
         // CRITICAL: Convert disparity from CV_16SC1 (subpixel ×16) to CV_32F (pixel values)
         // reprojectImageTo3D expects disparity in PIXELS, not subpixel format!
@@ -513,9 +449,9 @@ public:
 
         logger_.info("[HandheldScanPipeline] Converted disparity: CV_16SC1 (×16) → CV_32F (÷16 = pixel values)");
 
-        // Reproject to 3D using CORRECTED Q matrix (with Q(3,2) sign fixed)
+        // Reproject to 3D using Q matrix from calibration file
         cv::Mat points3D;
-        cv::reprojectImageTo3D(floatDisparity, points3D, Q_corrected, true, CV_32F);
+        cv::reprojectImageTo3D(floatDisparity, points3D, Q_, true, CV_32F);
 
         logger_.info("[HandheldScanPipeline] Point cloud generated: " +
                     std::to_string(points3D.cols) + "x" + std::to_string(points3D.rows) + " points");
