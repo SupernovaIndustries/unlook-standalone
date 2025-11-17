@@ -454,6 +454,45 @@ public:
         logger_.info("[HandheldScanPipeline] Applied Q(3,2) sign fix: " + std::to_string(originalQ32) +
                     " → " + std::to_string(Q_corrected.at<double>(3, 2)) + " (must be POSITIVE for correct Z)");
 
+        // ============================================================================
+        // EXPERIMENTAL FIX: MATLAB (1-based) to OpenCV (0-based) principal point offset
+        // ============================================================================
+        // Problem: MATLAB specifies pixel (1,1) as top-left, OpenCV uses (0,0)
+        // When converting MATLAB→OpenCV calibration, must SUBTRACT 1.0 from cx and cy
+        //
+        // Evidence from MATLAB documentation:
+        // "When converting from MATLAB to OpenCV, stereoParametersToOpenCV
+        //  compensates by SUBTRACTING 1 from both x and y-values for the principal point"
+        //
+        // Current Q matrix values (from MATLAB export):
+        //   Q(0,3) = -656.109  (= -cx_rect)
+        //   Q(1,3) = -326.0    (= -cy_rect)
+        //
+        // This suggests cx_matlab = 657.109, cy_matlab = 327.0 (1-based indexing)
+        // For OpenCV (0-based), should be: cx_opencv = 655.109, cy_opencv = 325.0
+        //
+        // Impact of 1-pixel offset:
+        //   1. Epipolar alignment error: ~2 pixels (OBSERVED in Gemini analysis!)
+        //   2. 3D reprojection rays converge to wrong center → CONE artifact!
+        //
+        // Test: Apply -1.0 offset to principal point in Q matrix
+        //
+        double original_Q03 = Q_corrected.at<double>(0, 3);
+        double original_Q13 = Q_corrected.at<double>(1, 3);
+
+        Q_corrected.at<double>(0, 3) += 1.0;  // Q(0,3) = -cx, so add 1 → cx shifts from 656.109 to 655.109
+        Q_corrected.at<double>(1, 3) += 1.0;  // Q(1,3) = -cy, so add 1 → cy shifts from 326.0 to 325.0
+
+        logger_.info("[HandheldScanPipeline] TEST: Applied MATLAB→OpenCV principal point offset (-1.0 pixel)");
+        logger_.info("[HandheldScanPipeline]   Q(0,3): " + std::to_string(original_Q03) +
+                    " → " + std::to_string(Q_corrected.at<double>(0, 3)) +
+                    " (cx: 656.109 → 655.109)");
+        logger_.info("[HandheldScanPipeline]   Q(1,3): " + std::to_string(original_Q13) +
+                    " → " + std::to_string(Q_corrected.at<double>(1, 3)) +
+                    " (cy: 326.0 → 325.0)");
+        logger_.info("[HandheldScanPipeline]   Expected result: NO MORE CONE if offset was the problem!");
+        // ============================================================================
+
         // CRITICAL: Convert disparity from CV_16SC1 (subpixel ×16) to CV_32F (pixel values)
         // reprojectImageTo3D expects disparity in PIXELS, not subpixel format!
         // OpenCV official example: disp.convertTo(floatDisp, CV_32F, 1.0f / 16.0f)
