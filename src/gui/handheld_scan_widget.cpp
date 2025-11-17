@@ -1210,29 +1210,102 @@ void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
         cv::cvtColor(frame.left_frame.image, rgb_frame, cv::COLOR_YUV2RGB_I420);
     }
 
-    // Draw crosshair at center
-    int center_x = rgb_frame.cols / 2;
-    int center_y = rgb_frame.rows / 2;
+    // ========== DRAW STEREO VALID ROI (GREEN RECTANGLE) ==========
+    // This shows the EXACT area that will be used for stereo matching after masking
+    // ROI parameters match HandheldScanPipeline mask configuration:
+    // - Centered on rectified principal point (656, 326) instead of geometric center
+    // - This is the INTERSECTION of left and right camera views for stereo matching
+    // - Position object CENTER of this rectangle for maximum stereo overlap!
+
+    const int roi_left = 316;    // Crop margins (L, R, T, B)
+    const int roi_top = 116;
+    const int roi_width = 680;   // Valid stereo matching area
+    const int roi_height = 420;
+
+    // Draw bright green rectangle (RGBA: bright green, fully opaque)
+    cv::Scalar roi_color(0, 255, 0);  // RGB: bright green
+    int roi_thickness = 3;
+
+    cv::rectangle(rgb_frame,
+                  cv::Point(roi_left, roi_top),
+                  cv::Point(roi_left + roi_width, roi_top + roi_height),
+                  roi_color,
+                  roi_thickness);
+
+    // Draw corner markers for better visibility (L-shapes at corners)
+    int corner_len = 30;
+    cv::Scalar corner_color(0, 255, 0);
+    int corner_thick = 4;
+
+    // Top-left corner
+    cv::line(rgb_frame, cv::Point(roi_left, roi_top),
+             cv::Point(roi_left + corner_len, roi_top), corner_color, corner_thick);
+    cv::line(rgb_frame, cv::Point(roi_left, roi_top),
+             cv::Point(roi_left, roi_top + corner_len), corner_color, corner_thick);
+
+    // Top-right corner
+    cv::line(rgb_frame, cv::Point(roi_left + roi_width, roi_top),
+             cv::Point(roi_left + roi_width - corner_len, roi_top), corner_color, corner_thick);
+    cv::line(rgb_frame, cv::Point(roi_left + roi_width, roi_top),
+             cv::Point(roi_left + roi_width, roi_top + corner_len), corner_color, corner_thick);
+
+    // Bottom-left corner
+    cv::line(rgb_frame, cv::Point(roi_left, roi_top + roi_height),
+             cv::Point(roi_left + corner_len, roi_top + roi_height), corner_color, corner_thick);
+    cv::line(rgb_frame, cv::Point(roi_left, roi_top + roi_height),
+             cv::Point(roi_left, roi_top + roi_height - corner_len), corner_color, corner_thick);
+
+    // Bottom-right corner
+    cv::line(rgb_frame, cv::Point(roi_left + roi_width, roi_top + roi_height),
+             cv::Point(roi_left + roi_width - corner_len, roi_top + roi_height), corner_color, corner_thick);
+    cv::line(rgb_frame, cv::Point(roi_left + roi_width, roi_top + roi_height),
+             cv::Point(roi_left + roi_width, roi_top + roi_height - corner_len), corner_color, corner_thick);
+
+    // Draw "STEREO ROI" label at top of rectangle
+    std::string roi_label = "STEREO VALID AREA - CENTER OBJECT HERE";
+    int font_face = cv::FONT_HERSHEY_SIMPLEX;
+    double font_scale = 0.6;
+    int text_thickness = 2;
+
+    // Get text size for background
+    int baseline = 0;
+    cv::Size text_size = cv::getTextSize(roi_label, font_face, font_scale, text_thickness, &baseline);
+
+    // Draw semi-transparent background for text
+    cv::Point text_org(roi_left + (roi_width - text_size.width) / 2, roi_top - 10);
+    cv::rectangle(rgb_frame,
+                  cv::Point(text_org.x - 5, text_org.y - text_size.height - 5),
+                  cv::Point(text_org.x + text_size.width + 5, text_org.y + baseline + 5),
+                  cv::Scalar(0, 0, 0),  // Black background
+                  -1);  // Filled
+
+    // Draw text
+    cv::putText(rgb_frame, roi_label, text_org, font_face, font_scale,
+                cv::Scalar(0, 255, 0), text_thickness, cv::LINE_AA);
+
+    // Draw crosshair at ROI center (not image center!)
+    int roi_center_x = roi_left + roi_width / 2;
+    int roi_center_y = roi_top + roi_height / 2;
     int crosshair_size = 40;
 
-    // Green crosshair for better visibility
+    // Bright green crosshair
     cv::Scalar color(0, 255, 0);  // RGB green
     int thickness = 2;
 
     // Horizontal line
     cv::line(rgb_frame,
-             cv::Point(center_x - crosshair_size, center_y),
-             cv::Point(center_x + crosshair_size, center_y),
+             cv::Point(roi_center_x - crosshair_size, roi_center_y),
+             cv::Point(roi_center_x + crosshair_size, roi_center_y),
              color, thickness);
 
     // Vertical line
     cv::line(rgb_frame,
-             cv::Point(center_x, center_y - crosshair_size),
-             cv::Point(center_x, center_y + crosshair_size),
+             cv::Point(roi_center_x, roi_center_y - crosshair_size),
+             cv::Point(roi_center_x, roi_center_y + crosshair_size),
              color, thickness);
 
-    // Center dot
-    cv::circle(rgb_frame, cv::Point(center_x, center_y), 3, color, -1);
+    // Center dot at ROI center
+    cv::circle(rgb_frame, cv::Point(roi_center_x, roi_center_y), 3, color, -1);
 
     // Convert to QPixmap and display
     QImage qimg(rgb_frame.data, rgb_frame.cols, rgb_frame.rows,
