@@ -483,7 +483,7 @@ public:
         double cy = P1_.at<double>(1, 2);
         double cx_prime = P2_.at<double>(0, 2);
         double Tx_fx = P2_.at<double>(0, 3);
-        double Tx = -Tx_fx / fx;  // Baseline (positivo)
+        double Tx = -Tx_fx / fx;  // Baseline con segno OpenCV (negativo: Tx = -69.83mm)
 
         // Crea Q matrix corretta per OpenCV reprojectImageTo3D
         Q_corrected = cv::Mat::eye(4, 4, CV_64F);
@@ -491,8 +491,8 @@ public:
         Q_corrected.at<double>(1, 3) = -cy;
         Q_corrected.at<double>(2, 2) = 1.0;  // CRITICAL: deve essere 1, non 0!
         Q_corrected.at<double>(2, 3) = fx;   // Focale
-        Q_corrected.at<double>(3, 2) = 1.0 / Tx;  // CRITICAL: POSITIVO (già invertito rispetto a MATLAB!)
-        Q_corrected.at<double>(3, 3) = (cx - cx_prime) / Tx;  // Quasi 0 per CALIB_ZERO_DISPARITY
+        Q_corrected.at<double>(3, 2) = -1.0 / Tx;  // CRITICAL: -1/(-69.83) = +0.01432 (POSITIVO!)
+        Q_corrected.at<double>(3, 3) = -(cx - cx_prime) / Tx;  // Quasi 0 per CALIB_ZERO_DISPARITY
 
         logger_.info("[HandheldScanPipeline] RICALCOLATA Q matrix con formula OpenCV corretta:");
         logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_corrected.at<double>(2, 2)) +
