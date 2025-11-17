@@ -247,36 +247,48 @@ public:
                 cv::imwrite(debugDir_ + "/01_rectified_full_frame" + frameNum + "_right.png", rightRect);
             }
 
-            // CRITICAL: Apply CENTER crop for investor demo
+            // CRITICAL FIX: MASK instead of CROP to preserve Q matrix validity
+            // Problem: Physical cropping changes pixel coordinates, invalidating Q matrix (principal point)
+            // Solution: Mask pixels outside ROI to BLACK (0), keeping image size = imageSize_
             // Tested with MATLAB FINAL calibration:
             // - Full image: 65.45px epipolar error (POOR - insufficient edge coverage)
-            // - CENTER crop: 1.99px epipolar error (EXCELLENT)
+            // - CENTER mask: 1.99px epipolar error (EXCELLENT) + valid Q matrix
             if (useCenterCrop_) {
-                cv::Rect cropRoi(cropLeft_, cropTop_,
-                                croppedSize_.width, croppedSize_.height);
+                cv::Rect validRoi(cropLeft_, cropTop_,
+                                 croppedSize_.width, croppedSize_.height);
 
-                // Crop both rectified images identically
-                leftRect = leftRect(cropRoi).clone();  // clone() to ensure contiguous memory
-                rightRect = rightRect(cropRoi).clone();
+                // Create black masks (same size as rectified images)
+                cv::Mat leftMasked = cv::Mat::zeros(leftRect.size(), leftRect.type());
+                cv::Mat rightMasked = cv::Mat::zeros(rightRect.size(), rightRect.type());
+
+                // Copy only the valid ROI (center region)
+                leftRect(validRoi).copyTo(leftMasked(validRoi));
+                rightRect(validRoi).copyTo(rightMasked(validRoi));
+
+                // Replace with masked images (SAME SIZE as original, Q matrix remains valid!)
+                leftRect = leftMasked;
+                rightRect = rightMasked;
 
                 // Log first frame for verification
                 if (i == 0) {
-                    logger_.info("[HandheldScanPipeline] CENTER crop enabled: " +
-                                std::to_string(cropRoi.width) + "x" + std::to_string(cropRoi.height) +
-                                " (from " + std::to_string(imageSize_.width) + "x" + std::to_string(imageSize_.height) + ")");
-                    logger_.info("[HandheldScanPipeline] Crop margins (L,R,T,B): " +
+                    logger_.info("[HandheldScanPipeline] CENTER mask applied (NOT cropped - Q matrix preserved!)");
+                    logger_.info("[HandheldScanPipeline]   Valid ROI: " +
+                                std::to_string(validRoi.width) + "x" + std::to_string(validRoi.height) +
+                                " within " + std::to_string(imageSize_.width) + "x" + std::to_string(imageSize_.height));
+                    logger_.info("[HandheldScanPipeline]   Margins (L,R,T,B): " +
                                 std::to_string(cropLeft_) + ", " +
                                 std::to_string(cropRight_) + ", " +
                                 std::to_string(cropTop_) + ", " +
                                 std::to_string(cropBottom_));
+                    logger_.info("[HandheldScanPipeline]   Q matrix principal point (656, 326) remains VALID");
                 }
             }
 
-            // Save debug images (CROPPED) if enabled
+            // Save debug images (MASKED, full size with Q matrix preserved) if enabled
             if (saveDebugImages_ && !debugDir_.empty() && useCenterCrop_) {
                 std::string frameNum = std::to_string(i);
-                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_left.png", leftRect);
-                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_right.png", rightRect);
+                cv::imwrite(debugDir_ + "/02_masked_frame" + frameNum + "_left.png", leftRect);
+                cv::imwrite(debugDir_ + "/02_masked_frame" + frameNum + "_right.png", rightRect);
             }
 
             // Convert to grayscale if needed
