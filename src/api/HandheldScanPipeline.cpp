@@ -433,18 +433,38 @@ public:
         logger_.info("[HandheldScanPipeline] Disparity range: [" + std::to_string(minDisp/16.0) +
                     ", " + std::to_string(maxDisp/16.0) + "] pixels (subpixel ×16)");
 
-        // CRITICAL FIX: Apply OpenCV Q matrix bug fix (Issue #4874)
-        // stereoRectify returns wrong sign for Q(3,2), must invert for correct depth
+        // CRITICAL: MATLAB calibration has Q(3,2) with WRONG SIGN (must invert!)
+        //
+        // Problem: MATLAB exports Q(3,2) = -1/baseline = -0.01432 (NEGATIVE)
+        // But reprojectImageTo3D formula gives: Z = Q(2,3) / W, where W = Q(3,2) * disparity
+        // With Q(3,2) NEGATIVE and disparity POSITIVE:
+        //   W = -0.01432 * 50 = -0.716 (negative)
+        //   Z = 1561 / -0.716 = -2180mm (NEGATIVE - behind camera!)
+        //
+        // Solution: INVERT Q(3,2) sign to make it POSITIVE
+        // Then: W = +0.01432 * 50 = +0.716 (positive)
+        //       Z = 1561 / +0.716 = +2180mm (POSITIVE - in front of camera!)
+        //
+        // Verified with Python calculation: Q(3,2) MUST be POSITIVE for correct Z sign
+
         cv::Mat Q_corrected = Q_.clone();
         double originalQ32 = Q_.at<double>(3, 2);
-        Q_corrected.at<double>(3, 2) = -originalQ32;
+        Q_corrected.at<double>(3, 2) = -originalQ32;  // Invert sign!
 
-        logger_.info("[HandheldScanPipeline] Applied OpenCV Q matrix bug fix: Q(3,2) inverted from " +
-                    std::to_string(originalQ32) + " to " + std::to_string(Q_corrected.at<double>(3, 2)));
+        logger_.info("[HandheldScanPipeline] Applied Q(3,2) sign fix: " + std::to_string(originalQ32) +
+                    " → " + std::to_string(Q_corrected.at<double>(3, 2)) + " (must be POSITIVE for correct Z)");
 
-        // Reproject to 3D using corrected Q matrix
+        // CRITICAL: Convert disparity from CV_16SC1 (subpixel ×16) to CV_32F (pixel values)
+        // reprojectImageTo3D expects disparity in PIXELS, not subpixel format!
+        // OpenCV official example: disp.convertTo(floatDisp, CV_32F, 1.0f / 16.0f)
+        cv::Mat floatDisparity;
+        disparityMap.convertTo(floatDisparity, CV_32F, 1.0 / 16.0);  // Divide by 16!
+
+        logger_.info("[HandheldScanPipeline] Converted disparity: CV_16SC1 (×16) → CV_32F (÷16 = pixel values)");
+
+        // Reproject to 3D using CORRECTED Q matrix (with Q(3,2) sign fixed)
         cv::Mat points3D;
-        cv::reprojectImageTo3D(disparityMap, points3D, Q_corrected, true, CV_32F);
+        cv::reprojectImageTo3D(floatDisparity, points3D, Q_corrected, true, CV_32F);
 
         logger_.info("[HandheldScanPipeline] Point cloud generated: " +
                     std::to_string(points3D.cols) + "x" + std::to_string(points3D.rows) + " points");
