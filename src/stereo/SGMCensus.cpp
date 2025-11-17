@@ -353,8 +353,46 @@ void SGMCensus::selectDisparitiesWTA(
                 }
             }
 
-            // Set disparity (0 if invalid/ambiguous, bestD*16 if valid)
-            dispRow[x] = isUnique ? static_cast<int16_t>(bestD * 16) : 0;
+            if (!isUnique) {
+                dispRow[x] = 0;  // Invalid/ambiguous
+                continue;
+            }
+
+            // CRITICAL: SUBPIXEL INTERPOLATION using parabola fitting
+            // References:
+            // - Luxonis OAK: 3 fractional bits = 8 subpixel steps
+            // - OpenCV SGBM: parabola fitting on cost volume
+            // - Papers: significantly improves depth accuracy at long range
+            //
+            // Formula: offset = (C[d-1] - C[d+1]) / (2*(C[d-1] - 2*C[d] + C[d+1]))
+            // This fits a parabola through 3 cost values and finds the minimum
+
+            float subpixelOffset = 0.0f;
+
+            if (bestD > 0 && bestD < D - 1) {
+                // Get costs around best match
+                int baseIdx = y * width * D + x * D;
+                uint32_t C_prev = aggregatedCost[baseIdx + bestD - 1];
+                uint32_t C_curr = aggregatedCost[baseIdx + bestD];
+                uint32_t C_next = aggregatedCost[baseIdx + bestD + 1];
+
+                // Parabola interpolation formula
+                float numerator = static_cast<float>(C_prev - C_next);
+                float denominator = 2.0f * static_cast<float>(C_prev - 2*C_curr + C_next);
+
+                // Avoid division by zero and numerical instability
+                if (std::abs(denominator) > 1e-6f) {
+                    subpixelOffset = numerator / denominator;
+                    // Clamp to valid range [-1, 1] (shouldn't exceed but be safe)
+                    subpixelOffset = std::max(-1.0f, std::min(1.0f, subpixelOffset));
+                }
+            }
+
+            // Final disparity with subpixel precision
+            // OpenCV format: integer_disparity * 16 + fractional_bits
+            // This gives us ~1500 depth levels instead of 96
+            float disparitySubpixel = (static_cast<float>(bestD) + subpixelOffset) * 16.0f;
+            dispRow[x] = static_cast<int16_t>(std::round(disparitySubpixel));
         }
     }
 }

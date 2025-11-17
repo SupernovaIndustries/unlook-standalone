@@ -559,15 +559,22 @@ public:
                 plyFile << "property float z\n";
                 plyFile << "end_header\n";
 
-                // Write points (convert mm to meters for standard PLY)
+                // CRITICAL: Coordinate system conversion
+                // OpenCV reprojectImageTo3D uses image coordinates: X=right, Y=down, Z=forward
+                // PLY standard uses world coordinates: X=right, Y=up, Z=forward
+                // Must INVERT Y axis: y_world = -y_opencv
+                // This is a common issue - without inversion, point cloud appears flipped vertically
                 for (const auto& pt : validPoints) {
-                    plyFile << (pt[0] / 1000.0f) << " "
-                           << (pt[1] / 1000.0f) << " "
-                           << (pt[2] / 1000.0f) << "\n";
+                    float x_meters = pt[0] / 1000.0f;
+                    float y_meters = -pt[1] / 1000.0f;  // INVERT Y for correct orientation
+                    float z_meters = pt[2] / 1000.0f;
+
+                    plyFile << x_meters << " " << y_meters << " " << z_meters << "\n";
                 }
 
                 plyFile.close();
                 logger_.info("[HandheldScanPipeline] Exported PLY to: " + plyPath);
+                logger_.info("[HandheldScanPipeline]   Coordinate system: X=right, Y=up (inverted), Z=forward");
             } else {
                 logger_.warning("[HandheldScanPipeline] Failed to create PLY file: " + plyPath);
             }
