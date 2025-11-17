@@ -455,42 +455,54 @@ public:
                     " → " + std::to_string(Q_corrected.at<double>(3, 2)) + " (must be POSITIVE for correct Z)");
 
         // ============================================================================
-        // EXPERIMENTAL FIX: MATLAB (1-based) to OpenCV (0-based) principal point offset
+        // CRITICAL FIX: Ricalcola Q matrix con formula OpenCV corretta
         // ============================================================================
-        // Problem: MATLAB specifies pixel (1,1) as top-left, OpenCV uses (0,0)
-        // When converting MATLAB→OpenCV calibration, must SUBTRACT 1.0 from cx and cy
+        // PROBLEMA TROVATO: Q matrix da MATLAB usa CONVENZIONE DIVERSA da OpenCV!
         //
-        // Evidence from MATLAB documentation:
-        // "When converting from MATLAB to OpenCV, stereoParametersToOpenCV
-        //  compensates by SUBTRACTING 1 from both x and y-values for the principal point"
+        // MATLAB Q matrix (dalla calibrazione):
+        //   Q(2,2) = 0     ← DIVERSO da OpenCV
+        //   Q(2,3) = f     ← Focale in posizione diversa
+        //   Q(3,2) = -1/Tx ← Negativo
         //
-        // Current Q matrix values (from MATLAB export):
-        //   Q(0,3) = -656.109  (= -cx_rect)
-        //   Q(1,3) = -326.0    (= -cy_rect)
+        // OpenCV formula (da documentazione e codice sorgente):
+        //   Q = [1  0   0      -cx
+        //        0  1   0      -cy
+        //        0  0   0       f
+        //        0  0  -1/Tx   (cx-cx')/Tx]
         //
-        // This suggests cx_matlab = 657.109, cy_matlab = 327.0 (1-based indexing)
-        // For OpenCV (0-based), should be: cx_opencv = 655.109, cy_opencv = 325.0
+        // Ma in realtà OpenCV reprojectImageTo3D usa:
+        //   Q = [1  0   0      -cx
+        //        0  1   0      -cy
+        //        0  0   1       f       ← Q(2,2) = 1 (non 0!)
+        //        0  0  +1/Tx   0]       ← Q(3,2) = +1/Tx (non negativo!)
         //
-        // Impact of 1-pixel offset:
-        //   1. Epipolar alignment error: ~2 pixels (OBSERVED in Gemini analysis!)
-        //   2. 3D reprojection rays converge to wrong center → CONE artifact!
+        // SOLUZIONE: Ricalcola Q da P1 e P2 usando formula OpenCV corretta
         //
-        // Test: Apply -1.0 offset to principal point in Q matrix
-        //
-        double original_Q03 = Q_corrected.at<double>(0, 3);
-        double original_Q13 = Q_corrected.at<double>(1, 3);
+        double fx = P1_.at<double>(0, 0);
+        double cx = P1_.at<double>(0, 2);
+        double cy = P1_.at<double>(1, 2);
+        double cx_prime = P2_.at<double>(0, 2);
+        double Tx_fx = P2_.at<double>(0, 3);
+        double Tx = -Tx_fx / fx;  // Baseline (positivo)
 
-        Q_corrected.at<double>(0, 3) += 1.0;  // Q(0,3) = -cx, so add 1 → cx shifts from 656.109 to 655.109
-        Q_corrected.at<double>(1, 3) += 1.0;  // Q(1,3) = -cy, so add 1 → cy shifts from 326.0 to 325.0
+        // Crea Q matrix corretta per OpenCV reprojectImageTo3D
+        Q_corrected = cv::Mat::eye(4, 4, CV_64F);
+        Q_corrected.at<double>(0, 3) = -cx;
+        Q_corrected.at<double>(1, 3) = -cy;
+        Q_corrected.at<double>(2, 2) = 1.0;  // CRITICAL: deve essere 1, non 0!
+        Q_corrected.at<double>(2, 3) = fx;   // Focale
+        Q_corrected.at<double>(3, 2) = 1.0 / Tx;  // CRITICAL: POSITIVO (già invertito rispetto a MATLAB!)
+        Q_corrected.at<double>(3, 3) = (cx - cx_prime) / Tx;  // Quasi 0 per CALIB_ZERO_DISPARITY
 
-        logger_.info("[HandheldScanPipeline] TEST: Applied MATLAB→OpenCV principal point offset (-1.0 pixel)");
-        logger_.info("[HandheldScanPipeline]   Q(0,3): " + std::to_string(original_Q03) +
-                    " → " + std::to_string(Q_corrected.at<double>(0, 3)) +
-                    " (cx: 656.109 → 655.109)");
-        logger_.info("[HandheldScanPipeline]   Q(1,3): " + std::to_string(original_Q13) +
-                    " → " + std::to_string(Q_corrected.at<double>(1, 3)) +
-                    " (cy: 326.0 → 325.0)");
-        logger_.info("[HandheldScanPipeline]   Expected result: NO MORE CONE if offset was the problem!");
+        logger_.info("[HandheldScanPipeline] RICALCOLATA Q matrix con formula OpenCV corretta:");
+        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_corrected.at<double>(2, 2)) +
+                    " (era 0 in MATLAB, DEVE essere 1 per OpenCV!)");
+        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_corrected.at<double>(3, 2)) +
+                    " (era -" + std::to_string(std::abs(Q_.at<double>(3, 2))) + " in MATLAB, DEVE essere POSITIVO!)");
+        logger_.info("[HandheldScanPipeline]   Baseline Tx = " + std::to_string(Tx) + " mm");
+        logger_.info("[HandheldScanPipeline]   Principal point: cx=" + std::to_string(cx) +
+                    ", cy=" + std::to_string(cy));
+        logger_.info("[HandheldScanPipeline]   Expected result: 🎯 NO MORE CONE with correct Q matrix!");
         // ============================================================================
 
         // CRITICAL: Convert disparity from CV_16SC1 (subpixel ×16) to CV_32F (pixel values)
