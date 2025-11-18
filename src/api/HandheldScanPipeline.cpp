@@ -512,12 +512,48 @@ public:
         // - https://answers.opencv.org/question/64155/ (Reprojected points form cone shape)
         // - "When you crop an image, the principal point coordinates change. You need to adjust cx and cy values"
 
-        cv::Mat Q_effective = Q_.clone();
+        // ============================================================================
+        // CRITICAL FIX: Recalculate Q matrix with CORRECT OpenCV convention
+        // ============================================================================
+        // PROBLEM: Calibration file Q matrix may use MATLAB convention:
+        //   Q(2,2) = 0     (WRONG for OpenCV)
+        //   Q(3,2) = -1/Tx (NEGATIVE - WRONG for OpenCV)
+        //
+        // OpenCV reprojectImageTo3D expects:
+        //   Q(2,2) = 1.0   (NOT 0!)
+        //   Q(3,2) = +1/Tx (POSITIVE!)
+        //
+        // Solution: Recalculate Q from P1, P2 using OpenCV formula
+
+        double fx = P1_.at<double>(0, 0);
+        double cx = P1_.at<double>(0, 2);
+        double cy = P1_.at<double>(1, 2);
+        double cx_prime = P2_.at<double>(0, 2);
+        double Tx_fx = P2_.at<double>(0, 3);
+        double Tx = -Tx_fx / fx;  // Baseline (negative for OpenCV: Tx = -69.83mm)
+
+        // Create Q matrix with CORRECT OpenCV convention
+        cv::Mat Q_corrected = cv::Mat::eye(4, 4, CV_64F);
+        Q_corrected.at<double>(0, 3) = -cx;
+        Q_corrected.at<double>(1, 3) = -cy;
+        Q_corrected.at<double>(2, 2) = 1.0;  // CRITICAL: must be 1, not 0!
+        Q_corrected.at<double>(2, 3) = fx;   // Focal length
+        Q_corrected.at<double>(3, 2) = -1.0 / Tx;  // CRITICAL: -1/(-69.83) = +0.01432 (POSITIVE!)
+        Q_corrected.at<double>(3, 3) = -(cx - cx_prime) / Tx;  // Nearly 0 for CALIB_ZERO_DISPARITY
+
+        logger_.info("[HandheldScanPipeline] RECALCULATED Q matrix with OpenCV convention:");
+        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_corrected.at<double>(2, 2)) +
+                    " (MUST be 1 for OpenCV, was " + std::to_string(Q_.at<double>(2, 2)) + " in calib file)");
+        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_corrected.at<double>(3, 2)) +
+                    " (MUST be POSITIVE, was " + std::to_string(Q_.at<double>(3, 2)) + " in calib file)");
+        logger_.info("[HandheldScanPipeline]   Baseline Tx = " + std::to_string(Tx) + " mm");
+
+        cv::Mat Q_effective = Q_corrected.clone();
 
         if (useCenterCrop_) {
-            // Original principal point from calibration (in 1280x720 coords)
-            double cx_orig = -Q_.at<double>(0, 3);  // 737.69
-            double cy_orig = -Q_.at<double>(1, 3);  // 364.22
+            // Original principal point from RECALCULATED Q (in 1280x720 coords)
+            double cx_orig = -Q_corrected.at<double>(0, 3);  // From P1
+            double cy_orig = -Q_corrected.at<double>(1, 3);  // From P1
 
             // Principal point in cropped coordinate system
             // (translate by subtracting crop offset)
