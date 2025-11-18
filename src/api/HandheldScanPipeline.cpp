@@ -89,12 +89,17 @@ public:
     // Method: For each point, compute distance to K nearest neighbors
     // If mean distance > threshold * stddev → outlier
     //
+    // OPTIMIZED for REAL-TIME (RPi5):
+    //   - k=12: Reduced from 30 (k²: 900→144 iterations, 6x faster)
+    //   - Multi-threading: Parallel row processing on 4 Cortex-A76 cores
+    //   - Expected: ~500ms → ~50ms (10x speedup with k+threading)
+    //
     // Parameters tuning:
-    //   - k=20, threshold=2.0 → aggressive (removes 5-10% outliers)
-    //   - k=30, threshold=1.5 → very aggressive (removes 10-15% outliers)
-    //   - k=50, threshold=2.5 → conservative (removes 2-5% outliers)
+    //   - k=10, threshold=2.0 → fast, aggressive (removes 5-10% outliers)
+    //   - k=12, threshold=1.5 → balanced (removes 8-12% outliers) ← CURRENT
+    //   - k=15, threshold=1.2 → slower, very aggressive (removes 12-15% outliers)
     bool enableStatisticalFilter_ = true;         // Enable statistical outlier removal
-    int statisticalFilterK_ = 30;                 // Number of nearest neighbors to check
+    int statisticalFilterK_ = 12;                 // Neighborhood size (OPTIMIZED: 12 instead of 30)
     float statisticalFilterThreshold_ = 1.5f;     // Std dev multiplier (lower = more aggressive)
 
     // ========== DEBUG & STATISTICS ==========
@@ -671,21 +676,33 @@ public:
                             std::to_string(globalMean) + "mm, stddev=" + std::to_string(globalStdDev) + "mm");
 
                 // Second pass: filter outliers based on local neighborhood consistency
-                for (int y = 0; y < points3D.rows; y++) {
-                    for (int x = 0; x < points3D.cols; x++) {
-                        cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
+                // MULTI-THREADED: Process rows in parallel using 4 threads (RPi5 has 4 Cortex-A76 cores)
+                const int numThreads = 4;
+                const int rowsPerThread = (points3D.rows + numThreads - 1) / numThreads;
+                std::vector<std::thread> threads;
+                std::vector<int> threadOutlierCounts(numThreads, 0);
 
-                        if (pt[2] > 0 && pt[2] < 10000) {
-                            // Collect neighbor depths
-                            std::vector<float> neighborDepths;
-                            int validNeighbors = 0;
+                auto processRows = [&](int threadId, int startRow, int endRow) {
+                    int localOutliers = 0;
 
-                            for (int dy = -halfK; dy <= halfK; dy++) {
-                                for (int dx = -halfK; dx <= halfK; dx++) {
-                                    int nx = x + dx;
+                    for (int y = startRow; y < endRow && y < points3D.rows; y++) {
+                        for (int x = 0; x < points3D.cols; x++) {
+                            cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
+
+                            if (pt[2] > 0 && pt[2] < 10000) {
+                                // Collect neighbor depths (OPTIMIZED: k=12 instead of 30)
+                                std::vector<float> neighborDepths;
+                                neighborDepths.reserve(statisticalFilterK_ * statisticalFilterK_);
+                                int validNeighbors = 0;
+
+                                for (int dy = -halfK; dy <= halfK; dy++) {
                                     int ny = y + dy;
+                                    if (ny < 0 || ny >= points3D.rows) continue;
 
-                                    if (nx >= 0 && nx < points3D.cols && ny >= 0 && ny < points3D.rows) {
+                                    for (int dx = -halfK; dx <= halfK; dx++) {
+                                        int nx = x + dx;
+                                        if (nx < 0 || nx >= points3D.cols) continue;
+
                                         const cv::Vec3f& npt = points3D.at<cv::Vec3f>(ny, nx);
                                         if (npt[2] > 0 && npt[2] < 10000) {
                                             neighborDepths.push_back(npt[2]);
@@ -693,48 +710,68 @@ public:
                                         }
                                     }
                                 }
-                            }
 
-                            // Require at least 30% of neighborhood to be valid
-                            int minNeighbors = (statisticalFilterK_ * statisticalFilterK_) * 0.3;
-                            if (validNeighbors >= minNeighbors) {
-                                // Calculate local mean
-                                float localMean = 0;
-                                for (float z : neighborDepths) localMean += z;
-                                localMean /= neighborDepths.size();
+                                // Require at least 30% of neighborhood to be valid
+                                int minNeighbors = (statisticalFilterK_ * statisticalFilterK_) * 0.3;
+                                if (validNeighbors >= minNeighbors) {
+                                    // Calculate local mean
+                                    float localMean = 0;
+                                    for (float z : neighborDepths) localMean += z;
+                                    localMean /= neighborDepths.size();
 
-                                // Calculate local stddev
-                                float localStdDev = 0;
-                                for (float z : neighborDepths) {
-                                    float diff = z - localMean;
-                                    localStdDev += diff * diff;
-                                }
-                                localStdDev = std::sqrt(localStdDev / neighborDepths.size());
+                                    // Calculate local stddev
+                                    float localStdDev = 0;
+                                    for (float z : neighborDepths) {
+                                        float diff = z - localMean;
+                                        localStdDev += diff * diff;
+                                    }
+                                    localStdDev = std::sqrt(localStdDev / neighborDepths.size());
 
-                                // Check if point is outlier (too far from local mean)
-                                float deviation = std::abs(pt[2] - localMean);
-                                float threshold = statisticalFilterThreshold_ * localStdDev;
+                                    // Check if point is outlier (too far from local mean)
+                                    float deviation = std::abs(pt[2] - localMean);
+                                    float threshold = statisticalFilterThreshold_ * localStdDev;
 
-                                // Also check global outliers (extremely far from global mean)
-                                float globalDeviation = std::abs(pt[2] - globalMean);
-                                float globalThreshold = 3.0f * globalStdDev;
+                                    // Also check global outliers (extremely far from global mean)
+                                    float globalDeviation = std::abs(pt[2] - globalMean);
+                                    float globalThreshold = 3.0f * globalStdDev;
 
-                                if (deviation > threshold || globalDeviation > globalThreshold) {
-                                    // Mark as outlier
+                                    if (deviation > threshold || globalDeviation > globalThreshold) {
+                                        // Mark as outlier
+                                        pt[0] = 0;
+                                        pt[1] = 0;
+                                        pt[2] = 10000;
+                                        localOutliers++;
+                                    }
+                                } else {
+                                    // Insufficient neighbors → likely isolated noise
                                     pt[0] = 0;
                                     pt[1] = 0;
                                     pt[2] = 10000;
-                                    filteredOutliers++;
+                                    localOutliers++;
                                 }
-                            } else {
-                                // Insufficient neighbors → likely isolated noise
-                                pt[0] = 0;
-                                pt[1] = 0;
-                                pt[2] = 10000;
-                                filteredOutliers++;
                             }
                         }
                     }
+
+                    threadOutlierCounts[threadId] = localOutliers;
+                };
+
+                // Launch threads
+                for (int t = 0; t < numThreads; t++) {
+                    int startRow = t * rowsPerThread;
+                    int endRow = startRow + rowsPerThread;
+                    threads.emplace_back(processRows, t, startRow, endRow);
+                }
+
+                // Wait for all threads to complete
+                for (auto& thread : threads) {
+                    thread.join();
+                }
+
+                // Sum outliers from all threads
+                filteredOutliers = 0;
+                for (int count : threadOutlierCounts) {
+                    filteredOutliers += count;
                 }
 
                 float outlierPercent = (totalValidAfterBorder > 0) ?

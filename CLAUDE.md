@@ -386,3 +386,4 @@ The system has **completely replaced** standard libcamera with custom libcamera-
 - **GUI testing**: User validates with `unlook` command (DO NOT attempt automated GUI tests)
 - **Library paths**: Critical for runtime (see Critical Hardware Info above)
 - mai usare sgbm, abbiamo i vcsel e dobbiamo usare sempre census in tutte le sue forme
+- d'ora in poi per buildare ./build.sh --cross rpi5 -j 4
