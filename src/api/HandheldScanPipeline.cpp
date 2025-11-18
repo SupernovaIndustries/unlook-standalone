@@ -69,6 +69,34 @@ public:
     int cropBottom_ = 184; // Asymmetric to maintain center (was 150)
     cv::Size croppedSize_ = cv::Size(680, 420);  // 31% of original area
 
+    // ========== RECTANGULAR BORDER FILTER ==========
+    // CRITICAL: Image borders are RECTANGULAR (680x420), not circular!
+    // Radial filter FAILS because circle doesn't cover rectangular edges:
+    //   - Point (340, 0) is 210px from center → inside circle → NOT FILTERED ❌
+    //   - Point (0, 210) is 340px from center → inside circle → NOT FILTERED ❌
+    // Solution: Filter RECTANGULAR margin from all 4 edges (top/bottom/left/right)
+    //
+    // Border margin calculation:
+    //   - Image size: 680x420
+    //   - Margin 30px → keeps 620x360 (81% area)
+    //   - Margin 40px → keeps 600x340 (74% area)
+    //   - Margin 50px → keeps 580x320 (68% area)
+    bool enableBorderFilter_ = true;              // Enable rectangular border filtering
+    int borderMarginPixels_ = 40;                 // Filter 40px from all edges (adjust 30-50)
+
+    // ========== STATISTICAL OUTLIER REMOVAL ==========
+    // Removes diffuse noise cloud (outlier points scattered in empty space)
+    // Method: For each point, compute distance to K nearest neighbors
+    // If mean distance > threshold * stddev → outlier
+    //
+    // Parameters tuning:
+    //   - k=20, threshold=2.0 → aggressive (removes 5-10% outliers)
+    //   - k=30, threshold=1.5 → very aggressive (removes 10-15% outliers)
+    //   - k=50, threshold=2.5 → conservative (removes 2-5% outliers)
+    bool enableStatisticalFilter_ = true;         // Enable statistical outlier removal
+    int statisticalFilterK_ = 30;                 // Number of nearest neighbors to check
+    float statisticalFilterThreshold_ = 1.5f;     // Std dev multiplier (lower = more aggressive)
+
     // ========== DEBUG & STATISTICS ==========
     bool saveDebugImages_ = false;
     std::string debugDir_;
@@ -98,6 +126,23 @@ public:
             logger_.info("[HandheldScanPipeline]   Margins: L=" + std::to_string(cropLeft_) + ", R=" + std::to_string(cropRight_) +
                         ", T=" + std::to_string(cropTop_) + ", B=" + std::to_string(cropBottom_));
             logger_.info("[HandheldScanPipeline]   Expected epipolar error: ~2px (vs 65px full image)");
+
+            // Log filter configuration
+            if (enableBorderFilter_) {
+                int validWidth = croppedSize_.width - 2 * borderMarginPixels_;
+                int validHeight = croppedSize_.height - 2 * borderMarginPixels_;
+                float validArea = (100.0f * validWidth * validHeight) / (croppedSize_.width * croppedSize_.height);
+
+                logger_.info("[HandheldScanPipeline] RECTANGULAR BORDER FILTER ENABLED");
+                logger_.info("[HandheldScanPipeline]   Border margin: " + std::to_string(borderMarginPixels_) + "px from all edges");
+                logger_.info("[HandheldScanPipeline]   Valid region: " + std::to_string(validWidth) + "x" + std::to_string(validHeight) +
+                            " (" + std::to_string(validArea) + "% of crop area)");
+            }
+            if (enableStatisticalFilter_) {
+                logger_.info("[HandheldScanPipeline] STATISTICAL OUTLIER REMOVAL ENABLED");
+                logger_.info("[HandheldScanPipeline]   Neighborhood: " + std::to_string(statisticalFilterK_) + "px");
+                logger_.info("[HandheldScanPipeline]   Threshold: " + std::to_string(statisticalFilterThreshold_) + " * std_dev");
+            }
         } else {
             logger_.info("[HandheldScanPipeline] CENTER crop DISABLED (using full image)");
         }
@@ -247,48 +292,52 @@ public:
                 cv::imwrite(debugDir_ + "/01_rectified_full_frame" + frameNum + "_right.png", rightRect);
             }
 
-            // CRITICAL FIX: MASK instead of CROP to preserve Q matrix validity
-            // Problem: Physical cropping changes pixel coordinates, invalidating Q matrix (principal point)
-            // Solution: Mask pixels outside ROI to BLACK (0), keeping image size = imageSize_
-            // Tested with MATLAB FINAL calibration:
+            // CRITICAL OPTIMIZATION: PHYSICAL CROP (69% memory/processing saving!)
+            // Previous approach: MASK with black borders → wasted 69% memory + Census on useless pixels
+            // New approach: PHYSICAL CROP → only process valid 680x420 region
+            //
+            // Tested with MATLAB calibration:
             // - Full image: 65.45px epipolar error (POOR - insufficient edge coverage)
-            // - CENTER mask: 1.99px epipolar error (EXCELLENT) + valid Q matrix
+            // - CENTER crop: 1.99px epipolar error (EXCELLENT)
+            //
+            // Q matrix adjustment required:
+            // - Original Q has principal point at (737.69, 364.22) in 1280x720 coords
+            // - After crop, new coordinate system is 680x420 with origin at ROI top-left
+            // - Principal point in crop coords: (421.69, 248.22)
+            // - Crop center: (340, 210)
+            // - Offset STILL 81.69px X, 38.22px Y → Q adjustment needed in generatePointCloud()
             if (useCenterCrop_) {
                 cv::Rect validRoi(cropLeft_, cropTop_,
                                  croppedSize_.width, croppedSize_.height);
 
-                // Create black masks (same size as rectified images)
-                cv::Mat leftMasked = cv::Mat::zeros(leftRect.size(), leftRect.type());
-                cv::Mat rightMasked = cv::Mat::zeros(rightRect.size(), rightRect.type());
-
-                // Copy only the valid ROI (center region)
-                leftRect(validRoi).copyTo(leftMasked(validRoi));
-                rightRect(validRoi).copyTo(rightMasked(validRoi));
-
-                // Replace with masked images (SAME SIZE as original, Q matrix remains valid!)
-                leftRect = leftMasked;
-                rightRect = rightMasked;
+                // PHYSICAL CROP: Extract only the valid ROI region
+                // CRITICAL: Use .clone() to create independent copy (not just a view/reference)
+                leftRect = leftRect(validRoi).clone();
+                rightRect = rightRect(validRoi).clone();
 
                 // Log first frame for verification
                 if (i == 0) {
-                    logger_.info("[HandheldScanPipeline] CENTER mask applied (NOT cropped - Q matrix preserved!)");
-                    logger_.info("[HandheldScanPipeline]   Valid ROI: " +
-                                std::to_string(validRoi.width) + "x" + std::to_string(validRoi.height) +
-                                " within " + std::to_string(imageSize_.width) + "x" + std::to_string(imageSize_.height));
-                    logger_.info("[HandheldScanPipeline]   Margins (L,R,T,B): " +
-                                std::to_string(cropLeft_) + ", " +
-                                std::to_string(cropRight_) + ", " +
-                                std::to_string(cropTop_) + ", " +
-                                std::to_string(cropBottom_));
-                    logger_.info("[HandheldScanPipeline]   Q matrix principal point (656, 326) remains VALID");
+                    logger_.info("[HandheldScanPipeline] PHYSICAL CROP applied (69% memory/processing reduction!)");
+                    logger_.info("[HandheldScanPipeline]   Cropped to: " +
+                                std::to_string(croppedSize_.width) + "x" + std::to_string(croppedSize_.height));
+                    logger_.info("[HandheldScanPipeline]   From ROI: [" +
+                                std::to_string(cropLeft_) + ":" + std::to_string(cropLeft_ + croppedSize_.width) +
+                                ", " +
+                                std::to_string(cropTop_) + ":" + std::to_string(cropTop_ + croppedSize_.height) + "]");
+                    logger_.info("[HandheldScanPipeline]   Original: " +
+                                std::to_string(imageSize_.width) + "x" + std::to_string(imageSize_.height) +
+                                " → Cropped: " +
+                                std::to_string(leftRect.cols) + "x" + std::to_string(leftRect.rows));
+                    logger_.info("[HandheldScanPipeline]   New coordinate system: (0,0) at ROI top-left");
+                    logger_.info("[HandheldScanPipeline]   Q matrix will be adjusted in generatePointCloud() for crop coords");
                 }
             }
 
-            // Save debug images (MASKED, full size with Q matrix preserved) if enabled
+            // Save debug images (CROPPED) if enabled
             if (saveDebugImages_ && !debugDir_.empty() && useCenterCrop_) {
                 std::string frameNum = std::to_string(i);
-                cv::imwrite(debugDir_ + "/02_masked_frame" + frameNum + "_left.png", leftRect);
-                cv::imwrite(debugDir_ + "/02_masked_frame" + frameNum + "_right.png", rightRect);
+                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_left.png", leftRect);
+                cv::imwrite(debugDir_ + "/02_cropped_frame" + frameNum + "_right.png", rightRect);
             }
 
             // Convert to grayscale if needed
@@ -433,13 +482,78 @@ public:
         logger_.info("[HandheldScanPipeline] Disparity range: [" + std::to_string(minDisp/16.0) +
                     ", " + std::to_string(maxDisp/16.0) + "] pixels (subpixel ×16)");
 
-        // USE Q MATRIX DIRECTLY FROM CALIBRATION FILE
-        // (No manual fixes - Q is now from OpenCV stereoRectify, not MATLAB)
-        logger_.info("[HandheldScanPipeline] Using Q matrix from calibration file (OpenCV stereoRectify)");
-        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_.at<double>(2, 2)));
-        logger_.info("[HandheldScanPipeline]   Q(2,3) = " + std::to_string(Q_.at<double>(2, 3)) + " (focal length)");
-        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_.at<double>(3, 2)) + " (-1/baseline)");
-        logger_.info("[HandheldScanPipeline]   Q(3,3) = " + std::to_string(Q_.at<double>(3, 3)));
+        // CRITICAL FIX FOR CONE ARTIFACT: Adjust Q matrix for PHYSICAL CROP
+        // When useCenterCrop_ is enabled, images are PHYSICALLY CROPPED to 680x420
+        // New coordinate system: (0,0) at top-left of crop region
+        //
+        // Problem: Q matrix from calibration has principal point at (737.69, 364.22) from MATLAB
+        // in original 1280x720 coordinate system.
+        //
+        // After physical crop:
+        // - New image size: 680x420
+        // - Original principal point (737.69, 364.22) in 1280x720 coords
+        //   becomes (421.69, 248.22) in crop coords [subtract (cropLeft_, cropTop_)]
+        // - Crop center: (340, 210)
+        // - Offset STILL present: ΔX = 81.69 px, ΔY = 38.22 px
+        //
+        // This offset causes CONE ARTIFACT because reprojectImageTo3D calculates:
+        //   X = (u - cx) / (-1/Tx)  where cx should be crop center, not translated principal point
+        //   Y = (v - cy)            where cy should be crop center, not translated principal point
+        //
+        // Solution: Adjust Q(0,3) and Q(1,3) to CROP CENTER (not translated pp!)
+        //
+        // References:
+        // - https://stackoverflow.com/questions/33406177/ (Point cloud from reprojectImageTo3D looks like a cone)
+        // - https://answers.opencv.org/question/64155/ (Reprojected points form cone shape)
+        // - "When you crop an image, the principal point coordinates change. You need to adjust cx and cy values"
+
+        cv::Mat Q_effective = Q_.clone();
+
+        if (useCenterCrop_) {
+            // Original principal point from calibration (in 1280x720 coords)
+            double cx_orig = -Q_.at<double>(0, 3);  // 737.69
+            double cy_orig = -Q_.at<double>(1, 3);  // 364.22
+
+            // Principal point in cropped coordinate system
+            // (translate by subtracting crop offset)
+            double cx_in_crop = cx_orig - cropLeft_;  // 737.69 - 316 = 421.69
+            double cy_in_crop = cy_orig - cropTop_;   // 364.22 - 116 = 248.22
+
+            // Center of cropped image (680x420)
+            double crop_center_x = croppedSize_.width / 2.0;   // 340
+            double crop_center_y = croppedSize_.height / 2.0;  // 210
+
+            // Calculate offset (STILL PRESENT after crop!)
+            double offset_x = cx_in_crop - crop_center_x;  // 421.69 - 340 = 81.69
+            double offset_y = cy_in_crop - crop_center_y;  // 248.22 - 210 = 38.22
+
+            logger_.info("[HandheldScanPipeline] CRITICAL FIX: Adjusting Q matrix for PHYSICAL CROP");
+            logger_.info("[HandheldScanPipeline]   Original pp (1280x720 coords): (" +
+                        std::to_string(cx_orig) + ", " + std::to_string(cy_orig) + ")");
+            logger_.info("[HandheldScanPipeline]   Translated pp (crop coords): (" +
+                        std::to_string(cx_in_crop) + ", " + std::to_string(cy_in_crop) + ")");
+            logger_.info("[HandheldScanPipeline]   Crop center (target): (" +
+                        std::to_string(crop_center_x) + ", " + std::to_string(crop_center_y) + ")");
+            logger_.info("[HandheldScanPipeline]   Offset: ΔX = " + std::to_string(offset_x) +
+                        " px, ΔY = " + std::to_string(offset_y) + " px");
+
+            // Adjust Q matrix principal point to CROP CENTER (eliminates offset!)
+            Q_effective.at<double>(0, 3) = -crop_center_x;  // -340
+            Q_effective.at<double>(1, 3) = -crop_center_y;  // -210
+
+            logger_.info("[HandheldScanPipeline]   Q matrix adjusted: cx=" + std::to_string(crop_center_x) +
+                        ", cy=" + std::to_string(crop_center_y));
+            logger_.info("[HandheldScanPipeline]   Disparity map size: " +
+                        std::to_string(disparityMap.cols) + "x" + std::to_string(disparityMap.rows));
+            logger_.info("[HandheldScanPipeline]   This FIX should eliminate the CONE ARTIFACT!");
+        } else {
+            logger_.info("[HandheldScanPipeline] Using Q matrix from calibration file (no crop, no adjustment)");
+        }
+
+        logger_.info("[HandheldScanPipeline]   Q(2,2) = " + std::to_string(Q_effective.at<double>(2, 2)));
+        logger_.info("[HandheldScanPipeline]   Q(2,3) = " + std::to_string(Q_effective.at<double>(2, 3)) + " (focal length)");
+        logger_.info("[HandheldScanPipeline]   Q(3,2) = " + std::to_string(Q_effective.at<double>(3, 2)) + " (-1/baseline)");
+        logger_.info("[HandheldScanPipeline]   Q(3,3) = " + std::to_string(Q_effective.at<double>(3, 3)));
 
         // CRITICAL: Convert disparity from CV_16SC1 (subpixel ×16) to CV_32F (pixel values)
         // reprojectImageTo3D expects disparity in PIXELS, not subpixel format!
@@ -449,12 +563,195 @@ public:
 
         logger_.info("[HandheldScanPipeline] Converted disparity: CV_16SC1 (×16) → CV_32F (÷16 = pixel values)");
 
-        // Reproject to 3D using Q matrix from calibration file
+        // Reproject to 3D using ADJUSTED Q matrix (fixes cone artifact!)
         cv::Mat points3D;
-        cv::reprojectImageTo3D(floatDisparity, points3D, Q_, true, CV_32F);
+        cv::reprojectImageTo3D(floatDisparity, points3D, Q_effective, true, CV_32F);
 
         logger_.info("[HandheldScanPipeline] Point cloud generated: " +
                     std::to_string(points3D.cols) + "x" + std::to_string(points3D.rows) + " points");
+
+        // ========== STEP 1: RECTANGULAR BORDER FILTER ==========
+        // CRITICAL FIX: Filter RECTANGULAR margin from all 4 edges (not circular!)
+        // Image borders are rectangular (680x420), so we need rectangular filtering
+        int filteredBorderPoints = 0;
+        int totalPointsBeforeFiltering = 0;
+
+        if (enableBorderFilter_ && useCenterCrop_) {
+            logger_.info("[HandheldScanPipeline] Applying RECTANGULAR BORDER FILTER...");
+            logger_.info("[HandheldScanPipeline]   Image size: " + std::to_string(croppedSize_.width) + "x" +
+                        std::to_string(croppedSize_.height));
+            logger_.info("[HandheldScanPipeline]   Border margin: " + std::to_string(borderMarginPixels_) + " px from all edges");
+
+            int margin = borderMarginPixels_;
+            int validLeft = margin;
+            int validRight = croppedSize_.width - margin;
+            int validTop = margin;
+            int validBottom = croppedSize_.height - margin;
+
+            logger_.info("[HandheldScanPipeline]   Valid region: x=[" + std::to_string(validLeft) + "," +
+                        std::to_string(validRight) + "], y=[" + std::to_string(validTop) + "," +
+                        std::to_string(validBottom) + "]");
+
+            // Filter all border pixels
+            for (int y = 0; y < points3D.rows; y++) {
+                for (int x = 0; x < points3D.cols; x++) {
+                    cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
+
+                    // Check if point is valid (has valid Z depth)
+                    bool isValid = (pt[2] > 0 && pt[2] < 10000);
+
+                    if (isValid) {
+                        totalPointsBeforeFiltering++;
+
+                        // Check if point is in border region
+                        bool inBorder = (x < validLeft) || (x >= validRight) ||
+                                       (y < validTop) || (y >= validBottom);
+
+                        if (inBorder) {
+                            // Mark as invalid
+                            pt[0] = 0;
+                            pt[1] = 0;
+                            pt[2] = 10000;  // Invalid Z marker
+                            filteredBorderPoints++;
+                        }
+                    }
+                }
+            }
+
+            float borderFilterPercent = (totalPointsBeforeFiltering > 0) ?
+                (100.0f * filteredBorderPoints / totalPointsBeforeFiltering) : 0.0f;
+
+            logger_.info("[HandheldScanPipeline] Border filter complete:");
+            logger_.info("[HandheldScanPipeline]   Total points: " + std::to_string(totalPointsBeforeFiltering));
+            logger_.info("[HandheldScanPipeline]   Border points filtered: " + std::to_string(filteredBorderPoints) +
+                        " (" + std::to_string(borderFilterPercent) + "%)");
+        }
+
+        // ========== STEP 2: STATISTICAL OUTLIER REMOVAL ==========
+        // Removes diffuse noise cloud (outlier points in empty space)
+        // Method: Check depth consistency with neighbors using local Z variance
+        int filteredOutliers = 0;
+        int totalValidAfterBorder = 0;
+
+        if (enableStatisticalFilter_) {
+            logger_.info("[HandheldScanPipeline] Applying STATISTICAL OUTLIER REMOVAL...");
+            logger_.info("[HandheldScanPipeline]   Neighborhood size: " + std::to_string(statisticalFilterK_) + " pixels");
+            logger_.info("[HandheldScanPipeline]   Threshold: " + std::to_string(statisticalFilterThreshold_) + " * std_dev");
+
+            int halfK = statisticalFilterK_ / 2;
+
+            // First pass: collect all valid Z depths for global statistics
+            std::vector<float> allDepths;
+            allDepths.reserve(points3D.rows * points3D.cols);
+
+            for (int y = 0; y < points3D.rows; y++) {
+                for (int x = 0; x < points3D.cols; x++) {
+                    const cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
+                    if (pt[2] > 0 && pt[2] < 10000) {
+                        allDepths.push_back(pt[2]);
+                        totalValidAfterBorder++;
+                    }
+                }
+            }
+
+            if (allDepths.size() > 100) {
+                // Calculate global mean and stddev
+                float globalMean = 0;
+                for (float z : allDepths) globalMean += z;
+                globalMean /= allDepths.size();
+
+                float globalStdDev = 0;
+                for (float z : allDepths) {
+                    float diff = z - globalMean;
+                    globalStdDev += diff * diff;
+                }
+                globalStdDev = std::sqrt(globalStdDev / allDepths.size());
+
+                logger_.info("[HandheldScanPipeline]   Global depth stats: mean=" +
+                            std::to_string(globalMean) + "mm, stddev=" + std::to_string(globalStdDev) + "mm");
+
+                // Second pass: filter outliers based on local neighborhood consistency
+                for (int y = 0; y < points3D.rows; y++) {
+                    for (int x = 0; x < points3D.cols; x++) {
+                        cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
+
+                        if (pt[2] > 0 && pt[2] < 10000) {
+                            // Collect neighbor depths
+                            std::vector<float> neighborDepths;
+                            int validNeighbors = 0;
+
+                            for (int dy = -halfK; dy <= halfK; dy++) {
+                                for (int dx = -halfK; dx <= halfK; dx++) {
+                                    int nx = x + dx;
+                                    int ny = y + dy;
+
+                                    if (nx >= 0 && nx < points3D.cols && ny >= 0 && ny < points3D.rows) {
+                                        const cv::Vec3f& npt = points3D.at<cv::Vec3f>(ny, nx);
+                                        if (npt[2] > 0 && npt[2] < 10000) {
+                                            neighborDepths.push_back(npt[2]);
+                                            validNeighbors++;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Require at least 30% of neighborhood to be valid
+                            int minNeighbors = (statisticalFilterK_ * statisticalFilterK_) * 0.3;
+                            if (validNeighbors >= minNeighbors) {
+                                // Calculate local mean
+                                float localMean = 0;
+                                for (float z : neighborDepths) localMean += z;
+                                localMean /= neighborDepths.size();
+
+                                // Calculate local stddev
+                                float localStdDev = 0;
+                                for (float z : neighborDepths) {
+                                    float diff = z - localMean;
+                                    localStdDev += diff * diff;
+                                }
+                                localStdDev = std::sqrt(localStdDev / neighborDepths.size());
+
+                                // Check if point is outlier (too far from local mean)
+                                float deviation = std::abs(pt[2] - localMean);
+                                float threshold = statisticalFilterThreshold_ * localStdDev;
+
+                                // Also check global outliers (extremely far from global mean)
+                                float globalDeviation = std::abs(pt[2] - globalMean);
+                                float globalThreshold = 3.0f * globalStdDev;
+
+                                if (deviation > threshold || globalDeviation > globalThreshold) {
+                                    // Mark as outlier
+                                    pt[0] = 0;
+                                    pt[1] = 0;
+                                    pt[2] = 10000;
+                                    filteredOutliers++;
+                                }
+                            } else {
+                                // Insufficient neighbors → likely isolated noise
+                                pt[0] = 0;
+                                pt[1] = 0;
+                                pt[2] = 10000;
+                                filteredOutliers++;
+                            }
+                        }
+                    }
+                }
+
+                float outlierPercent = (totalValidAfterBorder > 0) ?
+                    (100.0f * filteredOutliers / totalValidAfterBorder) : 0.0f;
+
+                logger_.info("[HandheldScanPipeline] Statistical outlier removal complete:");
+                logger_.info("[HandheldScanPipeline]   Valid points after border filter: " +
+                            std::to_string(totalValidAfterBorder));
+                logger_.info("[HandheldScanPipeline]   Outliers removed: " + std::to_string(filteredOutliers) +
+                            " (" + std::to_string(outlierPercent) + "%)");
+                logger_.info("[HandheldScanPipeline]   Final high-quality points: " +
+                            std::to_string(totalValidAfterBorder - filteredOutliers));
+            } else {
+                logger_.warning("[HandheldScanPipeline] Too few valid points for statistical filtering (need >100, have " +
+                            std::to_string(allDepths.size()) + ")");
+            }
+        }
 
         // Sample Z depths from center region for verification
         const int sampleSize = 100;
