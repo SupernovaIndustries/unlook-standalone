@@ -1307,6 +1307,68 @@ void HandheldScanWidget::onPreviewFrame(const core::StereoFramePair& frame) {
     // Center dot at ROI center
     cv::circle(rgb_frame, cv::Point(roi_center_x, roi_center_y), 3, color, -1);
 
+    // ========== DRAW INNER VALID AREA (after border filter margin) ==========
+    // This shows the area that would be kept if border filter is enabled
+    // Border margin: 40px from all edges of the cropped region
+    const int border_margin = 40;  // Must match HandheldScanPipeline borderMarginPixels_
+    const int inner_left = roi_left + border_margin;
+    const int inner_top = roi_top + border_margin;
+    const int inner_width = roi_width - 2 * border_margin;   // 680 - 80 = 600
+    const int inner_height = roi_height - 2 * border_margin; // 420 - 80 = 340
+
+    // Draw orange dashed rectangle (shows filtered area boundary)
+    cv::Scalar inner_color(255, 165, 0);  // RGB: orange
+    int inner_thickness = 2;
+
+    // Draw dashed rectangle by drawing segments
+    int dash_length = 10;
+    int gap_length = 5;
+
+    // Top edge (dashed)
+    for (int x = inner_left; x < inner_left + inner_width; x += dash_length + gap_length) {
+        int x_end = std::min(x + dash_length, inner_left + inner_width);
+        cv::line(rgb_frame, cv::Point(x, inner_top), cv::Point(x_end, inner_top),
+                 inner_color, inner_thickness);
+    }
+
+    // Bottom edge (dashed)
+    for (int x = inner_left; x < inner_left + inner_width; x += dash_length + gap_length) {
+        int x_end = std::min(x + dash_length, inner_left + inner_width);
+        cv::line(rgb_frame, cv::Point(x, inner_top + inner_height),
+                 cv::Point(x_end, inner_top + inner_height), inner_color, inner_thickness);
+    }
+
+    // Left edge (dashed)
+    for (int y = inner_top; y < inner_top + inner_height; y += dash_length + gap_length) {
+        int y_end = std::min(y + dash_length, inner_top + inner_height);
+        cv::line(rgb_frame, cv::Point(inner_left, y), cv::Point(inner_left, y_end),
+                 inner_color, inner_thickness);
+    }
+
+    // Right edge (dashed)
+    for (int y = inner_top; y < inner_top + inner_height; y += dash_length + gap_length) {
+        int y_end = std::min(y + dash_length, inner_top + inner_height);
+        cv::line(rgb_frame, cv::Point(inner_left + inner_width, y),
+                 cv::Point(inner_left + inner_width, y_end), inner_color, inner_thickness);
+    }
+
+    // Label for inner area (optional, can be removed if clutters)
+    std::string inner_label = "HIGH-QUALITY AREA (600x340)";
+    cv::Size inner_text_size = cv::getTextSize(inner_label, font_face, 0.5, 1, &baseline);
+    cv::Point inner_text_org(inner_left + (inner_width - inner_text_size.width) / 2,
+                             inner_top + inner_height + 25);
+
+    // Draw semi-transparent background for inner label
+    cv::rectangle(rgb_frame,
+                  cv::Point(inner_text_org.x - 5, inner_text_org.y - inner_text_size.height - 5),
+                  cv::Point(inner_text_org.x + inner_text_size.width + 5, inner_text_org.y + baseline + 5),
+                  cv::Scalar(0, 0, 0),  // Black background
+                  -1);  // Filled
+
+    // Draw inner area text
+    cv::putText(rgb_frame, inner_label, inner_text_org, font_face, 0.5,
+                inner_color, 1, cv::LINE_AA);
+
     // Convert to QPixmap and display
     QImage qimg(rgb_frame.data, rgb_frame.cols, rgb_frame.rows,
                 rgb_frame.step, QImage::Format_RGB888);
