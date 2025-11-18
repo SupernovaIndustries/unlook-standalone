@@ -81,7 +81,7 @@ public:
     //   - Margin 30px → keeps 620x360 (81% area)
     //   - Margin 40px → keeps 600x340 (74% area)
     //   - Margin 50px → keeps 580x320 (68% area)
-    bool enableBorderFilter_ = true;              // Enable rectangular border filtering
+    bool enableBorderFilter_ = false;             // DISABLED: Enable rectangular border filtering
     int borderMarginPixels_ = 40;                 // Filter 40px from all edges (adjust 30-50)
 
     // ========== STATISTICAL OUTLIER REMOVAL ==========
@@ -98,7 +98,7 @@ public:
     //   - k=10, threshold=2.0 → fast, aggressive (removes 5-10% outliers)
     //   - k=12, threshold=1.5 → balanced (removes 8-12% outliers) ← CURRENT
     //   - k=15, threshold=1.2 → slower, very aggressive (removes 12-15% outliers)
-    bool enableStatisticalFilter_ = true;         // Enable statistical outlier removal
+    bool enableStatisticalFilter_ = false;        // DISABLED: Enable statistical outlier removal
     int statisticalFilterK_ = 12;                 // Neighborhood size (OPTIMIZED: 12 instead of 30)
     float statisticalFilterThreshold_ = 1.5f;     // Std dev multiplier (lower = more aggressive)
 
