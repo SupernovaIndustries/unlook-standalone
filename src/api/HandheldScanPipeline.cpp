@@ -114,14 +114,14 @@ public:
         censusConfig_.censusWindowSize = 9;   // 9x9 = 80 bits (EXACT match to epiception repo)
         censusConfig_.numDisparities = 384;
         censusConfig_.P1 = 8;     // Standard SGM penalty (small disparity change)
-        censusConfig_.P2 = 32;    // Standard SGM penalty (large disparity change)
+        censusConfig_.P2 = 24;    // REDUCED from 32 → allows more disparity jumps → more valid pixels
         censusConfig_.use8Paths = true;
-        censusConfig_.verticalSearchRange = 0;  // Disabled (testing showed no improvement)
+        censusConfig_.verticalSearchRange = 2;  // ENABLED: ±2px vertical search for epipolar errors
         censusConfig_.verbose = false;  // Disable for production
 
         sgmCensus_ = std::make_unique<stereo::SGMCensus>(censusConfig_);
 
-        logger_.info("[HandheldScanPipeline] Initialized with SGMCensus (census=9x9, P1=8, P2=32, vertical=±8px, uniqueness=15%)");
+        logger_.info("[HandheldScanPipeline] Initialized with SGMCensus (census=9x9, P1=8, P2=24, vertical=±2px, CLAHE=4.0)");
 
         // Log CENTER crop status for investor demo
         if (useCenterCrop_) {
@@ -359,7 +359,8 @@ public:
             // VCSEL structured light patterns can have low contrast in ambient light
             // CLAHE (Contrast Limited Adaptive Histogram Equalization) improves local contrast
             // Clip limit 2-4 recommended for VCSEL enhancement without over-amplifying noise
-            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+            // INCREASED to 4.0 for maximum texture enhancement → more valid disparities
+            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(4.0, cv::Size(8, 8));
             cv::Mat leftEnhanced, rightEnhanced;
             clahe->apply(leftGray, leftEnhanced);
             clahe->apply(rightGray, rightEnhanced);
