@@ -27,6 +27,7 @@
 #include <thread>
 #include <fstream>
 #include <filesystem>
+#include <omp.h>  // OpenMP for multi-threading optimizations
 
 namespace fs = std::filesystem;
 
@@ -279,6 +280,9 @@ public:
 
         logger_.info("[HandheldScanPipeline] Processing " + std::to_string(frames.size()) + " stereo frames with SGMCensus");
 
+        // OPTIMIZATION: Create CLAHE once outside loop (expensive object creation)
+        cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(4.0, cv::Size(8, 8));
+
         for (size_t i = 0; i < frames.size(); i++) {
             if (progressCallback) {
                 float progress = static_cast<float>(i) / frames.size();
@@ -360,7 +364,7 @@ public:
             // CLAHE (Contrast Limited Adaptive Histogram Equalization) improves local contrast
             // Clip limit 2-4 recommended for VCSEL enhancement without over-amplifying noise
             // INCREASED to 4.0 for maximum texture enhancement → more valid disparities
-            cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(4.0, cv::Size(8, 8));
+            // OPTIMIZATION: CLAHE object created once outside loop (line 283)
             cv::Mat leftEnhanced, rightEnhanced;
             clahe->apply(leftGray, leftEnhanced);
             clahe->apply(rightGray, rightEnhanced);
@@ -419,6 +423,8 @@ public:
         int totalPixels = 0;
         int validPixels = 0;
 
+        // OPTIMIZATION: Parallelize disparity fusion with OpenMP
+        #pragma omp parallel for reduction(+:totalPixels,validPixels) schedule(dynamic, 8)
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
                 std::vector<int16_t> disparityValues;
