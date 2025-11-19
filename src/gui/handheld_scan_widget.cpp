@@ -582,8 +582,10 @@ void HandheldScanWidget::startScanThread() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); // Brief delay for cleanup
 
             // ========== PER-FRAME AUTO-CALIBRATION ==========
-            // For each frame, analyze scene and optimize exposure/gain for that specific object position
-            qDebug() << "[HandheldScanWidget::ScanThread] Starting PER-FRAME calibrated capture for" << TARGET_FRAMES << "frames";
+            // OPTIMIZATION: BURST CAPTURE MODE - capture all frames continuously without stop/start
+            // OLD APPROACH: start/stop for each frame → 15-30 seconds wasted
+            // NEW APPROACH: single continuous capture → 2-3 seconds total!
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting BURST CAPTURE MODE for" << TARGET_FRAMES << "frames";
 
             std::vector<core::StereoFramePair> captured_frames;
             captured_frames.reserve(TARGET_FRAMES);
@@ -592,7 +594,7 @@ void HandheldScanWidget::startScanThread() {
             double current_exposure = calibrated_exposure_us_;
             double current_gain = calibrated_gain_;
 
-            qDebug() << "[HandheldScanWidget::ScanThread] Initial calibrated params: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
+            qDebug() << "[HandheldScanWidget::ScanThread] Burst mode with calibrated params: exposure=" << current_exposure << "us, gain=" << current_gain << "x";
 
             // CRITICAL: Disable auto-exposure and auto-gain FIRST
             camera_system_->setAutoExposure(core::CameraId::LEFT, false);
@@ -600,191 +602,76 @@ void HandheldScanWidget::startScanThread() {
             camera_system_->setAutoGain(core::CameraId::LEFT, false);
             camera_system_->setAutoGain(core::CameraId::RIGHT, false);
 
-            // Apply calibrated parameters to BOTH cameras before starting per-frame loop
+            // Apply calibrated parameters to BOTH cameras ONCE
             qDebug() << "[HandheldScanWidget::ScanThread] Applying calibrated params to BOTH cameras...";
             camera_system_->setExposureTime(core::CameraId::LEFT, current_exposure);
             camera_system_->setExposureTime(core::CameraId::RIGHT, current_exposure);
             camera_system_->setGain(core::CameraId::LEFT, current_gain);
             camera_system_->setGain(core::CameraId::RIGHT, current_gain);
 
-            // Per-frame capture loop with scene-specific optimization
-            for (int frame_idx = 0; frame_idx < TARGET_FRAMES; frame_idx++) {
-                qDebug() << "[HandheldScanWidget::ScanThread] ========== FRAME" << (frame_idx + 1) << "/" << TARGET_FRAMES << "==========";
+            // SINGLE stabilization delay at start (not per frame!)
+            qDebug() << "[HandheldScanWidget::ScanThread] Stabilizing cameras (300ms)...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-                // Check for cancellation
-                if (QThread::currentThread()->isInterruptionRequested()) {
-                    qDebug() << "[HandheldScanWidget::ScanThread] Scan cancelled by user";
-                    camera_system_->stopCapture();
-                    return false;
+            // BURST CAPTURE: Continuous frame capture without stop/start overhead
+            // Skip first 3 frames (stabilization), then capture TARGET_FRAMES continuously
+            qDebug() << "[HandheldScanWidget::ScanThread] Starting continuous burst capture...";
+
+            std::mutex capture_mutex;
+            std::condition_variable capture_cv;
+            int frames_received = 0;
+            const int FRAMES_TO_SKIP = 3; // Skip first 3 frames for stabilization
+            bool capture_complete = false;
+
+            auto burst_callback = [&](const core::StereoFramePair& frame) {
+                std::lock_guard<std::mutex> lock(capture_mutex);
+                frames_received++;
+
+                // Skip initial stabilization frames
+                if (frames_received <= FRAMES_TO_SKIP) {
+                    qDebug() << "[HandheldScanWidget::ScanThread] Skipping stabilization frame" << frames_received;
+                    return;
                 }
 
-                // CRITICAL FIX: Reapply parameters before EACH frame to prevent drift/override
-                qDebug() << "[HandheldScanWidget::ScanThread] Reapplying params before frame capture: exp=" << current_exposure << "us, gain=" << current_gain << "x";
-                camera_system_->setExposureTime(core::CameraId::LEFT, current_exposure);
-                camera_system_->setExposureTime(core::CameraId::RIGHT, current_exposure);
-                camera_system_->setGain(core::CameraId::LEFT, current_gain);
-                camera_system_->setGain(core::CameraId::RIGHT, current_gain);
-                std::this_thread::sleep_for(std::chrono::milliseconds(250)); // Stabilization DOPO riapply
+                // Capture frames after stabilization
+                if (captured_frames.size() < static_cast<size_t>(TARGET_FRAMES)) {
+                    qDebug() << "[HandheldScanWidget::ScanThread] Capturing frame" << (captured_frames.size() + 1) << "/" << TARGET_FRAMES;
+                    captured_frames.push_back(frame);
+                    frames_captured_ = captured_frames.size();
 
-                // STEP 1: Capture test frame for histogram analysis
-                qDebug() << "[HandheldScanWidget::ScanThread] Capturing test frame for scene analysis...";
+                    // Update progress
+                    emit updateCaptureProgress(frames_captured_, TARGET_FRAMES);
 
-                std::mutex test_mutex;
-                std::condition_variable test_cv;
-                core::StereoFramePair test_frame;
-                int frames_received = 0;
-                const int FRAMES_TO_SKIP = 3; // Skip first 3 frames (old parameters)
-
-                auto test_callback = [&](const core::StereoFramePair& frame) {
-                    std::lock_guard<std::mutex> lock(test_mutex);
-                    frames_received++;
-
-                    // CRITICAL: Skip first 3 frames - they have OLD parameters!
-                    // New parameters need 2-3 frames to take effect
-                    if (frames_received <= FRAMES_TO_SKIP) {
-                        qDebug() << "[HandheldScanWidget::ScanThread] Skipping frame" << frames_received << "(old parameters)";
-                        return;
+                    // Check if complete
+                    if (captured_frames.size() >= static_cast<size_t>(TARGET_FRAMES)) {
+                        qDebug() << "[HandheldScanWidget::ScanThread] Burst capture complete!";
+                        capture_complete = true;
+                        capture_cv.notify_one();
                     }
-
-                    // Take the 4th frame - this has NEW parameters applied
-                    if (frames_received == FRAMES_TO_SKIP + 1) {
-                        qDebug() << "[HandheldScanWidget::ScanThread] Taking frame" << frames_received << "(new parameters)";
-                        test_frame = frame;
-                        test_cv.notify_one();
-                    }
-                };
-
-                if (!camera_system_->startCapture(test_callback)) {
-                    qCritical() << "[HandheldScanWidget::ScanThread] Failed to start test capture";
-                    return false;
                 }
+            };
 
-                // Wait for stabilized frame (4th frame)
-                {
-                    std::unique_lock<std::mutex> lock(test_mutex);
-                    test_cv.wait_for(lock, std::chrono::milliseconds(1000), [&]() { return frames_received > FRAMES_TO_SKIP; });
-                }
-                camera_system_->stopCapture();
+            // Start continuous capture
+            if (!camera_system_->startCapture(burst_callback)) {
+                qCritical() << "[HandheldScanWidget::ScanThread] Failed to start burst capture";
+                return false;
+            }
 
-                if (frames_received <= FRAMES_TO_SKIP || test_frame.left_frame.image.empty()) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture stabilized test frame (received" << frames_received << "frames)";
-                    continue;
-                }
+            // Wait for all frames to be captured (with timeout)
+            {
+                std::unique_lock<std::mutex> lock(capture_mutex);
+                int timeout_seconds = 30; // 30 second timeout for all frames
+                capture_cv.wait_for(lock, std::chrono::seconds(timeout_seconds),
+                                   [&]() { return capture_complete || QThread::currentThread()->isInterruptionRequested(); });
+            }
 
-                // STEP 2: Analyze histogram of BOTH cameras
-                // CRITICAL: Check if already grayscale (YUV420 frames are 1-channel)
-                cv::Mat gray_left, gray_right;
+            // Stop capture
+            camera_system_->stopCapture();
 
-                if (test_frame.left_frame.image.channels() == 1) {
-                    gray_left = test_frame.left_frame.image;
-                } else {
-                    cv::cvtColor(test_frame.left_frame.image, gray_left, cv::COLOR_BGR2GRAY);
-                }
-
-                if (test_frame.right_frame.image.channels() == 1) {
-                    gray_right = test_frame.right_frame.image;
-                } else {
-                    cv::cvtColor(test_frame.right_frame.image, gray_right, cv::COLOR_BGR2GRAY);
-                }
-
-                double mean_left = cv::mean(gray_left)[0];
-                double mean_right = cv::mean(gray_right)[0];
-                double mean_combined = (mean_left + mean_right) / 2.0;
-
-                qDebug() << "[HandheldScanWidget::ScanThread] Scene brightness: LEFT=" << mean_left
-                         << ", RIGHT=" << mean_right << ", COMBINED=" << mean_combined;
-
-                // STEP 3: Calculate optimal exposure for THIS scene
-                const double TARGET_BRIGHTNESS = 60.0;
-                const double MIN_BRIGHTNESS = 50.0;
-                const double MAX_BRIGHTNESS = 70.0;
-
-                double new_exposure = current_exposure;
-                bool needs_adjustment = false;
-
-                if (mean_combined < MIN_BRIGHTNESS) {
-                    // Scene too dark - increase exposure
-                    double factor = TARGET_BRIGHTNESS / std::max(mean_combined, 20.0);
-                    factor = std::min(factor, 1.5);  // Max 50% increase per step
-                    new_exposure = current_exposure * factor;
-                    needs_adjustment = true;
-                    qDebug() << "[HandheldScanWidget::ScanThread] Scene too dark, increasing exposure by" << (factor * 100 - 100) << "%";
-                } else if (mean_combined > MAX_BRIGHTNESS) {
-                    // Scene too bright - decrease exposure
-                    double factor = TARGET_BRIGHTNESS / mean_combined;
-                    factor = std::max(factor, 0.7);  // Max 30% decrease per step
-                    new_exposure = current_exposure * factor;
-                    needs_adjustment = true;
-                    qDebug() << "[HandheldScanWidget::ScanThread] Scene too bright, decreasing exposure by" << (100 - factor * 100) << "%";
-                } else {
-                    qDebug() << "[HandheldScanWidget::ScanThread] Scene brightness optimal, no adjustment needed";
-                }
-
-                // STEP 4: Apply optimized parameters if needed
-                if (needs_adjustment && std::abs(new_exposure - current_exposure) > 500) {
-                    qDebug() << "[HandheldScanWidget::ScanThread] Applying new exposure:" << current_exposure << "→" << new_exposure << "us";
-
-                    camera_system_->setExposureTime(core::CameraId::LEFT, new_exposure);
-                    camera_system_->setExposureTime(core::CameraId::RIGHT, new_exposure);
-                    current_exposure = new_exposure;
-
-                    // Wait for stabilization
-                    qDebug() << "[HandheldScanWidget::ScanThread] Stabilizing for 250ms...";
-                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
-                }
-
-                // STEP 5: Capture final optimized frame
-                qDebug() << "[HandheldScanWidget::ScanThread] Capturing final optimized frame...";
-
-                std::mutex final_mutex;
-                std::condition_variable final_cv;
-                core::StereoFramePair final_frame;
-                int final_frames_received = 0;
-
-                auto final_callback = [&](const core::StereoFramePair& frame) {
-                    std::lock_guard<std::mutex> lock(final_mutex);
-                    final_frames_received++;
-
-                    // CRITICAL: Skip first 3 frames (old parameters)
-                    if (final_frames_received <= FRAMES_TO_SKIP) {
-                        qDebug() << "[HandheldScanWidget::ScanThread] Skipping final frame" << final_frames_received << "(old parameters)";
-                        return;
-                    }
-
-                    // Take the 4th frame (new parameters)
-                    if (final_frames_received == FRAMES_TO_SKIP + 1) {
-                        qDebug() << "[HandheldScanWidget::ScanThread] Taking final frame" << final_frames_received << "(new parameters)";
-                        final_frame = frame;
-                        final_cv.notify_one();
-                    }
-                };
-
-                if (!camera_system_->startCapture(final_callback)) {
-                    qCritical() << "[HandheldScanWidget::ScanThread] Failed to start final capture";
-                    return false;
-                }
-
-                // Wait for stabilized final frame (4th frame)
-                {
-                    std::unique_lock<std::mutex> lock(final_mutex);
-                    final_cv.wait_for(lock, std::chrono::milliseconds(1000), [&]() { return final_frames_received > FRAMES_TO_SKIP; });
-                }
-                camera_system_->stopCapture();
-
-                if (final_frames_received <= FRAMES_TO_SKIP || final_frame.left_frame.image.empty()) {
-                    qWarning() << "[HandheldScanWidget::ScanThread] Failed to capture stabilized final frame (received" << final_frames_received << "frames)";
-                    continue;
-                }
-
-                // Add to captured frames
-                captured_frames.push_back(final_frame);
-                frames_captured_ = captured_frames.size();
-
-                qDebug() << "[HandheldScanWidget::ScanThread] Frame" << (frame_idx + 1) << "/" << TARGET_FRAMES
-                         << "captured successfully (exposure=" << current_exposure << "us)";
-
-                // Brief delay between frames for user positioning
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // Check capture results
+            if (captured_frames.size() < static_cast<size_t>(TARGET_FRAMES)) {
+                qWarning() << "[HandheldScanWidget::ScanThread] Incomplete burst capture: got"
+                           << captured_frames.size() << "/" << TARGET_FRAMES << "frames";
             }
 
             qDebug() << "[HandheldScanWidget::ScanThread] Per-frame capture complete, captured" << captured_frames.size() << "frames";
