@@ -31,6 +31,49 @@ LD_LIBRARY_PATH=build/src:third-party/libcamera-sync-fix/build/src/libcamera:thi
 - `build/examples/camera_example` - Basic camera capture
 - `build/test_hardware_sync_new` - Hardware sync validation
 
+## Repository Structure (IMPORTANT!)
+
+**TWO REPOSITORIES - DIFFERENT PURPOSES:**
+
+### 1. `unlook-standalone` (THIS REPO) - DEVELOPMENT
+**URL**: https://github.com/SupernovaIndustries/unlook-standalone
+**Purpose**: Complete development repository with all history, tests, docs, examples
+**Usage**: Daily development, testing, experimentation
+**Contains**: Everything (tests, docs, examples, backup files, .github, etc.)
+
+### 2. `unlook` - PRODUCTION (CLEAN)
+**URL**: https://github.com/SupernovaIndustries/unlook
+**Purpose**: Clean production repository for fairs, investors, public showcase
+**Usage**: Professional presentation, deployment
+**Contains**: Only production code (src/, include/, third-party/, CMake, README.md)
+
+**WORKFLOW:**
+1. **Development work**: Always commit to `unlook-standalone` (this repo)
+2. **Important stable features**: Cherry-pick or merge to `unlook` production repo
+3. **For presentations/fairs**: Show only `unlook` (clean, professional)
+
+**Key Differences:**
+```
+unlook-standalone (development):
+├── src/, include/, third-party/  ✅
+├── tests/, examples/, docs/      ✅ (development only)
+├── .github/, .claude/             ✅ (development only)
+├── calibration/, scripts/         ✅ (development only)
+├── All .md files                  ✅ (development documentation)
+└── Full git history               ✅ (complete development history)
+
+unlook (production):
+├── src/, include/, third-party/  ✅ (same as development)
+├── CMakeLists.txt, build.sh      ✅ (build system)
+├── README.md ONLY                ✅ (professional documentation)
+└── Clean git history             ✅ (single initial commit, important features)
+```
+
+**REMEMBER**:
+- Continue daily work on `unlook-standalone`
+- Only push important, stable commits to `unlook` production
+- `unlook` is for showing to investors/at fairs - keep it clean!
+
 ## Project Overview
 
 **Unlook** is a professional modular opensource 3D scanner with target precision **0.005mm**, designed for industrial, educational and professional applications. The system combines stereovision, structured light VCSEL, and ARM64 acceleration to achieve industrial-level performance at accessible costs.
