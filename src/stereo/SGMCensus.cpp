@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <limits>
+#include <omp.h>  // OpenMP for multi-threading
 
 namespace unlook {
 namespace stereo {
@@ -139,6 +140,8 @@ void SGMCensus::computeCensusTransform(const cv::Mat& image, cv::Mat& census)
     census.create(height, width, CV_64FC1);
     census.setTo(cv::Scalar(0));
 
+    // OPTIMIZATION: Parallelize row processing with OpenMP
+    #pragma omp parallel for schedule(dynamic, 16)
     for (int y = radius; y < height - radius; y++) {
         const uint8_t* imgRow = image.ptr<uint8_t>(y);
         uint64_t* censusRow = census.ptr<uint64_t>(y);
@@ -180,6 +183,8 @@ void SGMCensus::computeMatchingCost(
     const int D = config_.numDisparities;
     const int verticalRange = config_.verticalSearchRange;  // ±8 pixels for epipolar error
 
+    // OPTIMIZATION: Parallelize row processing with OpenMP
+    #pragma omp parallel for schedule(dynamic, 8)
     for (int y = 0; y < height; y++) {
         const uint64_t* leftRow = censusLeft.ptr<uint64_t>(y);
 
@@ -244,12 +249,16 @@ void SGMCensus::aggregateCostsSGM(
         directions.push_back({-1, 1});   // TR→BL
     }
 
+    // OPTIMIZATION: Parallelize path processing (paths are independent)
+    #pragma omp parallel for schedule(dynamic)
     for (int pathIdx = 0; pathIdx < numPaths; pathIdx++) {
         int dirX = directions[pathIdx].first;
         int dirY = directions[pathIdx].second;
         processSGMPath(costVolume, pathCosts[pathIdx], dirX, dirY, width, height);
     }
 
+    // OPTIMIZATION: Parallelize aggregation across volume
+    #pragma omp parallel for
     for (int idx = 0; idx < height * width * D; idx++) {
         for (int pathIdx = 0; pathIdx < numPaths; pathIdx++) {
             aggregatedCost[idx] += pathCosts[pathIdx][idx];
@@ -321,6 +330,8 @@ void SGMCensus::selectDisparitiesWTA(
     const bool checkUniqueness = config_.enableUniquenessCheck;
     const int uniquenessRatio = config_.uniquenessRatio;
 
+    // OPTIMIZATION: Parallelize row processing with OpenMP
+    #pragma omp parallel for schedule(dynamic, 8)
     for (int y = 0; y < height; y++) {
         int16_t* dispRow = disparity.ptr<int16_t>(y);
         for (int x = 0; x < width; x++) {

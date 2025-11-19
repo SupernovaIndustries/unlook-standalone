@@ -598,7 +598,8 @@ public:
                         std::to_string(validRight) + "], y=[" + std::to_string(validTop) + "," +
                         std::to_string(validBottom) + "]");
 
-            // Filter all border pixels
+            // Filter all border pixels (OPTIMIZED: OpenMP parallel processing with reduction)
+            #pragma omp parallel for reduction(+:totalPointsBeforeFiltering,filteredBorderPoints) schedule(dynamic, 16)
             for (int y = 0; y < points3D.rows; y++) {
                 for (int x = 0; x < points3D.cols; x++) {
                     cv::Vec3f& pt = points3D.at<cv::Vec3f>(y, x);
@@ -661,14 +662,18 @@ public:
             }
 
             if (allDepths.size() > 100) {
-                // Calculate global mean and stddev
+                // Calculate global mean and stddev (OPTIMIZED: OpenMP reduction)
                 float globalMean = 0;
-                for (float z : allDepths) globalMean += z;
+                #pragma omp parallel for reduction(+:globalMean)
+                for (size_t i = 0; i < allDepths.size(); i++) {
+                    globalMean += allDepths[i];
+                }
                 globalMean /= allDepths.size();
 
                 float globalStdDev = 0;
-                for (float z : allDepths) {
-                    float diff = z - globalMean;
+                #pragma omp parallel for reduction(+:globalStdDev)
+                for (size_t i = 0; i < allDepths.size(); i++) {
+                    float diff = allDepths[i] - globalMean;
                     globalStdDev += diff * diff;
                 }
                 globalStdDev = std::sqrt(globalStdDev / allDepths.size());
