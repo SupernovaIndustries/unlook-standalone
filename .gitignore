@@ -111,3 +111,6 @@ user_settings.yaml
 
 #Privati
 INVESTOR_DEMO_PREPARATION.md
+# Doxygen generated documentation
+docs/html/
+docs/latex/
