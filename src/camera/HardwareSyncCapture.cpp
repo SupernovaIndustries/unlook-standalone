@@ -5,6 +5,7 @@
  */
 
 #include <unlook/camera/HardwareSyncCapture.hpp>
+#include <unlook/core/Logger.hpp>
 
 #include <iostream>
 #include <chrono>
@@ -140,27 +141,37 @@ bool HardwareSyncCapture::initializeCameras(const CameraConfig& config) {
 
     // Find cameras by hardware path (following PROJECT_GUIDELINES.md mapping)
     std::shared_ptr<Camera> camera1, camera0;
-    
+
+    core::Logger::getInstance().info("[HardwareSync] Scanning " + std::to_string(cameras.size()) + " cameras...");
+
     for (auto camera : cameras) {
         std::string id = camera->id();
+        core::Logger::getInstance().info("[HardwareSync] Camera ID: " + id);
+
         // Support both CM5 and Pi5 hardware paths:
         // CM5: i2c@1 (LEFT/MASTER), i2c@0 (RIGHT/SLAVE)
         // Pi5: i2c@88000 (LEFT/MASTER), i2c@80000 (RIGHT/SLAVE)
         if (id.find("i2c@1/imx296@1a") != std::string::npos ||
             id.find("i2c@88000/imx296@1a") != std::string::npos) {
             camera1 = camera;  // Camera 1 = LEFT/MASTER
-            std::cout << "[HardwareSync] Found MASTER camera: " << id << std::endl;
+            core::Logger::getInstance().info("[HardwareSync] -> Assigned as MASTER (LEFT)");
         } else if (id.find("i2c@0/imx296@1a") != std::string::npos ||
                    id.find("i2c@80000/imx296@1a") != std::string::npos) {
             camera0 = camera;  // Camera 0 = RIGHT/SLAVE
-            std::cout << "[HardwareSync] Found SLAVE camera: " << id << std::endl;
+            core::Logger::getInstance().info("[HardwareSync] -> Assigned as SLAVE (RIGHT)");
+        } else {
+            core::Logger::getInstance().warning("[HardwareSync] -> NOT MATCHED: " + id);
         }
     }
 
     if (!camera1 || !camera0) {
-        std::cerr << "[HardwareSync] Could not find both IMX296 cameras" << std::endl;
+        std::string status = "camera1=" + std::string(camera1 ? "OK" : "NULL") +
+                            ", camera0=" + std::string(camera0 ? "OK" : "NULL");
+        core::Logger::getInstance().error("[HardwareSync] Could not find both IMX296 cameras (" + status + ")");
         return false;
     }
+
+    core::Logger::getInstance().info("[HardwareSync] Both cameras found successfully");
 
     master_camera_ = camera1;  // LEFT/MASTER
     slave_camera_ = camera0;   // RIGHT/SLAVE

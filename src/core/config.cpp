@@ -174,7 +174,7 @@ void Config::setDefaultStereoConfig() {
     values_[config_keys::STEREO_USE_BOOFCV] = true;
     
     // Calibration defaults
-    values_[config_keys::CALIBRATION_FILE_PATH] = std::string("calibration/calib_boofcv_test3.yaml");
+    values_[config_keys::CALIBRATION_FILE_PATH] = std::string("/home/alessandro/unlook_calib/default.yaml");
     values_[config_keys::CALIBRATION_AUTO_LOAD] = true;
     values_[config_keys::CALIBRATION_MIN_RMS] = 0.5; // pixels
 }

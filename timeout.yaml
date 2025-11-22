@@ -23,9 +23,9 @@
                 # Set this value to 0 to use the pipeline handler computed
                 # timeout value.
                 #
-                # CRITICAL FIX: Increased to 5000ms to prevent frontend timeouts
-                # Default 1000ms is insufficient for synchronized dual camera capture
-                "camera_timeout_value_ms": 5000,
+                # CRITICAL FIX: Increased to 60000ms for hardware-synced dual cameras
+                # The SLAVE camera needs extra time to sync with MASTER via XVS/XHS
+                "camera_timeout_value_ms": 60000,
 
                 # Disables temporal denoise functionality in the ISP pipeline.
                 # Disabling temporal denoise avoids allocating 2 additional

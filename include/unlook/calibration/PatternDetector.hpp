@@ -30,10 +30,11 @@ private:
     PatternConfig config_;
     float confidenceScore_;
 
-    // ChArUco detector components
-    cv::Ptr<cv::aruco::Dictionary> arucoDict_;
-    cv::Ptr<cv::aruco::CharucoBoard> charucoBoard_;
-    cv::Ptr<cv::aruco::DetectorParameters> detectorParams_;
+    // ChArUco detector components (OpenCV 4.10+ API - non-Ptr types)
+    cv::aruco::Dictionary arucoDict_;
+    cv::aruco::CharucoBoard charucoBoard_;
+    cv::aruco::DetectorParameters detectorParams_;
+    bool charucoInitialized_ = false;
 
     // Detection methods
     bool detectCheckerboard(const cv::Mat& image,

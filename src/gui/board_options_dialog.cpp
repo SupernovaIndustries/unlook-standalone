@@ -162,7 +162,7 @@ calibration::PatternConfig BoardOptionsDialog::getPatternConfig() const {
     config.arucoMarkerSizeMM = static_cast<float>(arucoSizeSpinBox_->value());
 
     // ArUco dictionary mapping
-    const std::vector<cv::aruco::PREDEFINED_DICTIONARY_NAME> dictMap = {
+    const std::vector<cv::aruco::PredefinedDictionaryType> dictMap = {
         cv::aruco::DICT_4X4_50,
         cv::aruco::DICT_4X4_100,
         cv::aruco::DICT_4X4_250,
@@ -209,7 +209,7 @@ void BoardOptionsDialog::setPatternConfig(const calibration::PatternConfig& conf
     arucoSizeSpinBox_->setValue(config.arucoMarkerSizeMM);
 
     // Set ArUco dictionary (reverse mapping)
-    const std::vector<cv::aruco::PREDEFINED_DICTIONARY_NAME> dictMap = {
+    const std::vector<cv::aruco::PredefinedDictionaryType> dictMap = {
         cv::aruco::DICT_4X4_50,
         cv::aruco::DICT_4X4_100,
         cv::aruco::DICT_4X4_250,

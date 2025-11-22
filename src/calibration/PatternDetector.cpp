@@ -8,25 +8,35 @@ namespace calibration {
 
 PatternDetector::PatternDetector(const PatternConfig& config)
     : config_(config)
-    , confidenceScore_(0.0f) {
+    , confidenceScore_(0.0f)
+    , arucoDict_(cv::aruco::getPredefinedDictionary(cv::aruco::DICT_4X4_250))
+    , charucoBoard_(cv::Size(config.cols, config.rows), config.squareSizeMM, config.arucoMarkerSizeMM,
+                    cv::aruco::getPredefinedDictionary(config.arucoDict))
+    , charucoInitialized_(false) {
 
     // Initialize ChArUco components if needed
     if (config_.type == PatternType::CHARUCO) {
+        // OpenCV 4.10+ API: direct assignment (not Ptr)
         arucoDict_ = cv::aruco::getPredefinedDictionary(config_.arucoDict);
 
-        charucoBoard_ = cv::aruco::CharucoBoard::create(
-            config_.cols, config_.rows,
-            config_.squareSizeMM, config_.arucoMarkerSizeMM,
+        // OpenCV 4.10+ API: CharucoBoard constructor instead of ::create()
+        charucoBoard_ = cv::aruco::CharucoBoard(
+            cv::Size(config_.cols, config_.rows),
+            config_.squareSizeMM,
+            config_.arucoMarkerSizeMM,
             arucoDict_
         );
 
-        detectorParams_ = cv::aruco::DetectorParameters::create();
+        // OpenCV 4.10+ API: DetectorParameters default constructor
+        detectorParams_ = cv::aruco::DetectorParameters();
         // Optimize for calibration
-        detectorParams_->adaptiveThreshWinSizeMin = 3;
-        detectorParams_->adaptiveThreshWinSizeMax = 23;
-        detectorParams_->adaptiveThreshWinSizeStep = 4;
-        detectorParams_->cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
-        detectorParams_->cornerRefinementWinSize = 5;
+        detectorParams_.adaptiveThreshWinSizeMin = 3;
+        detectorParams_.adaptiveThreshWinSizeMax = 23;
+        detectorParams_.adaptiveThreshWinSizeStep = 4;
+        detectorParams_.cornerRefinementMethod = cv::aruco::CORNER_REFINE_SUBPIX;
+        detectorParams_.cornerRefinementWinSize = 5;
+
+        charucoInitialized_ = true;
     }
 }
 
@@ -130,12 +140,16 @@ bool PatternDetector::detectCharuco(const cv::Mat& image,
         gray = image;
     }
 
+    // OpenCV 4.10+ API: Use ArucoDetector and CharucoDetector classes
+    cv::aruco::ArucoDetector arucoDetector(arucoDict_, detectorParams_);
+    cv::aruco::CharucoDetector charucoDetector(charucoBoard_);
+
     // Detect ArUco markers
     std::vector<int> markerIds;
     std::vector<std::vector<cv::Point2f>> markerCorners;
+    std::vector<std::vector<cv::Point2f>> rejectedCandidates;
 
-    cv::aruco::detectMarkers(gray, arucoDict_, markerCorners, markerIds,
-                            detectorParams_, cv::noArray());
+    arucoDetector.detectMarkers(gray, markerCorners, markerIds, rejectedCandidates);
 
     if (markerIds.empty()) {
         cv::putText(overlayImage, "ChArUco: No markers detected",
@@ -147,12 +161,19 @@ bool PatternDetector::detectCharuco(const cv::Mat& image,
     // Draw detected markers
     cv::aruco::drawDetectedMarkers(overlayImage, markerCorners, markerIds);
 
-    // Interpolate ChArUco corners
+    // Detect ChArUco board using the new API
     std::vector<int> charucoIds;
-    cv::aruco::interpolateCornersCharuco(
-        markerCorners, markerIds, gray, charucoBoard_,
-        corners, charucoIds
-    );
+    cv::Mat charucoCorners;
+    charucoDetector.detectBoard(gray, charucoCorners, charucoIds, markerCorners, markerIds);
+
+    // Convert Mat to vector<Point2f>
+    corners.clear();
+    if (!charucoCorners.empty()) {
+        for (int i = 0; i < charucoCorners.rows; i++) {
+            corners.push_back(cv::Point2f(charucoCorners.at<float>(i, 0),
+                                          charucoCorners.at<float>(i, 1)));
+        }
+    }
 
     if (corners.size() >= 4) {  // Minimum corners for calibration
         // Refine corners using corner subpix
@@ -168,7 +189,7 @@ bool PatternDetector::detectCharuco(const cv::Mat& image,
         confidenceScore_ = static_cast<float>(corners.size()) / expectedCorners;
 
         // Draw ChArUco corners
-        cv::aruco::drawDetectedCornersCharuco(overlayImage, corners, charucoIds);
+        cv::aruco::drawDetectedCornersCharuco(overlayImage, charucoCorners, charucoIds);
 
         // Add text overlay
         cv::putText(overlayImage,

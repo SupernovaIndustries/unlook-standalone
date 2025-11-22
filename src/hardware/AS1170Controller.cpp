@@ -945,26 +945,68 @@ bool AS1170Controller::initializeGPIOLine(uint32_t gpio) {
 
     core::Logger::getInstance().info("GPIO chip opened successfully: " + std::string(chip_path));
 
-    // Get GPIO line
-    gpio_line_ = gpiod_chip_get_line(gpio_chip_, gpio);
-    if (!gpio_line_) {
-        core::Logger::getInstance().error("Failed to get GPIO line " + std::to_string(gpio) +
-                                        " (error: " + std::string(strerror(errno)) + ")");
+    // Store the line offset for later use
+    gpio_line_offset_ = gpio;
+
+    // libgpiod v2 API: Create line settings
+    struct gpiod_line_settings* settings = gpiod_line_settings_new();
+    if (!settings) {
+        core::Logger::getInstance().error("Failed to create GPIO line settings");
         gpiod_chip_close(gpio_chip_);
         gpio_chip_ = nullptr;
         return false;
     }
 
-    core::Logger::getInstance().info("GPIO line " + std::to_string(gpio) + " acquired successfully");
+    // Configure as output with initial LOW value
+    gpiod_line_settings_set_direction(settings, GPIOD_LINE_DIRECTION_OUTPUT);
+    gpiod_line_settings_set_output_value(settings, GPIOD_LINE_VALUE_INACTIVE);
 
-    // Request line as output with initial value LOW
-    int ret = gpiod_line_request_output(gpio_line_, "AS1170-strobe", 0);
+    // Create line config and add the line
+    struct gpiod_line_config* line_config = gpiod_line_config_new();
+    if (!line_config) {
+        core::Logger::getInstance().error("Failed to create GPIO line config");
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+        return false;
+    }
+
+    unsigned int offsets[] = { gpio };
+    int ret = gpiod_line_config_add_line_settings(line_config, offsets, 1, settings);
     if (ret < 0) {
+        core::Logger::getInstance().error("Failed to add line settings (error: " + std::string(strerror(errno)) + ")");
+        gpiod_line_config_free(line_config);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+        return false;
+    }
+
+    // Create request config
+    struct gpiod_request_config* req_config = gpiod_request_config_new();
+    if (!req_config) {
+        core::Logger::getInstance().error("Failed to create GPIO request config");
+        gpiod_line_config_free(line_config);
+        gpiod_line_settings_free(settings);
+        gpiod_chip_close(gpio_chip_);
+        gpio_chip_ = nullptr;
+        return false;
+    }
+    gpiod_request_config_set_consumer(req_config, "AS1170-strobe");
+
+    // Request the lines
+    gpio_request_ = gpiod_chip_request_lines(gpio_chip_, req_config, line_config);
+
+    // Cleanup config objects (no longer needed after request)
+    gpiod_request_config_free(req_config);
+    gpiod_line_config_free(line_config);
+    gpiod_line_settings_free(settings);
+
+    if (!gpio_request_) {
         core::Logger::getInstance().error("Failed to request GPIO " + std::to_string(gpio) +
                                         " as output (error: " + std::string(strerror(errno)) + ")");
         gpiod_chip_close(gpio_chip_);
         gpio_chip_ = nullptr;
-        gpio_line_ = nullptr;
         return false;
     }
 
@@ -974,10 +1016,10 @@ bool AS1170Controller::initializeGPIOLine(uint32_t gpio) {
 }
 
 void AS1170Controller::releaseGPIOLine() {
-    if (gpio_line_) {
-        gpiod_line_release(gpio_line_);
-        gpio_line_ = nullptr;
-        core::Logger::getInstance().info("GPIO line released");
+    if (gpio_request_) {
+        gpiod_line_request_release(gpio_request_);
+        gpio_request_ = nullptr;
+        core::Logger::getInstance().info("GPIO line request released");
     }
 
     if (gpio_chip_) {
@@ -988,12 +1030,14 @@ void AS1170Controller::releaseGPIOLine() {
 }
 
 bool AS1170Controller::setGPIOValue(uint32_t gpio, bool value) {
-    if (!gpio_line_) {
+    if (!gpio_request_) {
         core::Logger::getInstance().error("GPIO line not initialized - cannot set value");
         return false;
     }
 
-    int ret = gpiod_line_set_value(gpio_line_, value ? 1 : 0);
+    // libgpiod v2 API: use gpiod_line_request_set_value
+    enum gpiod_line_value line_value = value ? GPIOD_LINE_VALUE_ACTIVE : GPIOD_LINE_VALUE_INACTIVE;
+    int ret = gpiod_line_request_set_value(gpio_request_, gpio_line_offset_, line_value);
     if (ret < 0) {
         core::Logger::getInstance().error("Failed to set GPIO " + std::to_string(gpio) +
                                         " value to " + (value ? "HIGH" : "LOW") +
@@ -1008,19 +1052,20 @@ bool AS1170Controller::setGPIOValue(uint32_t gpio, bool value) {
 }
 
 bool AS1170Controller::getGPIOValue(uint32_t gpio) {
-    if (!gpio_line_) {
+    if (!gpio_request_) {
         core::Logger::getInstance().error("GPIO line not initialized - cannot read value");
         return false;
     }
 
-    int ret = gpiod_line_get_value(gpio_line_);
-    if (ret < 0) {
+    // libgpiod v2 API: use gpiod_line_request_get_value
+    enum gpiod_line_value ret = gpiod_line_request_get_value(gpio_request_, gpio_line_offset_);
+    if (ret == GPIOD_LINE_VALUE_ERROR) {
         core::Logger::getInstance().error("Failed to read GPIO " + std::to_string(gpio) +
                                         " value (error: " + std::string(strerror(errno)) + ")");
         return false;
     }
 
-    return (ret == 1);
+    return (ret == GPIOD_LINE_VALUE_ACTIVE);
 }
 
 uint8_t AS1170Controller::currentToRegisterValue(uint16_t current_ma) const {

@@ -115,33 +115,16 @@ else()
     message(STATUS "nlohmann_json found: ${nlohmann_json_VERSION}")
 endif()
 
-# libcamera-sync-fix - EXCLUSIVELY use third-party version for hardware synchronization
-# This ensures consistent behavior and eliminates dependency on system installations
-if(EXISTS "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/src/libcamera/libcamera.so.0.5.1")
-    message(STATUS "Using third-party libcamera-sync-fix for hardware synchronization")
-    set(LIBCAMERA_FOUND TRUE)
-    set(LIBCAMERA_INCLUDE_DIRS 
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/include"
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/include")
-    set(LIBCAMERA_LIBRARY_DIRS 
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/src/libcamera"
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/src/libcamera/base")
-    set(LIBCAMERA_LIBRARIES 
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/src/libcamera/libcamera.so.0.5.1"
-        "${CMAKE_SOURCE_DIR}/third-party/libcamera-sync-fix/build/src/libcamera/base/libcamera-base.so.0.5.1")
-    # Set runtime library paths for self-contained deployment
-    set(CMAKE_INSTALL_RPATH "${LIBCAMERA_LIBRARY_DIRS}")
-    set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+# libcamera - Use system libcamera (pre-installed on Raspberry Pi OS)
+# Hardware sync is handled via XVS/XHS GPIO connections, not library modifications
+pkg_check_modules(LIBCAMERA REQUIRED libcamera)
+if(LIBCAMERA_FOUND)
+    message(STATUS "Using system libcamera: ${LIBCAMERA_VERSION}")
     message(STATUS "  Include dirs: ${LIBCAMERA_INCLUDE_DIRS}")
     message(STATUS "  Libraries: ${LIBCAMERA_LIBRARIES}")
-    message(STATUS "  Runtime paths: ${CMAKE_INSTALL_RPATH}")
+    message(STATUS "  Library dirs: ${LIBCAMERA_LIBRARY_DIRS}")
 else()
-    # REQUIRED: libcamera-sync-fix must be built first
-    message(FATAL_ERROR "libcamera-sync-fix not found! This project requires the custom libcamera-sync-fix version.")
-    message(FATAL_ERROR "Please build third-party/libcamera-sync-fix first:")
-    message(FATAL_ERROR "  cd third-party/libcamera-sync-fix")
-    message(FATAL_ERROR "  ./configure_sync_build.sh")  
-    message(FATAL_ERROR "  make -j$(nproc)")
+    message(FATAL_ERROR "libcamera not found! Please install: sudo apt install libcamera-dev")
 endif()
 
 # Java/JNI - for BoofCV integration (optional)

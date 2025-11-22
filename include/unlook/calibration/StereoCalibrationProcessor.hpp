@@ -28,7 +28,7 @@ struct PatternConfig {
     int cols;
     float squareSizeMM;
     float arucoMarkerSizeMM;  // For ChArUco only
-    cv::aruco::PREDEFINED_DICTIONARY_NAME arucoDict;  // For ChArUco only
+    cv::aruco::PredefinedDictionaryType arucoDict;  // For ChArUco only (OpenCV 4.x API)
 
     // Default constructor - ChArUco 7x10 pattern, 24mm squares
     PatternConfig()

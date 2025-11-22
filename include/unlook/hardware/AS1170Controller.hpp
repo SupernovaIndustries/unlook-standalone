@@ -265,8 +265,9 @@ private:
 
     // I2C and GPIO resources
     int i2c_fd_ = -1;
-    struct gpiod_chip* gpio_chip_ = nullptr;    // libgpiod chip handle
-    struct gpiod_line* gpio_line_ = nullptr;    // libgpiod line handle
+    struct gpiod_chip* gpio_chip_ = nullptr;           // libgpiod v2 chip handle
+    struct gpiod_line_request* gpio_request_ = nullptr; // libgpiod v2 line request handle
+    uint32_t gpio_line_offset_ = 0;                    // GPIO line offset for value operations
     bool gpio_initialized_ = false;
 
     // Status tracking

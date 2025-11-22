@@ -324,7 +324,7 @@ core::ResultCode UnlookScanner::initializeSubsystems() {
 
     // If no custom calibration found, use default
     if (calibPath.empty()) {
-        calibPath = "calibration/calib_boofcv_test3.yaml";
+        calibPath = "/home/alessandro/unlook_calib/default.yaml";
         UNLOOK_LOG_INFO("Scanner") << "Using default calibration: " << calibPath;
     } else {
         UNLOOK_LOG_INFO("Scanner") << "Auto-loading latest calibration: " << calibPath;
@@ -420,7 +420,7 @@ core::ResultCode UnlookScanner::validateSystem() {
     UNLOOK_LOG_INFO("Scanner") << "Validating system configuration...";
     
     // Check calibration file exists
-    std::string calib_path = "calibration/calib_boofcv_test3.yaml";
+    std::string calib_path = "/home/alessandro/unlook_calib/default.yaml";
     if (!std::filesystem::exists(calib_path)) {
         UNLOOK_LOG_WARNING("Scanner") << "Default calibration file not found: " << calib_path;
     }
